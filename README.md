@@ -124,7 +124,7 @@ Autonomous 314 is designed for:
 - **LP handling**: minted directly to the dead address
 - **fees**: 1% total = 0.3% protocol + 0.7% creator
 - **abandoned creator fees**: if a launch is still pre-graduation after `180 days` and has had no trades for `30 days`, anyone may sweep the unclaimable creator fee vault into the protocol fee vault
-- **safety**: quote-side wrapped-native preload is donation-compatible and does not block graduation by itself
+- **safety**: quote-side wrapped-native preload is tolerated only up to the immutable graduation target; oversized preload blocks graduation and any bounded preload is treated as a non-canonical opening-state warning
 - **deployment**: factory supports `CREATE2` salts for vanity suffix search such as `0314`
 
 ## Lifecycle
@@ -181,10 +181,12 @@ Current design choices include:
 
 - **pre-grad transfer lock** to reduce private side markets before graduation
 - **1-block sell cooldown** to blunt same-block round-trip behavior
-- **explicit buy/sell paths with slippage protection** in the official frontend
+- **explicit buy/sell paths with slippage protection** as the intended execution path
 - **partial fill at graduation boundary** so the market cannot overshoot the target in a single trade
 - **post-grad hard cutover** so the protocol does not keep a permanent second market alive after DEX launch
-- **quote-side preload compatibility** so stray wrapped-native deposits do not trivially DOS graduation
+- **bounded quote-side preload compatibility** so small stray wrapped-native deposits do not trivially DOS graduation, while oversized preload is still rejected
+
+Raw native transfer buys are intentionally **disabled** in the contract runtime. The intended path is an explicit contract call such as `buy(minTokenOut)` so integrations can preserve slippage protection.
 
 ## Creator-first economics
 

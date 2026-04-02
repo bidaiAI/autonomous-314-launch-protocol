@@ -46,7 +46,7 @@ Third-party UIs should default to:
 
 Do **not** make “send the native asset directly to the token contract” the default buy flow.
 
-The protocol still supports native `receive()` for 314 compatibility, but it has no slippage parameter and should be treated as an advanced/manual path.
+The runtime contract no longer accepts raw native transfer buys as a normal trading path. Integrations should treat explicit contract calls such as `buy(minTokenOut)` as the only intended execution route.
 
 ## 3. State-driven UI rules
 
@@ -140,30 +140,31 @@ If a factory deployer supplies `address(0)` for the protocol fee recipient, the 
 - `accountedNativeBalance()`
 - `unexpectedNativeBalance()`
 
-## 5. Donation-compatible graduation
+## 5. Bounded quote-preload compatibility
 
-The protocol accepts quote-side WBNB preloads as donation-compatible.
+The protocol tolerates quote-side WBNB preload only while it remains **at or below** the immutable graduation target.
 
 This means:
 
-- preloaded WBNB in the pair does **not** block graduation by itself
+- bounded preloaded WBNB in the pair may keep graduation live
+- preloaded WBNB above `graduationQuoteReserve()` **does** block graduation
 - existing LP initialization **does** block graduation
 - token-side pair pollution **does** block graduation
 
 Integrators should therefore distinguish:
 
 1. **clean pair**
-2. **pair has quote donation but still compatible**
+2. **pair has bounded quote preload and is still compatible**
 3. **pair is not graduation-compatible**
 
-Do not assume that post-graduation DEX quote reserve equals exactly `12 BNB`.
+Do not assume that post-graduation DEX quote reserve equals exactly `graduationQuoteReserve()`.
 
-Instead, treat the quote side as:
+Instead, treat the opening quote side as:
 
-- production default: `12 BNB`
-- otherwise: whatever immutable `graduationQuoteReserve()` the deployed factory/token was configured with
+- canonical protocol contribution: immutable `graduationQuoteReserve()`
+- plus any bounded quote preload that was already sitting in the pair before the canonical mint
 
-Instead:
+Event semantics:
 
 - `Graduated.quoteAmountContributed` = protocol-provided quote
 - `Graduated.preloadedQuoteAmount` = quote already present in pair before canonical mint

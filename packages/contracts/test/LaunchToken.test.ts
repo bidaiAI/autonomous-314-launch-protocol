@@ -72,6 +72,17 @@ describe("LaunchToken", function () {
     );
   });
 
+  it("disables raw native transfer buys during bonding", async function () {
+    const { token, buyer } = await deployFixture();
+
+    await expect(
+      buyer.sendTransaction({
+        to: await token.getAddress(),
+        value: SMALL_BUY,
+      })
+    ).to.be.revertedWithCustomError(token, "InvalidState");
+  });
+
   it("blocks transferFrom into the pair before graduation", async function () {
     const { token, buyer, other, pair } = await deployFixture();
 
@@ -273,6 +284,42 @@ describe("LaunchToken", function () {
     await expect(token.connect(creator).claimCreatorFees()).to.not.be.reverted;
   });
 
+  it("returns non-actionable previews after graduation", async function () {
+    const { token, buyer } = await deployFixture();
+
+    await token.connect(buyer).buy(0, { value: OVERBUY });
+    expect(await token.state()).to.equal(3n);
+
+    const buyPreview = await token.previewBuy(SMALL_BUY);
+    expect(buyPreview[0]).to.equal(0n);
+    expect(buyPreview[1]).to.equal(0n);
+    expect(buyPreview[2]).to.equal(0n);
+
+    const sellPreview = await token.previewSell(ethers.parseEther("1"));
+    expect(sellPreview[0]).to.equal(0n);
+    expect(sellPreview[1]).to.equal(0n);
+    expect(sellPreview[2]).to.equal(0n);
+
+    expect(await token.graduationProgressBps()).to.equal(10_000n);
+    expect(await token.priceQuotePerToken()).to.equal(await token.currentPriceQuotePerToken());
+  });
+
+  it("allows claiming fees to an alternate recipient", async function () {
+    const { token, buyer, creator, protocol, other } = await deployFixture();
+
+    await token.connect(buyer).buy(0, { value: OVERBUY });
+
+    const protocolClaimable = await token.protocolFeeVault();
+    await expect(token.connect(protocol).claimProtocolFeesTo(other.address))
+      .to.emit(token, "ProtocolFeesClaimed")
+      .withArgs(other.address, protocolClaimable);
+
+    const creatorClaimable = await token.creatorFeeVault();
+    await expect(token.connect(creator).claimCreatorFeesTo(other.address))
+      .to.emit(token, "CreatorFeesClaimed")
+      .withArgs(other.address, creatorClaimable);
+  });
+
   it("still reaches graduation after an intermediate sell", async function () {
     const { token, buyer, seller } = await deployFixture();
 
@@ -288,8 +335,9 @@ describe("LaunchToken", function () {
   it("allows graduation when pair has preloaded WNATIVE donation", async function () {
     const { token, buyer, wbnb, pair } = await deployFixture();
 
-    await wbnb.mint(await pair.getAddress(), ethers.parseEther("1"));
-    await pair.setReserves(0, ethers.parseEther("1"));
+    const donation = ethers.parseEther("0.1");
+    await wbnb.mint(await pair.getAddress(), donation);
+    await pair.setReserves(0, donation);
 
     expect(await token.isPairClean()).to.equal(false);
     expect(await token.isPairGraduationCompatible()).to.equal(true);
@@ -298,10 +346,10 @@ describe("LaunchToken", function () {
     expect(await token.state()).to.equal(3n);
   });
 
-  it("allows graduation with large preloaded WNATIVE donation and reports it in the event", async function () {
+  it("reports bounded preloaded WNATIVE donation in the graduation event", async function () {
     const { token, buyer, wbnb, pair } = await deployFixture();
 
-    const donation = ethers.parseEther("25");
+    const donation = ethers.parseEther("0.1");
     await wbnb.mint(await pair.getAddress(), donation);
     await pair.setReserves(0, donation);
 
@@ -321,6 +369,15 @@ describe("LaunchToken", function () {
 
     await pair.setTotalSupply(1n);
 
+    expect(await token.isPairGraduationCompatible()).to.equal(false);
+
+    await expect(token.connect(buyer).buy(0, { value: OVERBUY })).to.be.revertedWithCustomError(token, "PairPolluted");
+  });
+
+  it("reverts graduation when preloaded quote exceeds the graduation target", async function () {
+    const { token, buyer, wbnb, pair } = await deployFixture();
+
+    await wbnb.mint(await pair.getAddress(), GRADUATION_TARGET + 1n);
     expect(await token.isPairGraduationCompatible()).to.equal(false);
 
     await expect(token.connect(buyer).buy(0, { value: OVERBUY })).to.be.revertedWithCustomError(token, "PairPolluted");

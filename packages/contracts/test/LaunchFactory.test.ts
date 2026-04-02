@@ -122,6 +122,19 @@ describe("LaunchFactory", function () {
     expect(await launchFactory.accruedProtocolCreateFees()).to.equal(0n);
   });
 
+  it("allows claiming create fees to an alternate recipient", async function () {
+    const { creator, protocol, launchFactory } = await deployFixture();
+    const [, , , recipient] = await ethers.getSigners();
+
+    await launchFactory.connect(creator).createLaunch("Alpha", "ALP", "ipfs://alpha", {
+      value: CREATE_FEE,
+    });
+
+    await expect(launchFactory.connect(protocol).claimProtocolCreateFeesTo(recipient.address))
+      .to.emit(launchFactory, "ProtocolCreateFeesClaimed")
+      .withArgs(recipient.address, CREATE_FEE);
+  });
+
   it("reverts when the caller underpays the create fee", async function () {
     const { creator, launchFactory } = await deployFixture();
 
@@ -143,5 +156,19 @@ describe("LaunchFactory", function () {
 
     expect(await launchFactory.accruedProtocolCreateFees()).to.equal(CREATE_FEE);
     expect(await ethers.provider.getBalance(await launchFactory.getAddress())).to.equal(CREATE_FEE);
+  });
+
+  it("blocks protocol fee recipient rotation while unclaimed create fees exist", async function () {
+    const { creator, owner, launchFactory } = await deployFixture();
+    const [, , , recipient] = await ethers.getSigners();
+
+    await launchFactory.connect(creator).createLaunch("Alpha", "ALP", "ipfs://alpha", {
+      value: CREATE_FEE,
+    });
+
+    await expect(launchFactory.connect(owner).setProtocolFeeRecipient(recipient.address)).to.be.revertedWithCustomError(
+      launchFactory,
+      "PendingProtocolCreateFees"
+    );
   });
 });

@@ -509,8 +509,8 @@ export function App() {
             </label>
             <div className="button-row">
               <button onClick={handleLoadToken}>Load Launch</button>
-              <button className="secondary-button" onClick={handlePreviewBuy} disabled={!tokenAddress}>Refresh Buy Quote</button>
-              <button className="secondary-button" onClick={handlePreviewSell} disabled={!tokenAddress}>Refresh Sell Quote</button>
+              <button className="secondary-button" onClick={handlePreviewBuy} disabled={!tokenAddress || !isBonding}>Refresh Buy Quote</button>
+              <button className="secondary-button" onClick={handlePreviewSell} disabled={!tokenAddress || !isBonding}>Refresh Sell Quote</button>
             </div>
 
             {tokenSnapshot ? (
@@ -554,7 +554,7 @@ export function App() {
                     {tokenSnapshot.pairClean
                       ? "Pair is clean and ready for canonical graduation."
                       : tokenSnapshot.pairGraduationCompatible
-                        ? "Quote-side donation exists, but graduation still remains compatible."
+                        ? "Quote-side preload exists, so graduation stays live but the opening DEX state is no longer strictly canonical."
                         : "Current pair state is not graduation-compatible. The protocol will not migrate until the pair is valid."}
                   </p>
                 </div>
@@ -696,9 +696,9 @@ export function App() {
               <input value={slippageBps} onChange={(e) => setSlippageBps(e.target.value)} />
             </label>
             <div className="button-row stacked">
-              <button className="secondary-button" onClick={handlePreviewBuy} disabled={!tokenAddress}>Preview Buy</button>
+              <button className="secondary-button" onClick={handlePreviewBuy} disabled={!tokenAddress || !isBonding}>Preview Buy</button>
               <button onClick={handleExecuteBuy} disabled={!isBonding}>Execute Buy</button>
-              <button className="secondary-button" onClick={handlePreviewSell} disabled={!tokenAddress}>Preview Sell</button>
+              <button className="secondary-button" onClick={handlePreviewSell} disabled={!tokenAddress || !isBonding}>Preview Sell</button>
               <button onClick={handleExecuteSell} disabled={!isBonding}>Execute Sell</button>
             </div>
 
@@ -736,7 +736,7 @@ export function App() {
             </div>
             <ul className="compact-list">
               <li>Default trading path uses explicit slippage-protected contract calls.</li>
-              <li>Raw native transfer buy is not exposed as the primary UI path.</li>
+              <li>Raw native transfer buy is disabled in the reference flow; explicit slippage-protected contract calls are the intended path.</li>
               <li>Creator fees claim only after DEXOnly; the protocol only takes 0.3% while creators receive 0.7%.</li>
               <li>Abandoned pre-grad creator fees can be swept after 180 days of age and 30 days without trades.</li>
               <li>When graduation compatibility is false, treat migration as blocked.</li>

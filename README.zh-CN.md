@@ -130,7 +130,7 @@ Autonomous 314 主要适合这些对象：
 - **LP 处理**：直接 mint 到 dead 地址
 - **手续费**：总计 `1%` = `0.3%` 协议 + `0.7%` 创建者
 - **废弃 creator fee 回收**：如果项目仍未毕业、创建已满 `180 天` 且最近 `30 天` 无交易，任何人都可将未可领取的 creator fee sweep 到 protocol fee vault
-- **安全处理**：graduation pair 中预先注入的 wrapped native quote 会被视为 donation，不会单独阻断毕业
+- **安全处理**：graduation pair 中预先注入的 wrapped native quote 只在**不超过 immutable graduation target** 时才被容忍；超额 preload 会阻断毕业，而目标以内的 preload 也会被视为“非严格 canonical 开盘状态”
 - **部署能力**：工厂支持 `CREATE2` salt，可搜索 `0314` 等 vanity 尾号
 
 ## 生命周期
@@ -187,10 +187,12 @@ flowchart LR
 
 - **毕业前禁普通转账**，减少私池和旁路市场
 - **1 个区块卖出冷却**，削弱最短时反向套利
-- **官方前端默认走带滑点保护的显式 buy/sell**
+- **官方前端默认走带滑点保护的显式 buy/sell，也是协议的预期执行路径**
 - **毕业边界 partial fill**，避免单笔直接冲穿目标
 - **毕业后一刀切到 DEXOnly**，不保留永久双市场
-- **quote 侧 preload donation 兼容**，避免 stray wrapped native 轻易卡死毕业
+- **有限度的 quote 侧 preload 兼容**，避免少量 stray wrapped native 轻易卡死毕业，但超额 preload 仍会被拒绝
+
+另外，协议运行时已经**禁用了直接向合约裸转原生币买入**。预期调用路径是显式 `buy(minTokenOut)`，这样第三方前端、钱包和脚本都能保留滑点保护。
 
 ## Creator-first 经济模型
 

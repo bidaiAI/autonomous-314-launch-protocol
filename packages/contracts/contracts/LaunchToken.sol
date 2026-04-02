@@ -93,6 +93,7 @@ contract LaunchToken is ERC20, ReentrancyGuard {
 
     error InvalidState();
     error ZeroAmount();
+    error ZeroAddress();
     error TransferDisabledPreGraduation();
     error SellCooldownActive();
     error SlippageExceeded();
@@ -122,6 +123,7 @@ contract LaunchToken is ERC20, ReentrancyGuard {
         if (graduationQuoteReserve_ == 0) revert InvalidGraduationConfig();
         uint256 virtualQuoteReserve_ = graduationQuoteReserve_ / VIRTUAL_QUOTE_DIVISOR;
         if (virtualQuoteReserve_ == 0) revert InvalidGraduationConfig();
+        if (creator_ == address(0) || protocolFeeRecipient_ == address(0) || router_ == address(0)) revert ZeroAddress();
 
         creator = creator_;
         factory = msg.sender;
@@ -146,11 +148,6 @@ contract LaunchToken is ERC20, ReentrancyGuard {
     }
 
     receive() external payable nonReentrant {
-        if (state == LaunchState.Bonding314) {
-            _buy(msg.sender, 0);
-            return;
-        }
-
         if (msg.sender == router || msg.sender == wrappedNative) {
             return;
         }
@@ -206,27 +203,45 @@ contract LaunchToken is ERC20, ReentrancyGuard {
     }
 
     function claimProtocolFees() external nonReentrant returns (uint256 amount) {
+        amount = _claimProtocolFees(payable(protocolFeeRecipient));
+    }
+
+    function claimProtocolFeesTo(address payable recipient) external nonReentrant returns (uint256 amount) {
+        amount = _claimProtocolFees(recipient);
+    }
+
+    function _claimProtocolFees(address payable recipient) internal returns (uint256 amount) {
         if (msg.sender != protocolFeeRecipient) revert Unauthorized();
+        if (recipient == address(0)) revert ZeroAddress();
         amount = protocolFeeVault;
         if (amount == 0) revert NothingToClaim();
 
         protocolFeeVault = 0;
-        payable(protocolFeeRecipient).sendValue(amount);
+        recipient.sendValue(amount);
 
-        emit ProtocolFeesClaimed(protocolFeeRecipient, amount);
+        emit ProtocolFeesClaimed(recipient, amount);
     }
 
     function claimCreatorFees() external nonReentrant returns (uint256 amount) {
+        amount = _claimCreatorFees(payable(creator));
+    }
+
+    function claimCreatorFeesTo(address payable recipient) external nonReentrant returns (uint256 amount) {
+        amount = _claimCreatorFees(recipient);
+    }
+
+    function _claimCreatorFees(address payable recipient) internal returns (uint256 amount) {
         if (msg.sender != creator) revert Unauthorized();
         if (state != LaunchState.DEXOnly) revert InvalidState();
+        if (recipient == address(0)) revert ZeroAddress();
 
         amount = creatorFeeVault;
         if (amount == 0) revert NothingToClaim();
 
         creatorFeeVault = 0;
-        payable(creator).sendValue(amount);
+        recipient.sendValue(amount);
 
-        emit CreatorFeesClaimed(creator, amount);
+        emit CreatorFeesClaimed(recipient, amount);
     }
 
     function sweepAbandonedCreatorFees() external nonReentrant returns (uint256 amount) {
@@ -246,6 +261,9 @@ contract LaunchToken is ERC20, ReentrancyGuard {
         view
         returns (uint256 tokenOut, uint256 feeAmount, uint256 refundAmount)
     {
+        if (state != LaunchState.Bonding314) {
+            return (0, 0, 0);
+        }
         if (grossQuoteIn == 0) {
             return (0, 0, 0);
         }
@@ -261,6 +279,9 @@ contract LaunchToken is ERC20, ReentrancyGuard {
         view
         returns (uint256 grossQuoteOut, uint256 netQuoteOut, uint256 totalFee)
     {
+        if (state != LaunchState.Bonding314) {
+            return (0, 0, 0);
+        }
         if (tokenAmount == 0) {
             return (0, 0, 0);
         }
@@ -276,6 +297,13 @@ contract LaunchToken is ERC20, ReentrancyGuard {
     }
 
     function priceQuotePerToken() external view returns (uint256) {
+        if (state == LaunchState.DEXOnly) {
+            (uint256 tokenReserve, uint256 quoteReserve) = _dexReserves();
+            if (tokenReserve == 0) {
+                return 0;
+            }
+            return (quoteReserve * 1e18) / tokenReserve;
+        }
         (uint256 effectiveQuoteReserve, uint256 effectiveTokenReserve) = _effectiveReserves();
         return (effectiveQuoteReserve * 1e18) / effectiveTokenReserve;
     }
@@ -301,6 +329,9 @@ contract LaunchToken is ERC20, ReentrancyGuard {
     }
 
     function graduationProgressBps() external view returns (uint256) {
+        if (state == LaunchState.DEXOnly) {
+            return BPS_DENOMINATOR;
+        }
         return (curveQuoteReserve * BPS_DENOMINATOR) / graduationQuoteReserve;
     }
 
@@ -551,6 +582,7 @@ contract LaunchToken is ERC20, ReentrancyGuard {
         IUniswapV2LikePair lpPair = IUniswapV2LikePair(pair);
         if (lpPair.totalSupply() != 0) return false;
 
+        if (IERC20Minimal(wrappedNative).balanceOf(pair) > graduationQuoteReserve) return false;
         if (balanceOf(pair) != 0) return false;
 
         (uint112 reserve0, uint112 reserve1,) = lpPair.getReserves();

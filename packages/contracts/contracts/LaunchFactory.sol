@@ -35,6 +35,7 @@ contract LaunchFactory is Ownable {
     error ZeroAddress();
     error InvalidGraduationConfig();
     error NothingToClaim();
+    error PendingProtocolCreateFees();
     error Unauthorized();
 
     constructor(
@@ -60,7 +61,7 @@ contract LaunchFactory is Ownable {
         string calldata symbol_,
         string calldata metadataURI_
     ) external payable returns (address token) {
-        bytes32 salt = keccak256(abi.encode(msg.sender, allLaunches.length, block.chainid));
+        bytes32 salt = keccak256(abi.encode(msg.sender, launchesByCreator[msg.sender].length, block.chainid));
         token = _createLaunch(name_, symbol_, metadataURI_, salt);
     }
 
@@ -122,14 +123,23 @@ contract LaunchFactory is Ownable {
     }
 
     function claimProtocolCreateFees() external returns (uint256 amount) {
+        amount = _claimProtocolCreateFees(payable(protocolFeeRecipient));
+    }
+
+    function claimProtocolCreateFeesTo(address payable recipient) external returns (uint256 amount) {
+        amount = _claimProtocolCreateFees(recipient);
+    }
+
+    function _claimProtocolCreateFees(address payable recipient) internal returns (uint256 amount) {
         if (msg.sender != protocolFeeRecipient) revert Unauthorized();
+        if (recipient == address(0)) revert ZeroAddress();
         amount = accruedProtocolCreateFees;
         if (amount == 0) revert NothingToClaim();
 
         accruedProtocolCreateFees = 0;
-        payable(protocolFeeRecipient).sendValue(amount);
+        recipient.sendValue(amount);
 
-        emit ProtocolCreateFeesClaimed(protocolFeeRecipient, amount);
+        emit ProtocolCreateFeesClaimed(recipient, amount);
     }
 
     function totalLaunches() external view returns (uint256) {
@@ -142,6 +152,7 @@ contract LaunchFactory is Ownable {
 
     function setProtocolFeeRecipient(address newRecipient) external onlyOwner {
         if (newRecipient == address(0)) revert ZeroAddress();
+        if (accruedProtocolCreateFees != 0) revert PendingProtocolCreateFees();
         emit ProtocolFeeRecipientUpdated(protocolFeeRecipient, newRecipient);
         protocolFeeRecipient = newRecipient;
     }

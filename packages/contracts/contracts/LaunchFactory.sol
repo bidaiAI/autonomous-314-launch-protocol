@@ -9,6 +9,8 @@ import {LaunchToken} from "./LaunchToken.sol";
 contract LaunchFactory is Ownable {
     using Address for address payable;
 
+    address public constant DEFAULT_PROTOCOL_FEE_RECIPIENT = 0xC4187bE6b362DF625696d4a9ec5E6FA461CC0314;
+
     address public immutable router;
     uint256 public immutable graduationQuoteReserve;
     address public protocolFeeRecipient;
@@ -42,13 +44,14 @@ contract LaunchFactory is Ownable {
         uint256 createFee_,
         uint256 graduationQuoteReserve_
     ) Ownable(owner_) {
-        if (owner_ == address(0) || router_ == address(0) || protocolFeeRecipient_ == address(0)) {
+        if (owner_ == address(0) || router_ == address(0)) {
             revert ZeroAddress();
         }
         if (graduationQuoteReserve_ == 0) revert InvalidGraduationConfig();
         router = router_;
         graduationQuoteReserve = graduationQuoteReserve_;
-        protocolFeeRecipient = protocolFeeRecipient_;
+        protocolFeeRecipient =
+            protocolFeeRecipient_ == address(0) ? DEFAULT_PROTOCOL_FEE_RECIPIENT : protocolFeeRecipient_;
         createFee = createFee_;
     }
 

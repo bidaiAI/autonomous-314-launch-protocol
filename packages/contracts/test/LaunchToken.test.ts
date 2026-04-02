@@ -45,6 +45,11 @@ describe("LaunchToken", function () {
     await ethers.provider.send("evm_mine", []);
   }
 
+  async function increaseTime(seconds: number) {
+    await ethers.provider.send("evm_increaseTime", [seconds]);
+    await mineBlock();
+  }
+
   it("starts in Bonding314 with expected reserves", async function () {
     const { token, pair } = await deployFixture();
 
@@ -169,6 +174,15 @@ describe("LaunchToken", function () {
     expect(await token.accountedNativeBalance()).to.equal(accounted);
   });
 
+  it("uses a 0.3% protocol / 0.7% creator split on buys", async function () {
+    const { token, buyer } = await deployFixture();
+
+    await token.connect(buyer).buy(0, { value: MEDIUM_BUY });
+
+    expect(await token.protocolFeeVault()).to.equal(ethers.parseEther("0.0003"));
+    expect(await token.creatorFeeVault()).to.equal(ethers.parseEther("0.0007"));
+  });
+
   it("blocks creator fee claim before graduation and allows protocol fee claim during bonding", async function () {
     const { token, buyer, creator, protocol } = await deployFixture();
 
@@ -181,6 +195,45 @@ describe("LaunchToken", function () {
       .to.emit(token, "ProtocolFeesClaimed")
       .withArgs(protocol.address, claimable);
     expect(await token.protocolFeeVault()).to.equal(0n);
+  });
+
+  it("sweeps abandoned creator fees into the protocol vault only after 180 days and 30 days inactivity", async function () {
+    const { token, buyer, other } = await deployFixture();
+
+    await token.connect(buyer).buy(0, { value: MEDIUM_BUY });
+    const creatorFeesFromFirstTrade = await token.creatorFeeVault();
+    const protocolFeesFromFirstTrade = await token.protocolFeeVault();
+
+    await increaseTime(160 * 24 * 60 * 60);
+    await token.connect(other).buy(0, { value: SMALL_BUY });
+
+    expect(await token.creatorFeeSweepReady()).to.equal(false);
+    await expect(token.connect(other).sweepAbandonedCreatorFees()).to.be.revertedWithCustomError(
+      token,
+      "CreatorFeeSweepUnavailable"
+    );
+
+    await increaseTime(21 * 24 * 60 * 60);
+    expect(await token.creatorFeeSweepReady()).to.equal(false);
+    await expect(token.connect(other).sweepAbandonedCreatorFees()).to.be.revertedWithCustomError(
+      token,
+      "CreatorFeeSweepUnavailable"
+    );
+
+    await increaseTime(10 * 24 * 60 * 60);
+
+    const sweepableCreatorFees = await token.creatorFeeVault();
+    const protocolVaultBeforeSweep = await token.protocolFeeVault();
+    expect(protocolVaultBeforeSweep).to.equal(protocolFeesFromFirstTrade + ethers.parseEther("0.00015"));
+    expect(sweepableCreatorFees).to.equal(creatorFeesFromFirstTrade + ethers.parseEther("0.00035"));
+    expect(await token.creatorFeeSweepReady()).to.equal(true);
+
+    await expect(token.connect(other).sweepAbandonedCreatorFees())
+      .to.emit(token, "CreatorFeesSwept")
+      .withArgs(other.address, sweepableCreatorFees);
+
+    expect(await token.creatorFeeVault()).to.equal(0n);
+    expect(await token.protocolFeeVault()).to.equal(protocolVaultBeforeSweep + sweepableCreatorFees);
   });
 
   it("supports partial fill to the configured graduation target and permanently closes 314", async function () {

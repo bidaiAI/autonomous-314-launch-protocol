@@ -26,6 +26,9 @@ export type TokenSnapshot = {
   pairGraduationCompatible: boolean;
   protocolClaimable: bigint;
   creatorClaimable: bigint;
+  creatorFeeSweepReady: boolean;
+  createdAt: bigint;
+  lastTradeAt: bigint;
   dexTokenReserve: bigint;
   dexQuoteReserve: bigint;
 };

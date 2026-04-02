@@ -24,8 +24,8 @@ This will:
 2. deploy local demo contracts
 3. write local demo config to `.demo/local-demo.json`
 4. write `.env.local` files for:
-   - `/Users/bidao/Projects/314新协议/apps/web/.env.local`
-   - `/Users/bidao/Projects/314新协议/apps/indexer/.env.local`
+   - `apps/web/.env.local`
+   - `apps/indexer/.env.local`
 5. start the indexer API on `http://127.0.0.1:8787`
 6. start the web app on `http://127.0.0.1:4173`
 
@@ -75,7 +75,7 @@ pnpm dev:web
 
 The deployment step writes:
 
-- `/Users/bidao/Projects/314新协议/.demo/local-demo.json`
+- `.demo/local-demo.json`
 
 This contains:
 

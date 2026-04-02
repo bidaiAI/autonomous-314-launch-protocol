@@ -10,8 +10,8 @@ The **protocol core is EVM-generic**. Examples in this document use the **offici
 
 ## 1. Canonical architecture
 
-- **Factory**: `/Users/bidao/Projects/314新协议/packages/contracts/contracts/LaunchFactory.sol`
-- **Launch token**: `/Users/bidao/Projects/314新协议/packages/contracts/contracts/LaunchToken.sol`
+- **Factory**: `packages/contracts/contracts/LaunchFactory.sol`
+- **Launch token**: `packages/contracts/contracts/LaunchToken.sol`
 
 Each launch has a single token contract that behaves as:
 
@@ -61,6 +61,8 @@ Show:
 - `canSell(account)` / `sellUnlockBlock(account)`
 - `isPairGraduationCompatible()`
 - `pairPreloadedQuote()`
+- `creatorFeeSweepReady()`
+- `createdAt()` / `lastTradeAt()`
 
 Hide/disable:
 
@@ -108,6 +110,10 @@ Hide/disable:
 - `launchesOf(creator)`
 - `predictLaunchAddress(...)`
 
+If a factory deployer supplies `address(0)` for the protocol fee recipient, the contract falls back to the built-in default treasury:
+
+- `0xC4187bE6b362DF625696d4a9ec5E6FA461CC0314`
+
 ### Launch token
 
 - `state()`
@@ -126,6 +132,9 @@ Hide/disable:
 - `pairPreloadedQuote()`
 - `protocolClaimable()`
 - `creatorClaimable()`
+- `creatorFeeSweepReady()`
+- `createdAt()`
+- `lastTradeAt()`
 - `dexReserves()`
 - `pairSnapshot()`
 - `accountedNativeBalance()`
@@ -182,8 +191,8 @@ Contains:
 - buyer
 - gross quote used
 - net quote added to curve reserve
-- protocol fee
-- creator fee
+- protocol fee (`0.3%`)
+- creator fee (`0.7%`)
 - refund amount
 - token out
 - post-trade curve quote reserve
@@ -197,8 +206,8 @@ Contains:
 - token in
 - gross quote out
 - net quote out
-- protocol fee
-- creator fee
+- protocol fee (`0.3%`)
+- creator fee (`0.7%`)
 - post-trade curve quote reserve
 - post-trade sale token reserve
 
@@ -213,6 +222,15 @@ Contains:
 - LP amount burned
 
 This event is the canonical handoff marker from bonding-phase indexing to pair-phase indexing.
+
+#### `CreatorFeesSwept`
+
+Contains:
+
+- caller that triggered the sweep
+- creator fee amount moved into the protocol fee vault
+
+This event only occurs while the launch is still in `Bonding314`, the launch is at least `180 days` old, and there have been no trades for at least `30 days`.
 
 ## 7. Indexer rules
 

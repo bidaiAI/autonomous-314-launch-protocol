@@ -78,6 +78,13 @@ body {
   margin-bottom: 24px;
 }
 
+.manifesto-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 24px;
+}
+
 .strip-card {
   padding: 14px 16px;
   border-radius: 16px;
@@ -85,6 +92,26 @@ body {
   background: rgba(15, 23, 36, 0.74);
   display: grid;
   gap: 6px;
+}
+
+.manifesto-card {
+  padding: 18px 20px;
+  border-radius: 18px;
+  border: 1px solid rgba(94, 234, 212, 0.16);
+  background:
+    linear-gradient(180deg, rgba(15, 23, 36, 0.92), rgba(15, 23, 36, 0.78)),
+    radial-gradient(circle at top left, rgba(94, 234, 212, 0.08), transparent 40%);
+  display: grid;
+  gap: 10px;
+}
+
+.manifesto-card h3 {
+  margin: 0;
+  font-size: 1.02rem;
+}
+
+.manifesto-card p {
+  color: rgba(245, 247, 251, 0.74);
 }
 
 .workspace-grid {
@@ -523,6 +550,10 @@ button {
 @media (max-width: 900px) {
   .market-strip {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .manifesto-grid {
+    grid-template-columns: 1fr;
   }
 
   .workspace-grid {

@@ -27,8 +27,10 @@ contract LaunchToken is ERC20, ReentrancyGuard {
 
     uint256 public constant BPS_DENOMINATOR = 10_000;
     uint256 public constant TOTAL_FEE_BPS = 100;
-    uint256 public constant PROTOCOL_FEE_BPS = 50;
-    uint256 public constant CREATOR_FEE_BPS = 50;
+    uint256 public constant PROTOCOL_FEE_BPS = 30;
+    uint256 public constant CREATOR_FEE_BPS = 70;
+    uint256 public constant CREATOR_FEE_SWEEP_MIN_AGE = 180 days;
+    uint256 public constant CREATOR_FEE_SWEEP_MIN_INACTIVITY = 30 days;
 
     address public constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
 
@@ -41,6 +43,7 @@ contract LaunchToken is ERC20, ReentrancyGuard {
     uint256 public immutable graduationQuoteReserve;
     uint256 public immutable virtualQuoteReserve;
     uint256 public immutable virtualTokenReserve;
+    uint256 public immutable createdAt;
     string public metadataURI;
 
     LaunchState public state;
@@ -51,6 +54,7 @@ contract LaunchToken is ERC20, ReentrancyGuard {
     uint256 public curveQuoteReserve;
     uint256 public protocolFeeVault;
     uint256 public creatorFeeVault;
+    uint256 public lastTradeAt;
 
     mapping(address => uint256) public lastBuyBlock;
 
@@ -85,6 +89,7 @@ contract LaunchToken is ERC20, ReentrancyGuard {
     );
     event ProtocolFeesClaimed(address indexed recipient, uint256 amount);
     event CreatorFeesClaimed(address indexed recipient, uint256 amount);
+    event CreatorFeesSwept(address indexed caller, uint256 amount);
 
     error InvalidState();
     error ZeroAmount();
@@ -98,6 +103,7 @@ contract LaunchToken is ERC20, ReentrancyGuard {
     error InvalidRecipient();
     error WrappedQuoteTransferFailed();
     error InvalidGraduationConfig();
+    error CreatorFeeSweepUnavailable();
 
     modifier inState(LaunchState expected) {
         if (state != expected) revert InvalidState();
@@ -126,6 +132,8 @@ contract LaunchToken is ERC20, ReentrancyGuard {
         graduationQuoteReserve = graduationQuoteReserve_;
         virtualQuoteReserve = virtualQuoteReserve_;
         virtualTokenReserve = (LP_TOKEN_RESERVE * virtualQuoteReserve_) / graduationQuoteReserve_;
+        createdAt = block.timestamp;
+        lastTradeAt = block.timestamp;
         metadataURI = metadataURI_;
 
         _mint(address(this), TOTAL_SUPPLY);
@@ -181,6 +189,7 @@ contract LaunchToken is ERC20, ReentrancyGuard {
         curveQuoteReserve -= grossQuoteOut;
         protocolFeeVault += protocolFee;
         creatorFeeVault += creatorFee;
+        lastTradeAt = block.timestamp;
 
         payable(msg.sender).sendValue(netQuoteOut);
 
@@ -218,6 +227,18 @@ contract LaunchToken is ERC20, ReentrancyGuard {
         payable(creator).sendValue(amount);
 
         emit CreatorFeesClaimed(creator, amount);
+    }
+
+    function sweepAbandonedCreatorFees() external nonReentrant returns (uint256 amount) {
+        if (!_creatorFeeSweepReady()) revert CreatorFeeSweepUnavailable();
+
+        amount = creatorFeeVault;
+        if (amount == 0) revert NothingToClaim();
+
+        creatorFeeVault = 0;
+        protocolFeeVault += amount;
+
+        emit CreatorFeesSwept(msg.sender, amount);
     }
 
     function previewBuy(uint256 grossQuoteIn)
@@ -331,6 +352,10 @@ contract LaunchToken is ERC20, ReentrancyGuard {
         return _dexReserves();
     }
 
+    function creatorFeeSweepReady() external view returns (bool) {
+        return _creatorFeeSweepReady();
+    }
+
     function pairSnapshot()
         external
         view
@@ -401,6 +426,7 @@ contract LaunchToken is ERC20, ReentrancyGuard {
         curveQuoteReserve += netQuoteIn;
         protocolFeeVault += protocolFee;
         creatorFeeVault += creatorFee;
+        lastTradeAt = block.timestamp;
         saleTokenReserve -= tokenOut;
 
         _transfer(address(this), recipient, tokenOut);
@@ -580,6 +606,13 @@ contract LaunchToken is ERC20, ReentrancyGuard {
         totalFee = (grossAmount * TOTAL_FEE_BPS) / BPS_DENOMINATOR;
         protocolFee = (grossAmount * PROTOCOL_FEE_BPS) / BPS_DENOMINATOR;
         creatorFee = totalFee - protocolFee;
+    }
+
+    function _creatorFeeSweepReady() internal view returns (bool) {
+        return state == LaunchState.Bonding314
+            && creatorFeeVault > 0
+            && block.timestamp >= createdAt + CREATOR_FEE_SWEEP_MIN_AGE
+            && block.timestamp >= lastTradeAt + CREATOR_FEE_SWEEP_MIN_INACTIVITY;
     }
 
     function _ensurePair() internal returns (address ensuredPair) {

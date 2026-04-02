@@ -4,6 +4,7 @@ import { ethers } from "hardhat";
 describe("LaunchFactory", function () {
   const CREATE_FEE = ethers.parseEther("0.03");
   const GRADUATION_TARGET = ethers.parseEther("0.2");
+  const DEFAULT_PROTOCOL_FEE_RECIPIENT = "0xC4187bE6b362DF625696d4a9ec5E6FA461CC0314";
 
   async function deployFixture() {
     const [owner, protocol, creator] = await ethers.getSigners();
@@ -39,6 +40,35 @@ describe("LaunchFactory", function () {
     expect(await launchFactory.router()).to.equal(await mockRouter.getAddress());
     expect(await launchFactory.protocolFeeRecipient()).to.equal(protocol.address);
     expect(await launchFactory.graduationQuoteReserve()).to.equal(GRADUATION_TARGET);
+  });
+
+  it("falls back to the default protocol fee recipient when zero is passed", async function () {
+    const [owner] = await ethers.getSigners();
+
+    const MockWNATIVE = await ethers.getContractFactory("MockERC20");
+    const wrappedNative = await MockWNATIVE.deploy("Wrapped Native", "WNATIVE");
+    await wrappedNative.waitForDeployment();
+
+    const MockFactory = await ethers.getContractFactory("MockDexV2Factory");
+    const mockFactory = await MockFactory.deploy();
+    await mockFactory.waitForDeployment();
+
+    const MockRouter = await ethers.getContractFactory("MockDexV2Router");
+    const mockRouter = await MockRouter.deploy(await mockFactory.getAddress(), await wrappedNative.getAddress());
+    await mockRouter.waitForDeployment();
+
+    const LaunchFactory = await ethers.getContractFactory("LaunchFactory");
+    const launchFactory = await LaunchFactory.deploy(
+      owner.address,
+      await mockRouter.getAddress(),
+      ethers.ZeroAddress,
+      CREATE_FEE,
+      GRADUATION_TARGET
+    );
+    await launchFactory.waitForDeployment();
+
+    expect(await launchFactory.protocolFeeRecipient()).to.equal(DEFAULT_PROTOCOL_FEE_RECIPIENT);
+    expect(await launchFactory.DEFAULT_PROTOCOL_FEE_RECIPIENT()).to.equal(DEFAULT_PROTOCOL_FEE_RECIPIENT);
   });
 
   it("creates launches and records creator ownership", async function () {

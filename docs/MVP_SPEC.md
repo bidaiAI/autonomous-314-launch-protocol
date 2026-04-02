@@ -17,9 +17,14 @@
 - Official BSC factory graduation target: `12 BNB`
 - Local/dev/test graduation target may use a lower immutable deployment value (for example `0.2 native`) to speed up graduation testing
 - Pre-graduation fee: `1%`
-  - Protocol fee vault: `0.5%`
-  - Creator fee vault: `0.5%`
+  - Protocol fee vault: `0.3%`
+  - Creator fee vault: `0.7%`
 - Creator fee claim: only after graduation
+- Abandoned pre-graduation creator fee recovery:
+  - still in `Bonding314`
+  - launch age at least `180 days`
+  - no trades for at least `30 days`
+  - creator fee vault may be swept into the protocol fee vault
 - Pre-graduation transfer policy: ordinary transfers disabled
 - Pre-graduation sell cooldown: `1 block`
 - Explicit buy path: `buy(minOut)` for self only

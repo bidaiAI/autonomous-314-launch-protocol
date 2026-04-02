@@ -18,7 +18,8 @@ import {
   readFactory,
   readIndexedLaunchWorkspace,
   readRecentLaunchSnapshots,
-  readToken
+  readToken,
+  sweepAbandonedCreatorFees
 } from "./protocol";
 import type { ActivityFeedItem, CandlePoint, FactorySnapshot, TokenSnapshot } from "./types";
 import { SegmentedPhaseChart } from "./charts";
@@ -27,7 +28,9 @@ import { activeProtocolProfile } from "./profiles";
 const protocolSnapshot = {
   preGrad: "314 bonding market, transfers disabled, 1-block sell cooldown",
   postGrad: `${activeProtocolProfile.dexName} only, LP burned, 314 disabled`,
-  pollutionRule: `${activeProtocolProfile.wrappedNativeSymbol} donation no longer blocks graduation; LP initialization or token-side pollution still blocks.`
+  pollutionRule: `${activeProtocolProfile.wrappedNativeSymbol} donation no longer blocks graduation; LP initialization or token-side pollution still blocks.`,
+  economics: "1% total fee = 0.7% creator + 0.3% protocol",
+  sovereignty: "The launch contract itself is the market, reserve system, and graduation state machine."
 };
 
 type BuyPreview = Awaited<ReturnType<typeof previewBuy>>;
@@ -60,6 +63,11 @@ function activityPhaseLabel(activity: ActivityFeedItem) {
   return "DEXOnly";
 }
 
+function formatUnixTimestamp(timestamp: bigint) {
+  if (timestamp === 0n) return "—";
+  return formatDateTime(Number(timestamp) * 1000);
+}
+
 export function App() {
   const [wallet, setWallet] = useState<string>("");
   const [factoryAddress, setFactoryAddress] = useState(import.meta.env.VITE_FACTORY_ADDRESS ?? "");
@@ -90,6 +98,7 @@ export function App() {
     wallet && tokenSnapshot ? wallet.toLowerCase() === tokenSnapshot.creator.toLowerCase() : false;
   const connectedAsProtocolRecipient =
     wallet && factorySnapshot ? wallet.toLowerCase() === factorySnapshot.protocolFeeRecipient.toLowerCase() : false;
+  const creatorFeeSweepReady = tokenSnapshot?.creatorFeeSweepReady ?? false;
 
   const pollutionTone = useMemo(() => {
     if (!tokenSnapshot) return "neutral";
@@ -313,18 +322,33 @@ export function App() {
     }
   }
 
+  async function handleSweepCreatorFees() {
+    try {
+      setLoading(true);
+      const receipt = await sweepAbandonedCreatorFees(tokenAddress);
+      setStatus(`Creator fee sweep confirmed: ${receipt.transactionHash}`);
+      await loadLaunchWorkspace(tokenAddress, false);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Creator fee sweep failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <main className="app-shell">
       <header className="topbar">
         <div>
           <div className="brand-row">
-            <span className="badge">Open Launch Protocol</span>
-            <span className="section-kicker">Launchpad reference UI</span>
+            <span className="badge">Creator-first open launch protocol</span>
+            <span className="section-kicker">Reference launchpad for a sovereign EVM standard</span>
           </div>
           <h1>Autonomous 314</h1>
           <p className="topbar-copy">
-            A launchpad-style reference workspace for discovering launches, creating new pools, trading during
-            bonding, and handing off cleanly into DEX-only mode after graduation.
+            A creator-first launch protocol for Web3: pre-graduation trading lives inside the launch contract itself,
+            not inside a closed platform. Projects can launch, trade, graduate, and continue on a canonical DEX even
+            if no platform frontend exists. The protocol keeps only 0.3% and routes 0.7% to creators instead of
+            normalizing platform-first 1% extraction.
           </p>
         </div>
         <button className="secondary-button" onClick={handleConnectWallet}>
@@ -334,8 +358,8 @@ export function App() {
 
       <section className="market-strip">
         <div className="strip-card">
-          <span className="metric-label">Chain</span>
-          <strong>{runtimeChainLabel}</strong>
+          <span className="metric-label">Economics</span>
+          <strong>{protocolSnapshot.economics}</strong>
         </div>
         <div className="strip-card">
           <span className="metric-label">Graduation</span>
@@ -346,13 +370,40 @@ export function App() {
           </strong>
         </div>
         <div className="strip-card">
-          <span className="metric-label">Pre-grad mode</span>
-          <strong>{protocolSnapshot.preGrad}</strong>
+          <span className="metric-label">Autonomy</span>
+          <strong>{protocolSnapshot.sovereignty}</strong>
         </div>
         <div className="strip-card">
-          <span className="metric-label">Runtime</span>
-          <strong>{loading ? "Executing" : "Ready"}</strong>
+          <span className="metric-label">Official profile</span>
+          <strong>{runtimeChainLabel} · {activeProtocolProfile.dexName}</strong>
         </div>
+      </section>
+
+      <section className="manifesto-grid">
+        <article className="manifesto-card">
+          <span className="metric-label">Why this exists</span>
+          <h3>Launches should not need a platform to exist.</h3>
+          <p>
+            The launch contract is the system: it holds the pre-grad market, the reserves, the graduation rules, and
+            the DEX handoff. Frontends and indexers improve usability, but they are not the source of truth.
+          </p>
+        </article>
+        <article className="manifesto-card">
+          <span className="metric-label">Creator-first economics</span>
+          <h3>More of the fee stays with the project.</h3>
+          <p>
+            Instead of sending the whole 1% to a platform, this protocol routes 0.7% to creators and only 0.3% to the
+            protocol. The goal is adoption, not rent extraction.
+          </p>
+        </article>
+        <article className="manifesto-card">
+          <span className="metric-label">Web3 alignment</span>
+          <h3>Open, composable, and not platform-custodied.</h3>
+          <p>
+            Anyone can integrate the contracts, build their own UI, or run their own indexer. The official interface is
+            a reference implementation, not a gatekeeper.
+          </p>
+        </article>
       </section>
 
       <section className="workspace-grid">
@@ -522,12 +573,25 @@ export function App() {
                   <dl className="data-list">
                     <div><dt>Protocol claimable</dt><dd>{formatNative(tokenSnapshot.protocolClaimable)}</dd></div>
                     <div><dt>Creator claimable</dt><dd>{formatNative(tokenSnapshot.creatorClaimable)}</dd></div>
+                    <div><dt>Creator fee sweep ready</dt><dd>{creatorFeeSweepReady ? "Yes" : "No"}</dd></div>
+                    <div><dt>Created at</dt><dd>{formatUnixTimestamp(tokenSnapshot.createdAt)}</dd></div>
+                    <div><dt>Last trade at</dt><dd>{formatUnixTimestamp(tokenSnapshot.lastTradeAt)}</dd></div>
                     <div><dt>DEX token reserve</dt><dd>{formatToken(tokenSnapshot.dexTokenReserve)}</dd></div>
                     <div><dt>DEX quote reserve</dt><dd>{formatNative(tokenSnapshot.dexQuoteReserve)}</dd></div>
                     <div><dt>Connected as creator</dt><dd>{connectedAsCreator ? "Yes" : "No"}</dd></div>
                     <div><dt>Status message</dt><dd>{status}</dd></div>
                   </dl>
                 </div>
+
+                {creatorFeeSweepReady && isBonding && (
+                  <div className="callout warn">
+                    <strong>Abandoned creator fee sweep is available</strong>
+                    <p>
+                      This launch has remained in Bonding314 for at least 180 days and has had no trades for 30 days.
+                      Anyone may move the unclaimable creator fee vault into the protocol fee vault.
+                    </p>
+                  </div>
+                )}
 
                 <div className="history-grid">
                   <article className="subpanel">
@@ -666,11 +730,15 @@ export function App() {
               <button className="secondary-button" onClick={handleClaimCreatorFees} disabled={!isDexOnly || !connectedAsCreator}>
                 Claim creator fees
               </button>
+              <button className="secondary-button" onClick={handleSweepCreatorFees} disabled={!tokenSnapshot || !creatorFeeSweepReady}>
+                Sweep abandoned creator fees
+              </button>
             </div>
             <ul className="compact-list">
               <li>Default trading path uses explicit slippage-protected contract calls.</li>
               <li>Raw native transfer buy is not exposed as the primary UI path.</li>
-              <li>Creator fee claim stays disabled until DEXOnly.</li>
+              <li>Creator fees claim only after DEXOnly; the protocol only takes 0.3% while creators receive 0.7%.</li>
+              <li>Abandoned pre-grad creator fees can be swept after 180 days of age and 30 days without trades.</li>
               <li>When graduation compatibility is false, treat migration as blocked.</li>
             </ul>
           </article>

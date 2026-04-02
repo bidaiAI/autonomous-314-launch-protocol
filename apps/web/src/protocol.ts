@@ -358,6 +358,9 @@ export async function readToken(address: string): Promise<TokenSnapshot> {
     pairGraduationCompatible,
     protocolClaimable,
     creatorClaimable,
+    creatorFeeSweepReady,
+    createdAt,
+    lastTradeAt,
     dexReserves
   ] = (await Promise.all([
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "name" }),
@@ -395,6 +398,9 @@ export async function readToken(address: string): Promise<TokenSnapshot> {
     }),
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "protocolClaimable" }),
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "creatorClaimable" }),
+    client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "creatorFeeSweepReady" }),
+    client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "createdAt" }),
+    client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "lastTradeAt" }),
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "dexReserves" })
   ])) as [
     string,
@@ -409,6 +415,9 @@ export async function readToken(address: string): Promise<TokenSnapshot> {
     bigint,
     bigint,
     boolean,
+    boolean,
+    bigint,
+    bigint,
     boolean,
     bigint,
     bigint,
@@ -432,6 +441,9 @@ export async function readToken(address: string): Promise<TokenSnapshot> {
     pairGraduationCompatible,
     protocolClaimable,
     creatorClaimable,
+    creatorFeeSweepReady,
+    createdAt,
+    lastTradeAt,
     dexTokenReserve: dexReserves[0],
     dexQuoteReserve: dexReserves[1]
   };
@@ -617,6 +629,22 @@ export async function claimCreatorFees(tokenAddress: string) {
   return publicClient.waitForTransactionReceipt({ hash });
 }
 
+export async function sweepAbandonedCreatorFees(tokenAddress: string) {
+  const walletClient = getWalletClientOrThrow();
+  const account = await getActiveAccount();
+  const publicClient = getPublicClient();
+
+  const hash = await walletClient.writeContract({
+    account,
+    chain: appChain,
+    address: getAddress(tokenAddress),
+    abi: launchTokenAbi,
+    functionName: "sweepAbandonedCreatorFees"
+  });
+
+  return publicClient.waitForTransactionReceipt({ hash });
+}
+
 function tradePrice(netQuote: bigint, tokenAmount: bigint) {
   if (tokenAmount === 0n) {
     return 0n;
@@ -713,6 +741,9 @@ function convertSnapshotLaunch(launch: SnapshotLaunchJson): TokenSnapshot {
     pairGraduationCompatible: launch.pairGraduationCompatible,
     protocolClaimable: BigInt(launch.protocolClaimable),
     creatorClaimable: BigInt(launch.creatorClaimable),
+    creatorFeeSweepReady: false,
+    createdAt: 0n,
+    lastTradeAt: 0n,
     dexTokenReserve: BigInt(launch.dexTokenReserve),
     dexQuoteReserve: BigInt(launch.dexQuoteReserve)
   };
@@ -737,6 +768,9 @@ function convertApiLaunchSummary(launch: ApiLaunchSummaryJson, graduationQuoteRe
     pairGraduationCompatible: false,
     protocolClaimable: 0n,
     creatorClaimable: 0n,
+    creatorFeeSweepReady: false,
+    createdAt: 0n,
+    lastTradeAt: 0n,
     dexTokenReserve: 0n,
     dexQuoteReserve: 0n
   };

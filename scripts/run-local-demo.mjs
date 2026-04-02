@@ -3,8 +3,10 @@ import net from "net";
 import path from "path";
 import process from "process";
 import { spawn } from "child_process";
+import { fileURLToPath } from "url";
 
-const workspaceRoot = "/Users/bidao/Projects/314新协议";
+const currentFile = fileURLToPath(import.meta.url);
+const workspaceRoot = path.resolve(path.dirname(currentFile), "..");
 const demoConfigPath = path.join(workspaceRoot, ".demo/local-demo.json");
 const localRpcPort = 8545;
 const indexerPort = 8787;

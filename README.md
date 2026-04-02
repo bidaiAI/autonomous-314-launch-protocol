@@ -59,6 +59,10 @@ At a functional level, the protocol already provides:
   - a reference frontend, a bounded-cost indexer, and a local demo flow are included
 - **official vanity create flow**
   - the reference frontend locally mines a `CREATE2` salt so official launches default to addresses ending in `0314`
+- **rich launch metadata flow**
+  - the create UI supports description, image, website, and social links while keeping only `metadataURI` on-chain
+
+See [`docs/LAUNCH_METADATA.md`](docs/LAUNCH_METADATA.md) for the recommended metadata schema.
 
 ## What problem this solves
 

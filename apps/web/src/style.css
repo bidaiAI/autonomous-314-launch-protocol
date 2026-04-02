@@ -176,6 +176,18 @@ input {
   color: #f5f7fb;
 }
 
+textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(8, 16, 24, 0.9);
+  color: #f5f7fb;
+  resize: vertical;
+  min-height: 112px;
+  font: inherit;
+}
+
 button {
   border: 0;
   cursor: pointer;
@@ -458,6 +470,93 @@ button {
   line-height: 1.7;
 }
 
+.metadata-two-column {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.metadata-preview-card {
+  margin-bottom: 16px;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(8, 16, 24, 0.5);
+  display: grid;
+  gap: 14px;
+}
+
+.metadata-preview-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.metadata-preview-head strong {
+  display: block;
+  margin-top: 6px;
+}
+
+.metadata-preview-body {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.metadata-image-shell {
+  width: 88px;
+  height: 88px;
+  border-radius: 18px;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.metadata-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.metadata-image-placeholder {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 10px;
+  text-align: center;
+  color: rgba(245, 247, 251, 0.5);
+  font-size: 0.72rem;
+}
+
+.metadata-preview-copy {
+  display: grid;
+  gap: 10px;
+}
+
+.metadata-preview-copy p {
+  margin: 0;
+}
+
+.metadata-links {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.metadata-links span {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  background: rgba(148, 163, 184, 0.12);
+  color: rgba(245, 247, 251, 0.7);
+}
+
 .history-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
@@ -563,7 +662,9 @@ button {
   .headline-metrics,
   .detail-grid,
   .lifecycle-row,
-  .history-grid {
+  .history-grid,
+  .metadata-two-column,
+  .metadata-preview-body {
     grid-template-columns: 1fr;
   }
 }

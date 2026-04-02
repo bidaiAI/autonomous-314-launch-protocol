@@ -21,6 +21,7 @@ import type {
   ActivityFeedItem,
   CandlePoint,
   FactorySnapshot,
+  LaunchMetadata,
   SegmentedChartSnapshot,
   TokenSnapshot,
   TradeFeedItem
@@ -34,6 +35,50 @@ const officialVanitySuffix = "0314";
 
 const appChain = activeProtocolProfile.chain;
 const appRpcUrl = import.meta.env.VITE_RPC_URL || activeProtocolProfile.defaultRpcUrl;
+
+export function buildLaunchMetadata(params: {
+  name: string;
+  symbol: string;
+  description?: string;
+  image?: string;
+  website?: string;
+  twitter?: string;
+  telegram?: string;
+  discord?: string;
+}): LaunchMetadata {
+  const description = params.description?.trim();
+  const image = params.image?.trim();
+  const website = params.website?.trim();
+  const twitter = params.twitter?.trim();
+  const telegram = params.telegram?.trim();
+  const discord = params.discord?.trim();
+
+  return {
+    version: "autonomous314/v1",
+    name: params.name.trim(),
+    symbol: params.symbol.trim(),
+    ...(description ? { description } : {}),
+    ...(image ? { image } : {}),
+    ...(website ? { external_url: website, website } : {}),
+    ...(twitter ? { twitter } : {}),
+    ...(telegram ? { telegram } : {}),
+    ...(discord ? { discord } : {})
+  };
+}
+
+export function buildInlineMetadataUri(metadata: LaunchMetadata) {
+  return `data:application/json;charset=utf-8,${encodeURIComponent(JSON.stringify(metadata))}`;
+}
+
+export function downloadLaunchMetadata(metadata: LaunchMetadata, filename = "metadata.json") {
+  const blob = new Blob([JSON.stringify(metadata, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
 
 type SnapshotActivityJson =
   | {

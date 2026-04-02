@@ -1,11 +1,14 @@
 import { useMemo, useRef, useState } from "react";
 import {
   applySlippageBps,
+  buildInlineMetadataUri,
+  buildLaunchMetadata,
   claimCreatorFees,
   claimFactoryProtocolFees,
   claimTokenProtocolFees,
   connectWallet,
   createLaunch,
+  downloadLaunchMetadata,
   executeBuy,
   executeSell,
   fetchSegmentedChartSnapshot,
@@ -71,13 +74,32 @@ function formatUnixTimestamp(timestamp: bigint) {
   return formatDateTime(Number(timestamp) * 1000);
 }
 
+function resolvePreviewImage(image: string) {
+  if (!image) return "";
+  if (image.startsWith("ipfs://")) {
+    return `https://ipfs.io/ipfs/${image.replace("ipfs://", "")}`;
+  }
+  if (image.startsWith("http://") || image.startsWith("https://") || image.startsWith("data:")) {
+    return image;
+  }
+  return "";
+}
+
 export function App() {
   const [wallet, setWallet] = useState<string>("");
   const [factoryAddress, setFactoryAddress] = useState(import.meta.env.VITE_FACTORY_ADDRESS ?? "");
   const [tokenAddress, setTokenAddress] = useState(import.meta.env.VITE_TOKEN_ADDRESS ?? "");
   const [createName, setCreateName] = useState("Autonomous 314");
   const [createSymbol, setCreateSymbol] = useState("A314");
-  const [createMetadataUri, setCreateMetadataUri] = useState("ipfs://metadata");
+  const [createDescription, setCreateDescription] = useState("");
+  const [createImageUrl, setCreateImageUrl] = useState("");
+  const [createImagePreview, setCreateImagePreview] = useState("");
+  const [createImageFileName, setCreateImageFileName] = useState("");
+  const [createWebsite, setCreateWebsite] = useState("");
+  const [createTwitter, setCreateTwitter] = useState("");
+  const [createTelegram, setCreateTelegram] = useState("");
+  const [createDiscord, setCreateDiscord] = useState("");
+  const [createMetadataUri, setCreateMetadataUri] = useState("");
   const [factorySnapshot, setFactorySnapshot] = useState<FactorySnapshot | null>(null);
   const [recentLaunchSnapshots, setRecentLaunchSnapshots] = useState<TokenSnapshot[]>([]);
   const [tokenSnapshot, setTokenSnapshot] = useState<TokenSnapshot | null>(null);
@@ -118,6 +140,45 @@ export function App() {
       : factorySnapshot?.graduationQuoteReserve ?? 0n;
   const runtimeChainLabel = activeProtocolProfile.chainLabel;
   const walletWrongNetwork = Boolean(wallet) && walletChainId !== null && !walletOnExpectedChain;
+  const usingUploadedImage = Boolean(createImagePreview && !createImageUrl.trim());
+
+  const launchMetadata = useMemo(
+    () =>
+      buildLaunchMetadata({
+        name: createName,
+        symbol: createSymbol,
+        description: createDescription,
+        image: createImageUrl.trim() || createImagePreview || undefined,
+        website: createWebsite,
+        twitter: createTwitter,
+        telegram: createTelegram,
+        discord: createDiscord
+      }),
+    [
+      createDescription,
+      createDiscord,
+      createImagePreview,
+      createImageUrl,
+      createName,
+      createSymbol,
+      createTelegram,
+      createTwitter,
+      createWebsite
+    ]
+  );
+
+  const generatedInlineMetadataUri = useMemo(() => {
+    if (!launchMetadata.name || !launchMetadata.symbol || usingUploadedImage) {
+      return "";
+    }
+    return buildInlineMetadataUri(launchMetadata);
+  }, [launchMetadata, usingUploadedImage]);
+
+  const resolvedCreateMetadataUri = createMetadataUri.trim() || generatedInlineMetadataUri;
+  const metadataUriSizeBytes = useMemo(
+    () => (resolvedCreateMetadataUri ? new TextEncoder().encode(resolvedCreateMetadataUri).length : 0),
+    [resolvedCreateMetadataUri]
+  );
 
   async function refreshWalletNetworkStatus() {
     const chainId = await getWalletChainId();
@@ -227,6 +288,46 @@ export function App() {
     }
   }
 
+  async function handleMetadataImageUpload(file: File | null) {
+    if (!file) {
+      setCreateImagePreview("");
+      setCreateImageFileName("");
+      return;
+    }
+
+    const reader = new FileReader();
+    const result = await new Promise<string>((resolve, reject) => {
+      reader.onerror = () => reject(new Error("Image preview failed"));
+      reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+      reader.readAsDataURL(file);
+    });
+
+    setCreateImagePreview(result);
+    setCreateImageFileName(file.name);
+  }
+
+  function handleUseGeneratedMetadataUri() {
+    if (!generatedInlineMetadataUri) {
+      setStatus(
+        usingUploadedImage
+          ? "Inline metadata URI is disabled while a local image upload is embedded. Upload metadata externally and paste the resulting URI."
+          : "Generated metadata URI is not available yet."
+      );
+      return;
+    }
+
+    setCreateMetadataUri(generatedInlineMetadataUri);
+    setStatus("Generated inline metadata URI copied into the create form.");
+  }
+
+  function handleDownloadMetadata() {
+    downloadLaunchMetadata(
+      launchMetadata,
+      `${(createSymbol || createName || "launch").trim().toLowerCase().replace(/[^a-z0-9-_]+/g, "-") || "launch"}-metadata.json`
+    );
+    setStatus("Downloaded launch metadata JSON.");
+  }
+
   async function reloadLoadedViews() {
     if (factoryAddress) {
       try {
@@ -252,12 +353,20 @@ export function App() {
       setLoading(true);
       const snapshot = await readFactory(factoryAddress);
       setFactorySnapshot(snapshot);
+      const finalMetadataUri = createMetadataUri.trim() || generatedInlineMetadataUri;
+      if (!finalMetadataUri) {
+        throw new Error(
+          usingUploadedImage
+            ? "Local image upload is ready for preview/export, but you still need to upload metadata externally and paste a metadata URI before creating."
+            : "Provide a metadata URI or use generated inline metadata first."
+        );
+      }
       setStatus("Mining vanity salt for suffix 0314...");
 
       const { receipt, createdToken, vanity } = await createLaunch(factoryAddress, {
         name: createName,
         symbol: createSymbol,
-        metadataURI: createMetadataUri,
+        metadataURI: finalMetadataUri,
         createFee: snapshot.createFee,
         onVanityProgress: ({ attempts, elapsedMs }) => {
           setStatus(`Mining vanity salt for suffix 0314... ${attempts.toLocaleString()} attempts · ${(elapsedMs / 1000).toFixed(1)}s`);
@@ -530,20 +639,119 @@ export function App() {
               <input value={createSymbol} onChange={(e) => setCreateSymbol(e.target.value)} placeholder="TOKEN" />
             </label>
             <label className="field">
-              <span>Metadata URI</span>
-              <input value={createMetadataUri} onChange={(e) => setCreateMetadataUri(e.target.value)} placeholder="ipfs://..." />
+              <span>Description</span>
+              <textarea
+                value={createDescription}
+                onChange={(e) => setCreateDescription(e.target.value)}
+                placeholder="Explain what this launch is, who it is for, and why it exists."
+                rows={4}
+              />
             </label>
+            <div className="metadata-two-column">
+              <label className="field">
+                <span>Image URL</span>
+                <input
+                  value={createImageUrl}
+                  onChange={(e) => setCreateImageUrl(e.target.value)}
+                  placeholder="https://... or ipfs://..."
+                />
+              </label>
+              <label className="field">
+                <span>Upload image (preview / export)</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    void handleMetadataImageUpload(e.target.files?.[0] ?? null);
+                  }}
+                />
+              </label>
+            </div>
+            <div className="metadata-two-column">
+              <label className="field">
+                <span>Website</span>
+                <input value={createWebsite} onChange={(e) => setCreateWebsite(e.target.value)} placeholder="https://..." />
+              </label>
+              <label className="field">
+                <span>X / Twitter</span>
+                <input value={createTwitter} onChange={(e) => setCreateTwitter(e.target.value)} placeholder="https://x.com/..." />
+              </label>
+            </div>
+            <div className="metadata-two-column">
+              <label className="field">
+                <span>Telegram</span>
+                <input value={createTelegram} onChange={(e) => setCreateTelegram(e.target.value)} placeholder="https://t.me/..." />
+              </label>
+              <label className="field">
+                <span>Discord</span>
+                <input value={createDiscord} onChange={(e) => setCreateDiscord(e.target.value)} placeholder="https://discord.gg/..." />
+              </label>
+            </div>
+            <label className="field">
+              <span>Final metadata URI</span>
+              <input
+                value={createMetadataUri}
+                onChange={(e) => setCreateMetadataUri(e.target.value)}
+                placeholder="ipfs://... or leave empty to use generated inline metadata"
+              />
+            </label>
+            <div className="button-row">
+              <button className="secondary-button" onClick={handleUseGeneratedMetadataUri} type="button">
+                Use generated inline metadata
+              </button>
+              <button className="secondary-button" onClick={handleDownloadMetadata} type="button">
+                Download metadata.json
+              </button>
+            </div>
+            <div className="metadata-preview-card">
+              <div className="metadata-preview-head">
+                <div>
+                  <span className="metric-label">Metadata preview</span>
+                  <strong>{createName || "Untitled launch"}</strong>
+                </div>
+                <span className="status-pill success">{createSymbol || "TKN"}</span>
+              </div>
+              <div className="metadata-preview-body">
+                <div className="metadata-image-shell">
+                  {resolvePreviewImage(launchMetadata.image ?? "") ? (
+                    <img
+                      className="metadata-image"
+                      src={resolvePreviewImage(launchMetadata.image ?? "")}
+                      alt={`${createName || "Launch"} preview`}
+                    />
+                  ) : (
+                    <div className="metadata-image-placeholder">No image yet</div>
+                  )}
+                </div>
+                <div className="metadata-preview-copy">
+                  <p>{launchMetadata.description || "Add a description, image, and links to make launch cards look more like a real Pump-style market."}</p>
+                  <div className="metadata-links">
+                    {launchMetadata.website && <span>Website</span>}
+                    {launchMetadata.twitter && <span>X</span>}
+                    {launchMetadata.telegram && <span>Telegram</span>}
+                    {launchMetadata.discord && <span>Discord</span>}
+                    {!launchMetadata.website && !launchMetadata.twitter && !launchMetadata.telegram && !launchMetadata.discord && <span>No social links yet</span>}
+                  </div>
+                </div>
+              </div>
+            </div>
             <div className="status-hint">
-              Launches are created through the open factory. The official UI defaults to protocol-safe paths and emits
-              canonical events for third-party indexers.
+              Only <strong>name</strong>, <strong>symbol</strong>, and <strong>metadataURI</strong> go on-chain. Rich launch
+              content like description, image, website, and social links belongs in the metadata JSON the URI points to.
             </div>
             <div className="status-hint">
               Official creates first mine a CREATE2 salt locally so the new launch address ends with <strong>0314</strong>,
               then submit <code>createLaunchWithSalt(...)</code>.
             </div>
             <div className="status-hint">
-              Upfront cost = current on-chain create fee ({factorySnapshot ? formatNative(factorySnapshot.createFee) : "load factory"})
-              {" "}+ network gas.
+              {generatedInlineMetadataUri
+                ? `Generated inline metadata is ready (${metadataUriSizeBytes.toLocaleString()} bytes).`
+                : usingUploadedImage
+                  ? "A local uploaded image is great for preview/export, but you still need to publish metadata externally and paste its URI before creating."
+                  : "You can paste a permanent metadata URI or generate an inline one for lightweight launches."}
+            </div>
+            <div className="status-hint">
+              Upfront cost = current on-chain create fee ({factorySnapshot ? formatNative(factorySnapshot.createFee) : "load factory"}) + network gas.
             </div>
             <button onClick={handleCreateLaunch} disabled={walletWrongNetwork}>Create Launch</button>
           </article>

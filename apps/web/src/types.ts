@@ -93,3 +93,16 @@ export type SegmentedChartSnapshot = {
   dexCandles: CandlePoint[];
   graduationTimestampMs: number | null;
 };
+
+export type LaunchMetadata = {
+  version: "autonomous314/v1";
+  name: string;
+  symbol: string;
+  description?: string;
+  image?: string;
+  external_url?: string;
+  website?: string;
+  twitter?: string;
+  telegram?: string;
+  discord?: string;
+};

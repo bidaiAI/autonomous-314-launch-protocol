@@ -59,6 +59,10 @@ Autonomous 314 当前的目标很明确，主要有四个：
   - 仓库内已经包含参考前端、低成本 indexer 和本地 demo 流程
 - **官方 vanity 创建流程**
   - 参考前端会在本地先挖出 `CREATE2` salt，因此官方创建的新 launch 默认尽量尾号 `0314`
+- **富 metadata 创建流程**
+  - 创建界面支持描述、图片、官网和社交链接，但链上仍只保留 `metadataURI`
+
+推荐的 metadata 结构见 [`docs/LAUNCH_METADATA.md`](docs/LAUNCH_METADATA.md)。
 
 ## 这个协议解决什么问题
 

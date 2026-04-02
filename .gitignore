@@ -14,6 +14,7 @@ cache/
 typechain-types/
 apps/web/public/data/
 .demo/
+.playwright-cli/
 *.tsbuildinfo
 .vercel
 !apps/web/src/artifacts/

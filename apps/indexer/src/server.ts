@@ -2,7 +2,7 @@ import { createServer, type ServerResponse } from "http";
 import { buildIndexerSnapshot } from "./service";
 import type { IndexerSnapshot } from "./schema";
 
-const port = Number(process.env.INDEXER_PORT ?? 8787);
+const port = Number(process.env.PORT ?? process.env.INDEXER_PORT ?? 8787);
 const cacheTtlMs = Number(process.env.INDEXER_CACHE_TTL_MS ?? 15_000);
 const corsOrigin = process.env.INDEXER_CORS_ORIGIN ?? "*";
 

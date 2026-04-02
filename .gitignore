@@ -9,9 +9,14 @@ node_modules/
 .dist/
 dist/
 coverage/
-artifacts/
+/packages/contracts/artifacts/
 cache/
 typechain-types/
 apps/web/public/data/
 .demo/
 *.tsbuildinfo
+.vercel
+!apps/web/src/artifacts/
+!apps/web/src/artifacts/**
+!apps/indexer/src/artifacts/
+!apps/indexer/src/artifacts/**

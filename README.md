@@ -317,6 +317,7 @@ This starts a local Hardhat chain, deploys a demo factory with a `0.2 native` gr
 See:
 
 - [docs/LOCAL_DEMO.md](./docs/LOCAL_DEMO.md)
+- [docs/BSC_FACTORY_DEPLOYMENT.md](./docs/BSC_FACTORY_DEPLOYMENT.md)
 
 ## Quick start
 

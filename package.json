@@ -16,6 +16,8 @@
     "demo:node": "pnpm --filter @autonomous314/contracts node",
     "demo:prepare": "pnpm --filter @autonomous314/contracts demo:local",
     "demo:local": "node scripts/run-local-demo.mjs",
+    "deploy:bsc:factory:dry": "pnpm --filter @autonomous314/contracts deploy:bsc:factory:dry",
+    "deploy:bsc:factory": "pnpm --filter @autonomous314/contracts deploy:bsc:factory",
     "snapshot:indexer": "pnpm --filter @autonomous314/indexer snapshot",
     "serve:indexer": "pnpm --filter @autonomous314/indexer serve"
   }

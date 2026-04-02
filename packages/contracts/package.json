@@ -8,7 +8,9 @@
     "node": "hardhat node",
     "test": "hardhat test",
     "gas:report": "hardhat run scripts/gas-report.ts",
-    "demo:local": "hardhat run scripts/deploy-local-demo.ts --network localhost"
+    "demo:local": "hardhat run scripts/deploy-local-demo.ts --network localhost",
+    "deploy:bsc:factory:dry": "BSC_DEPLOY_DRY_RUN=1 hardhat run scripts/deploy-bsc-factory-create2.ts",
+    "deploy:bsc:factory": "hardhat run scripts/deploy-bsc-factory-create2.ts --network bsc"
   },
   "dependencies": {
     "@openzeppelin/contracts": "^5.0.2"

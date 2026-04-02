@@ -26,7 +26,7 @@ export async function buildIndexerSnapshot(): Promise<IndexerSnapshot> {
     indexerConfig.fromBlock ??
     (latestBlock > indexerConfig.lookbackBlocks ? latestBlock - indexerConfig.lookbackBlocks : 0n);
 
-  const factoryLogs = await client.getLogs({
+  const factoryLogs = await getLogsChunked(client, {
     address: getAddress(indexerConfig.factoryAddress),
     fromBlock,
     toBlock: latestBlock
@@ -61,7 +61,7 @@ export async function buildIndexerSnapshot(): Promise<IndexerSnapshot> {
     const token = launch.decoded.args.token;
     const tokenSnapshot = await readLaunchSnapshot(client, token);
 
-    const tokenLogs = await client.getLogs({
+    const tokenLogs = await getLogsChunked(client, {
       address: token,
       fromBlock,
       toBlock: latestBlock
@@ -100,7 +100,7 @@ export async function buildIndexerSnapshot(): Promise<IndexerSnapshot> {
         client.readContract({ address: graduationPair, abi: v2PairAbi, functionName: "token1" })
       ])) as [`0x${string}`, `0x${string}`];
 
-      const pairLogs = await client.getLogs({
+      const pairLogs = await getLogsChunked(client, {
         address: graduationPair,
         fromBlock: graduationBlock && graduationBlock > fromBlock ? graduationBlock : fromBlock,
         toBlock: latestBlock
@@ -145,6 +145,32 @@ export async function buildIndexerSnapshot(): Promise<IndexerSnapshot> {
     launchCount: workspaceSnapshots.length,
     launches: workspaceSnapshots
   };
+}
+
+async function getLogsChunked(
+  client: ReturnType<typeof createPublicClient>,
+  params: {
+    address: `0x${string}`;
+    fromBlock: bigint;
+    toBlock: bigint;
+  }
+) {
+  const batch = indexerConfig.logBatchBlocks > 0n ? indexerConfig.logBatchBlocks : 10n;
+  const logs: Log[] = [];
+
+  let cursor = params.fromBlock;
+  while (cursor <= params.toBlock) {
+    const end = cursor + batch - 1n > params.toBlock ? params.toBlock : cursor + batch - 1n;
+    const chunk = await client.getLogs({
+      address: params.address,
+      fromBlock: cursor,
+      toBlock: end
+    });
+    logs.push(...chunk);
+    cursor = end + 1n;
+  }
+
+  return logs;
 }
 
 async function readLaunchSnapshot(client: ReturnType<typeof createPublicClient>, tokenAddress: `0x${string}`): Promise<Omit<LaunchWorkspaceSnapshot, "recentActivity" | "segmentedChart">> {

@@ -1,17 +1,21 @@
 import {
+  concatHex,
   createPublicClient,
   createWalletClient,
   custom,
   decodeEventLog,
+  encodeAbiParameters,
   formatEther,
   formatUnits,
   getAddress,
   http,
+  keccak256,
   parseEther,
   parseUnits,
+  type Hex,
   type Log
 } from "viem";
-import { launchFactoryAbi, launchTokenAbi, v2PairAbi } from "./abi";
+import { launchFactoryAbi, launchTokenAbi, launchTokenBytecode, v2PairAbi } from "./abi";
 import { activeProtocolProfile } from "./profiles";
 import type {
   ActivityFeedItem,
@@ -26,6 +30,7 @@ const launchStates = ["Created", "Bonding314", "Migrating", "DEXOnly"] as const;
 const indexerApiBase = import.meta.env.VITE_INDEXER_API_URL?.replace(/\/$/, "");
 const snapshotUrl = import.meta.env.VITE_INDEXER_SNAPSHOT_URL ?? "/data/indexer-snapshot.json";
 const zeroAddress = "0x0000000000000000000000000000000000000000";
+const officialVanitySuffix = "0314";
 
 const appChain = activeProtocolProfile.chain;
 const appRpcUrl = import.meta.env.VITE_RPC_URL || activeProtocolProfile.defaultRpcUrl;
@@ -325,6 +330,93 @@ async function getActiveAccount() {
   return getAddress(accounts[0]);
 }
 
+function randomBytes32Hex(): Hex {
+  const bytes = new Uint8Array(32);
+  globalThis.crypto.getRandomValues(bytes);
+  return `0x${Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("")}` as Hex;
+}
+
+function computeCreate2Address(deployer: `0x${string}`, salt: Hex, initCodeHash: Hex): `0x${string}` {
+  const payload = concatHex(["0xff", deployer, salt, initCodeHash]);
+  const hash = keccak256(payload);
+  return getAddress(`0x${hash.slice(-40)}`);
+}
+
+function buildLaunchInitCode(params: {
+  name: string;
+  symbol: string;
+  metadataURI: string;
+  creator: `0x${string}`;
+  protocolFeeRecipient: `0x${string}`;
+  router: `0x${string}`;
+  graduationQuoteReserve: bigint;
+}): Hex {
+  const encodedArgs = encodeAbiParameters(
+    [
+      { type: "string" },
+      { type: "string" },
+      { type: "string" },
+      { type: "address" },
+      { type: "address" },
+      { type: "address" },
+      { type: "uint256" }
+    ],
+    [
+      params.name,
+      params.symbol,
+      params.metadataURI,
+      params.creator,
+      params.protocolFeeRecipient,
+      params.router,
+      params.graduationQuoteReserve
+    ]
+  );
+
+  return concatHex([launchTokenBytecode, encodedArgs]);
+}
+
+async function findVanityLaunchSalt(params: {
+  factory: `0x${string}`;
+  name: string;
+  symbol: string;
+  metadataURI: string;
+  creator: `0x${string}`;
+  protocolFeeRecipient: `0x${string}`;
+  router: `0x${string}`;
+  graduationQuoteReserve: bigint;
+  suffix?: string;
+  onProgress?: (update: { attempts: number; elapsedMs: number }) => void;
+}) {
+  const suffix = (params.suffix ?? officialVanitySuffix).toLowerCase();
+  const initCode = buildLaunchInitCode(params);
+  const initCodeHash = keccak256(initCode);
+  const started = performance.now();
+  let attempts = 0;
+
+  while (true) {
+    const salt = randomBytes32Hex();
+    const predictedAddress = computeCreate2Address(params.factory, salt, initCodeHash);
+    attempts += 1;
+
+    if (predictedAddress.toLowerCase().endsWith(suffix)) {
+      return {
+        salt,
+        predictedAddress,
+        attempts,
+        elapsedMs: Math.round(performance.now() - started)
+      };
+    }
+
+    if (attempts % 4096 === 0) {
+      params.onProgress?.({
+        attempts,
+        elapsedMs: Math.round(performance.now() - started)
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+  }
+}
+
 export async function readFactory(address: string): Promise<FactorySnapshot> {
   const factoryAddress = getAddress(address);
   const client = getPublicClient();
@@ -555,20 +647,41 @@ export async function previewSell(address: string, tokenAmount: string) {
 
 export async function createLaunch(
   factoryAddress: string,
-  params: { name: string; symbol: string; metadataURI: string; createFee: bigint }
+  params: {
+    name: string;
+    symbol: string;
+    metadataURI: string;
+    createFee: bigint;
+    onVanityProgress?: (update: { attempts: number; elapsedMs: number }) => void;
+  }
 ) {
   const walletClient = getWalletClientOrThrow();
   const account = await getActiveAccount();
   await ensureWalletOnExpectedChain();
   const publicClient = getPublicClient();
+  const normalizedFactoryAddress = getAddress(factoryAddress);
+  const factorySnapshot = await readFactory(normalizedFactoryAddress);
+
+  const vanity = await findVanityLaunchSalt({
+    factory: normalizedFactoryAddress,
+    name: params.name,
+    symbol: params.symbol,
+    metadataURI: params.metadataURI,
+    creator: account,
+    protocolFeeRecipient: factorySnapshot.protocolFeeRecipient,
+    router: factorySnapshot.router,
+    graduationQuoteReserve: factorySnapshot.graduationQuoteReserve,
+    suffix: officialVanitySuffix,
+    onProgress: params.onVanityProgress
+  });
 
   const hash = await walletClient.writeContract({
     account,
     chain: appChain,
-    address: getAddress(factoryAddress),
+    address: normalizedFactoryAddress,
     abi: launchFactoryAbi,
-    functionName: "createLaunch",
-    args: [params.name, params.symbol, params.metadataURI],
+    functionName: "createLaunchWithSalt",
+    args: [params.name, params.symbol, params.metadataURI, vanity.salt],
     value: params.createFee
   });
 
@@ -592,9 +705,16 @@ export async function createLaunch(
     }
   }
 
+  if (createdToken && createdToken.toLowerCase() !== vanity.predictedAddress.toLowerCase()) {
+    throw new Error(
+      `Vanity address mismatch. Predicted ${vanity.predictedAddress}, received ${createdToken}.`
+    );
+  }
+
   return {
     receipt,
-    createdToken
+    createdToken,
+    vanity
   };
 }
 

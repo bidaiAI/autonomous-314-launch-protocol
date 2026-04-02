@@ -252,20 +252,28 @@ export function App() {
       setLoading(true);
       const snapshot = await readFactory(factoryAddress);
       setFactorySnapshot(snapshot);
+      setStatus("Mining vanity salt for suffix 0314...");
 
-      const { receipt, createdToken } = await createLaunch(factoryAddress, {
+      const { receipt, createdToken, vanity } = await createLaunch(factoryAddress, {
         name: createName,
         symbol: createSymbol,
         metadataURI: createMetadataUri,
-        createFee: snapshot.createFee
+        createFee: snapshot.createFee,
+        onVanityProgress: ({ attempts, elapsedMs }) => {
+          setStatus(`Mining vanity salt for suffix 0314... ${attempts.toLocaleString()} attempts · ${(elapsedMs / 1000).toFixed(1)}s`);
+        }
       });
 
       if (createdToken) {
         setTokenAddress(createdToken);
         await loadLaunchWorkspace(createdToken);
-        setStatus(`Create launch confirmed: ${createdToken}`);
+        setStatus(
+          `Create launch confirmed: ${createdToken} (0314 vanity found in ${vanity.attempts.toLocaleString()} attempts / ${(vanity.elapsedMs / 1000).toFixed(1)}s)`
+        );
       } else {
-        setStatus(`Create launch confirmed: ${receipt.transactionHash}`);
+        setStatus(
+          `Create launch confirmed: ${receipt.transactionHash} (predicted vanity ${vanity.predictedAddress})`
+        );
       }
 
       const { factory, launches } = await readRecentLaunchSnapshots(factoryAddress);
@@ -528,6 +536,10 @@ export function App() {
             <div className="status-hint">
               Launches are created through the open factory. The official UI defaults to protocol-safe paths and emits
               canonical events for third-party indexers.
+            </div>
+            <div className="status-hint">
+              Official creates first mine a CREATE2 salt locally so the new launch address ends with <strong>0314</strong>,
+              then submit <code>createLaunchWithSalt(...)</code>.
             </div>
             <div className="status-hint">
               Upfront cost = current on-chain create fee ({factorySnapshot ? formatNative(factorySnapshot.createFee) : "load factory"})

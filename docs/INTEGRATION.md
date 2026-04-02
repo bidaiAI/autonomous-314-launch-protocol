@@ -41,6 +41,7 @@ Third-party UIs should default to:
 - showing graduation progress
 - showing pair compatibility
 - showing creator/protocol claim permissions
+- when using the official create path, mining a local `CREATE2` salt first so launch addresses default to suffix `0314`
 
 ### What should not be the default UI path
 
@@ -109,6 +110,7 @@ Hide/disable:
 - `allLaunches(index)`
 - `launchesOf(creator)`
 - `predictLaunchAddress(...)`
+- `createLaunchWithSalt(...)`
 
 If a factory deployer supplies `address(0)` for the protocol fee recipient, the contract falls back to the built-in default treasury:
 

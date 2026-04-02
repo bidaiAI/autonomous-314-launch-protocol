@@ -57,6 +57,8 @@ At a functional level, the protocol already provides:
   - abandoned pre-grad launches can eventually sweep unclaimable creator fees into the protocol vault
 - **reference integration stack**
   - a reference frontend, a bounded-cost indexer, and a local demo flow are included
+- **official vanity create flow**
+  - the reference frontend locally mines a `CREATE2` salt so official launches default to addresses ending in `0314`
 
 ## What problem this solves
 
@@ -197,6 +199,8 @@ The protocol is deliberately positioned against platform-first fee extraction.
 - **create fee**: `0.03 native` in the official BSC profile
 
 This means the protocol keeps a small sustainability fee while routing the majority of the trading fee back toward the project side.
+
+Very small dust-sized trades are also protected against fee bypass. In practice this means extremely small buys or sells may either pay a minimum 1 wei total fee or become non-executable if the net output would be zero after fees.
 
 ### Fee policy
 

@@ -178,6 +178,7 @@ contract LaunchToken is ERC20, ReentrancyGuard {
 
         (uint256 totalFee, uint256 protocolFee, uint256 creatorFee) = _splitFees(grossQuoteOut);
         netQuoteOut = grossQuoteOut - totalFee;
+        if (netQuoteOut == 0) revert SlippageExceeded();
         if (netQuoteOut < minQuoteOut) revert SlippageExceeded();
 
         _transfer(msg.sender, address(this), tokenAmount);
@@ -634,8 +635,12 @@ contract LaunchToken is ERC20, ReentrancyGuard {
         pure
         returns (uint256 totalFee, uint256 protocolFee, uint256 creatorFee)
     {
-        totalFee = (grossAmount * TOTAL_FEE_BPS) / BPS_DENOMINATOR;
-        protocolFee = (grossAmount * PROTOCOL_FEE_BPS) / BPS_DENOMINATOR;
+        if (grossAmount == 0) {
+            return (0, 0, 0);
+        }
+
+        totalFee = Math.mulDiv(grossAmount, TOTAL_FEE_BPS, BPS_DENOMINATOR, Math.Rounding.Ceil);
+        protocolFee = Math.mulDiv(totalFee, PROTOCOL_FEE_BPS, TOTAL_FEE_BPS);
         creatorFee = totalFee - protocolFee;
     }
 

@@ -99,6 +99,8 @@ const server = createServer(async (req, res) => {
         count: Math.min(limit, snapshot.launches.length),
         launches: snapshot.launches.slice(0, limit).map((launch) => ({
           token: launch.token,
+          creator: launch.creator,
+          metadataURI: launch.metadataURI,
           symbol: launch.symbol,
           name: launch.name,
           state: launch.state,

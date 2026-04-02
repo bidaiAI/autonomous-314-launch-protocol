@@ -153,6 +153,8 @@ type SnapshotLaunchJson = {
 
 type ApiLaunchSummaryJson = {
   token: `0x${string}`;
+  creator?: `0x${string}`;
+  metadataURI?: string;
   symbol: string;
   name: string;
   state: string;
@@ -200,6 +202,7 @@ type IndexerSnapshotJson = {
 };
 
 let cachedIndexerSnapshot: Promise<IndexerSnapshotJson | null> | null = null;
+const metadataResolutionCache = new Map<string, Promise<LaunchMetadata | null>>();
 
 export function getPublicClient() {
   return createPublicClient({
@@ -225,6 +228,100 @@ async function readJson<T>(url: string): Promise<T | null> {
       return (await response.json()) as T;
     })
     .catch(() => null);
+}
+
+function decodeDataUriPayload(uri: string) {
+  const commaIndex = uri.indexOf(",");
+  if (commaIndex === -1) return null;
+
+  const header = uri.slice(5, commaIndex);
+  const payload = uri.slice(commaIndex + 1);
+
+  try {
+    if (header.includes(";base64")) {
+      return atob(payload);
+    }
+
+    return decodeURIComponent(payload);
+  } catch {
+    return null;
+  }
+}
+
+function metadataUriToFetchUrl(uri: string) {
+  if (!uri) return null;
+  if (uri.startsWith("http://") || uri.startsWith("https://")) return uri;
+  if (uri.startsWith("ipfs://")) return `https://ipfs.io/ipfs/${uri.replace("ipfs://", "")}`;
+  if (uri.startsWith("ar://")) return `https://arweave.net/${uri.replace("ar://", "")}`;
+  return null;
+}
+
+function normalizeLaunchMetadata(raw: unknown): LaunchMetadata | null {
+  if (!raw || typeof raw !== "object") return null;
+  const candidate = raw as Record<string, unknown>;
+  const name = typeof candidate.name === "string" ? candidate.name.trim() : "";
+  const symbol = typeof candidate.symbol === "string" ? candidate.symbol.trim() : "";
+  const version = candidate.version === "autonomous314/v1" ? "autonomous314/v1" : null;
+
+  if (!name || !symbol || !version) {
+    return null;
+  }
+
+  const description = typeof candidate.description === "string" ? candidate.description.trim() : "";
+  const image = typeof candidate.image === "string" ? candidate.image.trim() : "";
+  const external_url = typeof candidate.external_url === "string" ? candidate.external_url.trim() : "";
+  const website = typeof candidate.website === "string" ? candidate.website.trim() : "";
+  const twitter = typeof candidate.twitter === "string" ? candidate.twitter.trim() : "";
+  const telegram = typeof candidate.telegram === "string" ? candidate.telegram.trim() : "";
+  const discord = typeof candidate.discord === "string" ? candidate.discord.trim() : "";
+
+  return {
+    version,
+    name,
+    symbol,
+    ...(description ? { description } : {}),
+    ...(image ? { image } : {}),
+    ...(external_url ? { external_url } : {}),
+    ...(website ? { website } : {}),
+    ...(twitter ? { twitter } : {}),
+    ...(telegram ? { telegram } : {}),
+    ...(discord ? { discord } : {})
+  };
+}
+
+export async function resolveLaunchMetadata(metadataURI: string): Promise<LaunchMetadata | null> {
+  const normalizedUri = metadataURI.trim();
+  if (!normalizedUri) return null;
+
+  const cached = metadataResolutionCache.get(normalizedUri);
+  if (cached) return cached;
+
+  const promise = (async () => {
+    if (normalizedUri.startsWith("data:")) {
+      const decoded = decodeDataUriPayload(normalizedUri);
+      if (!decoded) return null;
+
+      try {
+        return normalizeLaunchMetadata(JSON.parse(decoded));
+      } catch {
+        return null;
+      }
+    }
+
+    const fetchUrl = metadataUriToFetchUrl(normalizedUri);
+    if (!fetchUrl) return null;
+
+    try {
+      const response = await fetch(fetchUrl);
+      if (!response.ok) return null;
+      return normalizeLaunchMetadata(await response.json());
+    } catch {
+      return null;
+    }
+  })();
+
+  metadataResolutionCache.set(normalizedUri, promise);
+  return promise;
 }
 
 async function readApiLaunchSummaries(
@@ -536,6 +633,7 @@ export async function readToken(address: string): Promise<TokenSnapshot> {
     state,
     pair,
     creator,
+    protocolFeeRecipient,
     metadataURI,
     graduationQuoteReserve,
     currentPriceQuotePerToken,
@@ -556,6 +654,7 @@ export async function readToken(address: string): Promise<TokenSnapshot> {
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "state" }),
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "pair" }),
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "creator" }),
+    client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "protocolFeeRecipient" }),
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "metadataURI" }),
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "graduationQuoteReserve" }),
     client.readContract({
@@ -596,6 +695,7 @@ export async function readToken(address: string): Promise<TokenSnapshot> {
     bigint,
     `0x${string}`,
     `0x${string}`,
+    `0x${string}`,
     string,
     bigint,
     bigint,
@@ -619,6 +719,7 @@ export async function readToken(address: string): Promise<TokenSnapshot> {
     state: launchStates[Number(state)] ?? `Unknown(${state})`,
     pair,
     creator,
+    protocolFeeRecipient,
     metadataURI,
     graduationQuoteReserve,
     currentPriceQuotePerToken,
@@ -954,6 +1055,7 @@ function convertSnapshotLaunch(launch: SnapshotLaunchJson): TokenSnapshot {
     state: launch.state,
     pair: getAddress(launch.pair),
     creator: getAddress(launch.creator),
+    protocolFeeRecipient: zeroAddress,
     metadataURI: launch.metadataURI,
     graduationQuoteReserve: 0n,
     currentPriceQuotePerToken: BigInt(launch.currentPriceQuotePerToken),
@@ -980,8 +1082,9 @@ function convertApiLaunchSummary(launch: ApiLaunchSummaryJson, graduationQuoteRe
     symbol: launch.symbol,
     state: launch.state,
     pair: getAddress(launch.pair),
-    creator: zeroAddress,
-    metadataURI: "",
+    creator: launch.creator ? getAddress(launch.creator) : zeroAddress,
+    protocolFeeRecipient: zeroAddress,
+    metadataURI: launch.metadataURI ?? "",
     graduationQuoteReserve: target,
     currentPriceQuotePerToken: BigInt(launch.currentPriceQuotePerToken),
     graduationProgressBps: BigInt(launch.graduationProgressBps),

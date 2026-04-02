@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   applySlippageBps,
   buildInlineMetadataUri,
@@ -22,12 +22,13 @@ import {
   previewSell,
   readFactory,
   readIndexedLaunchWorkspace,
+  resolveLaunchMetadata,
   readRecentLaunchSnapshots,
   readToken,
   switchWalletToExpectedChain,
   sweepAbandonedCreatorFees
 } from "./protocol";
-import type { ActivityFeedItem, CandlePoint, FactorySnapshot, TokenSnapshot } from "./types";
+import type { ActivityFeedItem, CandlePoint, FactorySnapshot, LaunchMetadata, TokenSnapshot } from "./types";
 import { SegmentedPhaseChart } from "./charts";
 import { activeProtocolProfile } from "./profiles";
 
@@ -79,10 +80,40 @@ function resolvePreviewImage(image: string) {
   if (image.startsWith("ipfs://")) {
     return `https://ipfs.io/ipfs/${image.replace("ipfs://", "")}`;
   }
+  if (image.startsWith("ar://")) {
+    return `https://arweave.net/${image.replace("ar://", "")}`;
+  }
   if (image.startsWith("http://") || image.startsWith("https://") || image.startsWith("data:")) {
     return image;
   }
   return "";
+}
+
+function resolveExternalHref(value?: string) {
+  if (!value) return "";
+  if (value.startsWith("ipfs://")) {
+    return `https://ipfs.io/ipfs/${value.replace("ipfs://", "")}`;
+  }
+  if (value.startsWith("ar://")) {
+    return `https://arweave.net/${value.replace("ar://", "")}`;
+  }
+  if (value.startsWith("http://") || value.startsWith("https://")) {
+    return value;
+  }
+  return "";
+}
+
+function launchMetadataLinks(metadata: LaunchMetadata | null) {
+  if (!metadata) return [];
+
+  const links = [
+    { label: "Website", href: resolveExternalHref(metadata.website || metadata.external_url) },
+    { label: "X", href: resolveExternalHref(metadata.twitter) },
+    { label: "Telegram", href: resolveExternalHref(metadata.telegram) },
+    { label: "Discord", href: resolveExternalHref(metadata.discord) }
+  ];
+
+  return links.filter((link) => Boolean(link.href));
 }
 
 export function App() {
@@ -103,6 +134,7 @@ export function App() {
   const [factorySnapshot, setFactorySnapshot] = useState<FactorySnapshot | null>(null);
   const [recentLaunchSnapshots, setRecentLaunchSnapshots] = useState<TokenSnapshot[]>([]);
   const [tokenSnapshot, setTokenSnapshot] = useState<TokenSnapshot | null>(null);
+  const [launchMetadataByToken, setLaunchMetadataByToken] = useState<Partial<Record<string, LaunchMetadata | null>>>({});
   const [recentActivity, setRecentActivity] = useState<ActivityFeedItem[]>([]);
   const [bondingCandles, setBondingCandles] = useState<CandlePoint[]>([]);
   const [dexCandles, setDexCandles] = useState<CandlePoint[]>([]);
@@ -125,6 +157,8 @@ export function App() {
     wallet && tokenSnapshot ? wallet.toLowerCase() === tokenSnapshot.creator.toLowerCase() : false;
   const connectedAsProtocolRecipient =
     wallet && factorySnapshot ? wallet.toLowerCase() === factorySnapshot.protocolFeeRecipient.toLowerCase() : false;
+  const connectedAsTokenProtocolRecipient =
+    wallet && tokenSnapshot ? wallet.toLowerCase() === tokenSnapshot.protocolFeeRecipient.toLowerCase() : false;
   const creatorFeeSweepReady = tokenSnapshot?.creatorFeeSweepReady ?? false;
 
   const pollutionTone = useMemo(() => {
@@ -141,6 +175,10 @@ export function App() {
   const runtimeChainLabel = activeProtocolProfile.chainLabel;
   const walletWrongNetwork = Boolean(wallet) && walletChainId !== null && !walletOnExpectedChain;
   const usingUploadedImage = Boolean(createImagePreview && !createImageUrl.trim());
+  const selectedLaunchMetadataState = tokenSnapshot ? launchMetadataByToken[tokenSnapshot.address.toLowerCase()] : undefined;
+  const selectedLaunchMetadata = selectedLaunchMetadataState ?? null;
+  const selectedLaunchMetadataLoading =
+    Boolean(tokenSnapshot?.metadataURI) && selectedLaunchMetadataState === undefined;
 
   const launchMetadata = useMemo(
     () =>
@@ -179,6 +217,53 @@ export function App() {
     () => (resolvedCreateMetadataUri ? new TextEncoder().encode(resolvedCreateMetadataUri).length : 0),
     [resolvedCreateMetadataUri]
   );
+
+  useEffect(() => {
+    const launchesToResolve = recentLaunchSnapshots.filter((launch) => {
+      const key = launch.address.toLowerCase();
+      return Boolean(launch.metadataURI) && launchMetadataByToken[key] === undefined;
+    });
+
+    if (launchesToResolve.length === 0) return;
+
+    let cancelled = false;
+
+    void Promise.all(
+      launchesToResolve.map(async (launch) => [
+        launch.address.toLowerCase(),
+        await resolveLaunchMetadata(launch.metadataURI)
+      ] as const)
+    ).then((resolved) => {
+      if (cancelled) return;
+      setLaunchMetadataByToken((previous) => {
+        const next = { ...previous };
+        for (const [token, metadata] of resolved) {
+          next[token] = metadata;
+        }
+        return next;
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [recentLaunchSnapshots, launchMetadataByToken]);
+
+  useEffect(() => {
+    if (!tokenSnapshot?.metadataURI) return;
+    const key = tokenSnapshot.address.toLowerCase();
+    if (launchMetadataByToken[key] !== undefined) return;
+
+    let cancelled = false;
+    void resolveLaunchMetadata(tokenSnapshot.metadataURI).then((metadata) => {
+      if (cancelled) return;
+      setLaunchMetadataByToken((previous) => ({ ...previous, [key]: metadata }));
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tokenSnapshot, launchMetadataByToken]);
 
   async function refreshWalletNetworkStatus() {
     const chainId = await getWalletChainId();
@@ -257,6 +342,19 @@ export function App() {
       setLoading(true);
       await loadLaunchWorkspace(tokenAddress);
       setStatus("Token loaded");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Failed to load token");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleSelectLaunch(address: string) {
+    setTokenAddress(address);
+    try {
+      setLoading(true);
+      await loadLaunchWorkspace(address);
+      setStatus(`Token loaded: ${address}`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to load token");
     } finally {
@@ -569,6 +667,90 @@ export function App() {
         </article>
       </section>
 
+      <section className="market-board">
+        <div className="section-header">
+          <div>
+            <span className="section-kicker">Market board</span>
+            <h2>Pump-style launch cards backed by protocol state</h2>
+          </div>
+          <span className="list-item-meta">
+            {recentLaunchSnapshots.length} recent {recentLaunchSnapshots.length === 1 ? "launch" : "launches"}
+          </span>
+        </div>
+
+        {recentLaunchSnapshots.length === 0 ? (
+          <div className="empty-state">
+            No launches have been created yet. Create one from the left rail and it will appear here with protocol state,
+            metadata, and graduation progress.
+          </div>
+        ) : (
+          <div className="launch-card-grid">
+            {recentLaunchSnapshots.map((launch) => {
+              const metadataState = launchMetadataByToken[launch.address.toLowerCase()];
+              const metadata = metadataState ?? null;
+              const image = resolvePreviewImage(metadata?.image ?? "");
+              const links = launchMetadataLinks(metadata);
+              const isActive = tokenAddress.toLowerCase() === launch.address.toLowerCase();
+
+              return (
+                <article key={launch.address} className={`launch-card ${isActive ? "active" : ""}`}>
+                  <div className="launch-card-media">
+                    {image ? (
+                      <img src={image} alt={`${metadata?.name || launch.name} cover`} />
+                    ) : (
+                      <div className="launch-card-placeholder">{(metadata?.symbol || launch.symbol).slice(0, 6)}</div>
+                    )}
+                    <span className={`stage-pill ${launch.state === "Bonding314" ? "live" : launch.state === "DEXOnly" ? "done" : ""}`}>
+                      {launch.state}
+                    </span>
+                  </div>
+                  <div className="launch-card-body">
+                    <div className="launch-card-head">
+                      <div>
+                        <h3>{metadata?.name || launch.name}</h3>
+                        <div className="launch-card-symbol">{metadata?.symbol || launch.symbol}</div>
+                      </div>
+                      <div className="launch-card-price">{formatNative(launch.currentPriceQuotePerToken)}</div>
+                    </div>
+                    <p className="launch-card-description">
+                      {metadata?.description ||
+                        "Metadata has not been resolved yet, but the on-chain launch is live and can already be explored through the protocol workspace."}
+                    </p>
+                    <div className="launch-card-stats">
+                      <div>
+                        <span className="metric-label">Progress</span>
+                        <strong>{formatPercentFromBps(launch.graduationProgressBps)}</strong>
+                      </div>
+                      <div>
+                        <span className="metric-label">Price</span>
+                        <strong>{formatNative(launch.currentPriceQuotePerToken)}</strong>
+                      </div>
+                    </div>
+                    <div className="metadata-links">
+                      {links.length > 0 ? (
+                        links.map((link) => (
+                          <a key={`${launch.address}-${link.label}`} href={link.href} target="_blank" rel="noreferrer">
+                            {link.label}
+                          </a>
+                        ))
+                      ) : (
+                        <span>No social links yet</span>
+                      )}
+                    </div>
+                    <div className="button-row launch-card-actions">
+                      <button className="secondary-button" onClick={() => void handleSelectLaunch(launch.address)}>
+                        Open workspace
+                      </button>
+                      <span className="list-item-meta">{shortAddress(launch.address)}</span>
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
       <section className="workspace-grid">
         <aside className="rail">
           <article className="panel">
@@ -579,7 +761,13 @@ export function App() {
             </label>
             <div className="button-row">
               <button onClick={handleLoadFactory}>Load Factory</button>
-              <button className="secondary-button" onClick={handleClaimFactoryFees} disabled={walletWrongNetwork}>Claim Fees</button>
+              <button
+                className="secondary-button"
+                onClick={handleClaimFactoryFees}
+                disabled={!factorySnapshot || !connectedAsProtocolRecipient || walletWrongNetwork}
+              >
+                Claim Fees
+              </button>
             </div>
             {factorySnapshot && (
               <>
@@ -599,18 +787,7 @@ export function App() {
                       <button
                         key={launch.address}
                         className={`list-item ${tokenAddress.toLowerCase() === launch.address.toLowerCase() ? "active" : ""}`}
-                        onClick={async () => {
-                          setTokenAddress(launch.address);
-                          try {
-                            setLoading(true);
-                            await loadLaunchWorkspace(launch.address);
-                            setStatus(`Token loaded: ${launch.address}`);
-                          } catch (error) {
-                            setStatus(error instanceof Error ? error.message : "Failed to load token");
-                          } finally {
-                            setLoading(false);
-                          }
-                        }}
+                        onClick={() => void handleSelectLaunch(launch.address)}
                       >
                         <span className="list-item-main">
                           <strong>{launch.symbol}</strong>
@@ -657,7 +834,7 @@ export function App() {
                 />
               </label>
               <label className="field">
-                <span>Upload image (preview / export)</span>
+                <span>Upload image (preview only)</span>
                 <input
                   type="file"
                   accept="image/*"
@@ -666,6 +843,15 @@ export function App() {
                   }}
                 />
               </label>
+            </div>
+            <div className="callout warn compact-callout">
+              <strong>Upload is not a publish step.</strong>
+              <p>
+                Local image upload only powers preview and metadata export. The protocol does not pin media for you, so
+                a production launch still needs a permanent metadata URI such as IPFS, Arweave, or an HTTPS endpoint you
+                control.
+              </p>
+              {createImageFileName && <p>Selected local file: {createImageFileName}</p>}
             </div>
             <div className="metadata-two-column">
               <label className="field">
@@ -781,6 +967,45 @@ export function App() {
 
             {tokenSnapshot ? (
               <>
+                <div className="launch-hero">
+                  <div className="launch-hero-media">
+                    {resolvePreviewImage(selectedLaunchMetadata?.image ?? "") ? (
+                      <img
+                        src={resolvePreviewImage(selectedLaunchMetadata?.image ?? "")}
+                        alt={`${selectedLaunchMetadata?.name || tokenSnapshot.name} cover`}
+                      />
+                    ) : (
+                      <div className="launch-card-placeholder large">{tokenSnapshot.symbol.slice(0, 8)}</div>
+                    )}
+                  </div>
+                  <div className="launch-hero-copy">
+                    <div className="launch-hero-head">
+                      <div>
+                        <span className="section-kicker">Selected launch</span>
+                        <h3>{selectedLaunchMetadata?.name || tokenSnapshot.name}</h3>
+                        <div className="launch-card-symbol">{selectedLaunchMetadata?.symbol || tokenSnapshot.symbol}</div>
+                      </div>
+                    </div>
+                    <p>
+                      {selectedLaunchMetadata?.description ||
+                        (selectedLaunchMetadataLoading
+                          ? "Resolving off-chain metadata for this launch..."
+                          : "No off-chain metadata was resolved for this launch yet. The protocol state is live, but discovery metadata may still be missing or hosted elsewhere.")}
+                    </p>
+                    <div className="metadata-links">
+                      {launchMetadataLinks(selectedLaunchMetadata).length > 0 ? (
+                        launchMetadataLinks(selectedLaunchMetadata).map((link) => (
+                          <a key={`${tokenSnapshot.address}-${link.label}`} href={link.href} target="_blank" rel="noreferrer">
+                            {link.label}
+                          </a>
+                        ))
+                      ) : (
+                        <span>No social links yet</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
                 <div className="headline-metrics">
                   <div>
                     <span className="metric-label">Current price</span>
@@ -839,6 +1064,7 @@ export function App() {
                   <dl className="data-list">
                     <div><dt>Protocol claimable</dt><dd>{formatNative(tokenSnapshot.protocolClaimable)}</dd></div>
                     <div><dt>Creator claimable</dt><dd>{formatNative(tokenSnapshot.creatorClaimable)}</dd></div>
+                    <div><dt>Token protocol recipient</dt><dd>{shortAddress(tokenSnapshot.protocolFeeRecipient)}</dd></div>
                     <div><dt>Creator fee sweep ready</dt><dd>{creatorFeeSweepReady ? "Yes" : "No"}</dd></div>
                     <div><dt>Created at</dt><dd>{formatUnixTimestamp(tokenSnapshot.createdAt)}</dd></div>
                     <div><dt>Last trade at</dt><dd>{formatUnixTimestamp(tokenSnapshot.lastTradeAt)}</dd></div>
@@ -990,7 +1216,11 @@ export function App() {
           <article className="panel">
             <h2>Claims & permissions</h2>
             <div className="button-row stacked">
-              <button className="secondary-button" onClick={handleClaimTokenProtocolFees} disabled={!tokenSnapshot || walletWrongNetwork}>
+              <button
+                className="secondary-button"
+                onClick={handleClaimTokenProtocolFees}
+                disabled={!tokenSnapshot || !connectedAsTokenProtocolRecipient || walletWrongNetwork}
+              >
                 Claim token protocol fees
               </button>
               <button className="secondary-button" onClick={handleClaimCreatorFees} disabled={!isDexOnly || !connectedAsCreator || walletWrongNetwork}>
@@ -1007,6 +1237,10 @@ export function App() {
               <li>Abandoned pre-grad creator fees can be swept after 180 days of age and 30 days without trades.</li>
               <li>When graduation compatibility is false, treat migration as blocked.</li>
             </ul>
+            <div className="status-hint">
+              Factory create-fee claims require the connected wallet to match the current factory protocol recipient.
+              Token fee claims require the connected wallet to match the launch’s immutable protocol fee recipient.
+            </div>
           </article>
         </aside>
       </section>

@@ -85,6 +85,133 @@ body {
   margin-bottom: 24px;
 }
 
+.market-board {
+  margin-bottom: 24px;
+  display: grid;
+  gap: 16px;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 16px;
+}
+
+.section-header h2 {
+  margin: 6px 0 0;
+  font-size: 1.35rem;
+}
+
+.launch-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.launch-card {
+  padding: 0;
+  overflow: hidden;
+  border-radius: 20px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(15, 23, 36, 0.82);
+}
+
+.launch-card.active {
+  border-color: rgba(94, 234, 212, 0.36);
+  box-shadow: 0 0 0 1px rgba(94, 234, 212, 0.18);
+}
+
+.launch-card-media {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background: linear-gradient(135deg, rgba(94, 234, 212, 0.18), rgba(56, 189, 248, 0.18));
+  overflow: hidden;
+}
+
+.launch-card-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.launch-card-media .stage-pill {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+}
+
+.launch-card-placeholder {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  font-size: 2rem;
+  letter-spacing: 0.08em;
+  color: rgba(245, 247, 251, 0.9);
+  text-transform: uppercase;
+}
+
+.launch-card-placeholder.large {
+  font-size: 2.4rem;
+}
+
+.launch-card-body {
+  padding: 18px;
+  display: grid;
+  gap: 12px;
+}
+
+.launch-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 16px;
+}
+
+.launch-card-head h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.launch-card-symbol {
+  margin-top: 4px;
+  color: rgba(245, 247, 251, 0.62);
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.launch-card-price {
+  color: #5eead4;
+  font-weight: 700;
+}
+
+.launch-card-description {
+  margin: 0;
+  color: rgba(245, 247, 251, 0.74);
+  line-height: 1.6;
+  min-height: 72px;
+}
+
+.launch-card-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.launch-card-stats > div {
+  display: grid;
+  gap: 4px;
+}
+
+.launch-card-actions {
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0;
+}
+
 .strip-card {
   padding: 14px 16px;
   border-radius: 16px;
@@ -455,6 +582,11 @@ button {
   border: 1px solid rgba(148, 163, 184, 0.16);
 }
 
+.compact-callout {
+  margin-top: 0;
+  margin-bottom: 16px;
+}
+
 .callout p {
   margin-top: 8px;
 }
@@ -547,7 +679,8 @@ button {
   flex-wrap: wrap;
 }
 
-.metadata-links span {
+.metadata-links span,
+.metadata-links a {
   display: inline-flex;
   align-items: center;
   padding: 6px 10px;
@@ -555,6 +688,49 @@ button {
   font-size: 0.78rem;
   background: rgba(148, 163, 184, 0.12);
   color: rgba(245, 247, 251, 0.7);
+  text-decoration: none;
+}
+
+.metadata-links a:hover {
+  color: #f5f7fb;
+  background: rgba(94, 234, 212, 0.18);
+}
+
+.launch-hero {
+  display: grid;
+  grid-template-columns: 124px minmax(0, 1fr);
+  gap: 18px;
+  margin-bottom: 18px;
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(8, 16, 24, 0.42);
+}
+
+.launch-hero-media {
+  width: 124px;
+  height: 124px;
+  border-radius: 24px;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.launch-hero-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.launch-hero-copy {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.launch-hero-head h3 {
+  margin: 8px 0 0;
+  font-size: 1.35rem;
 }
 
 .history-grid {
@@ -651,7 +827,8 @@ button {
     grid-template-columns: 1fr 1fr;
   }
 
-  .manifesto-grid {
+  .manifesto-grid,
+  .launch-card-grid {
     grid-template-columns: 1fr;
   }
 
@@ -666,5 +843,21 @@ button {
   .metadata-two-column,
   .metadata-preview-body {
     grid-template-columns: 1fr;
+  }
+
+  .section-header,
+  .launch-card-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .launch-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .launch-hero-media {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 1 / 1;
   }
 }

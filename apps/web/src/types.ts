@@ -16,6 +16,7 @@ export type TokenSnapshot = {
   state: string;
   pair: `0x${string}`;
   creator: `0x${string}`;
+  protocolFeeRecipient: `0x${string}`;
   metadataURI: string;
   graduationQuoteReserve: bigint;
   currentPriceQuotePerToken: bigint;

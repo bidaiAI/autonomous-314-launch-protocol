@@ -1,4 +1,4 @@
-import { createPublicClient, getAddress, http, keccak256, stringToHex, type Hex, type Log } from "viem";
+import { createPublicClient, getAddress, hexToBigInt, hexToNumber, http, keccak256, stringToHex, type Hex, type Log } from "viem";
 import { launchTokenAbi, v2PairAbi } from "./abi";
 import { indexerConfig } from "./config";
 import { resolveIndexerProfile } from "./profiles";
@@ -174,13 +174,18 @@ async function getLogsChunked(
   let cursor = params.fromBlock;
   while (cursor <= params.toBlock) {
     const end = cursor + batch - 1n > params.toBlock ? params.toBlock : cursor + batch - 1n;
-    const chunk = await client.getLogs({
-      address: params.address,
-      topics: params.topics,
-      fromBlock: cursor,
-      toBlock: end
-    } as any);
-    logs.push(...chunk);
+    const chunk = await client.request({
+      method: "eth_getLogs",
+      params: [
+        {
+          address: params.address,
+          topics: params.topics,
+          fromBlock: `0x${cursor.toString(16)}`,
+          toBlock: `0x${end.toString(16)}`
+        }
+      ]
+    });
+    logs.push(...chunk.map((entry) => rpcLogToLog(entry as any)));
     cursor = end + 1n;
   }
 
@@ -189,6 +194,34 @@ async function getLogsChunked(
 
 function eventTopic(signature: string): Hex {
   return keccak256(stringToHex(signature));
+}
+
+function rpcLogToLog(entry: {
+  address: `0x${string}`;
+  blockHash: `0x${string}` | null;
+  blockNumber: `0x${string}` | null;
+  data: `0x${string}`;
+  logIndex: `0x${string}` | null;
+  transactionHash: `0x${string}` | null;
+  transactionIndex: `0x${string}` | null;
+  removed: boolean;
+  topics: Hex[];
+}): Log {
+  const normalizedTopics = (entry.topics.length === 0
+    ? []
+    : [entry.topics[0], ...entry.topics.slice(1)]) as [] | [Hex, ...Hex[]];
+
+  return {
+    address: entry.address,
+    blockHash: entry.blockHash,
+    blockNumber: entry.blockNumber ? hexToBigInt(entry.blockNumber) : null,
+    data: entry.data,
+    logIndex: entry.logIndex ? hexToNumber(entry.logIndex) : null,
+    transactionHash: entry.transactionHash,
+    transactionIndex: entry.transactionIndex ? hexToNumber(entry.transactionIndex) : null,
+    removed: entry.removed,
+    topics: normalizedTopics
+  };
 }
 
 async function readLaunchSnapshot(client: ReturnType<typeof createPublicClient>, tokenAddress: `0x${string}`): Promise<Omit<LaunchWorkspaceSnapshot, "recentActivity" | "segmentedChart">> {

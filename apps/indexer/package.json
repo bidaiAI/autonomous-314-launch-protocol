@@ -7,8 +7,9 @@
     "dev": "tsx watch src/main.ts",
     "snapshot": "pnpm build && node dist/main.js",
     "serve": "tsx src/server.ts",
-    "build": "tsc -p tsconfig.json",
-    "start": "node dist/main.js"
+    "build": "rm -rf dist && tsc -p tsconfig.json",
+    "start": "node dist/apps/indexer/src/server.js",
+    "start:snapshot": "node dist/apps/indexer/src/main.js"
   },
   "dependencies": {
     "viem": "^2.38.2"

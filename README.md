@@ -319,6 +319,16 @@ See:
 - [docs/LOCAL_DEMO.md](./docs/LOCAL_DEMO.md)
 - [docs/BSC_FACTORY_DEPLOYMENT.md](./docs/BSC_FACTORY_DEPLOYMENT.md)
 
+## Official BSC deployment
+
+- **Factory:** `0xEFd05ee43A21cc109604050724cEd52ebA200314`
+- **Chain:** BNB Smart Chain
+- **Router:** PancakeSwap V2 Router `0x10ED43C718714eb63d5aA57B78B54704E256024E`
+- **Factory create fee:** `0.03 BNB`
+- **Graduation target:** `12 BNB`
+
+The reference web app is intended to be deployed from the monorepo root on Vercel using [`vercel.json`](./vercel.json). The reference indexer/API is intended to be deployed from the monorepo root on Railway using [`railway.json`](./railway.json).
+
 ## Quick start
 
 ```bash

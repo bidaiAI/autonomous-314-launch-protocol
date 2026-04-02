@@ -1,4 +1,4 @@
-import { createPublicClient, getAddress, http, type Log } from "viem";
+import { createPublicClient, getAddress, http, keccak256, stringToHex, type Hex, type Log } from "viem";
 import { launchTokenAbi, v2PairAbi } from "./abi";
 import { indexerConfig } from "./config";
 import { resolveIndexerProfile } from "./profiles";
@@ -8,6 +8,15 @@ import type { CandleBucket, IndexerSnapshot, LaunchState, LaunchWorkspaceSnapsho
 
 const launchStates = ["Created", "Bonding314", "Migrating", "DEXOnly"] as const;
 const zeroAddress = "0x0000000000000000000000000000000000000000";
+const launchCreatedTopic = eventTopic("LaunchCreated(address,address,string,string,string)");
+const buyExecutedTopic = eventTopic(
+  "BuyExecuted(address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256)"
+);
+const sellExecutedTopic = eventTopic(
+  "SellExecuted(address,uint256,uint256,uint256,uint256,uint256,uint256,uint256)"
+);
+const graduatedTopic = eventTopic("Graduated(address,uint256,uint256,uint256,uint256)");
+const swapTopic = eventTopic("Swap(address,uint256,uint256,uint256,uint256,address)");
 
 export async function buildIndexerSnapshot(): Promise<IndexerSnapshot> {
   if (!indexerConfig.factoryAddress) {
@@ -28,6 +37,7 @@ export async function buildIndexerSnapshot(): Promise<IndexerSnapshot> {
 
   const factoryLogs = await getLogsChunked(client, {
     address: getAddress(indexerConfig.factoryAddress),
+    topics: [[launchCreatedTopic]],
     fromBlock,
     toBlock: latestBlock
   });
@@ -63,6 +73,7 @@ export async function buildIndexerSnapshot(): Promise<IndexerSnapshot> {
 
     const tokenLogs = await getLogsChunked(client, {
       address: token,
+      topics: [[buyExecutedTopic, sellExecutedTopic, graduatedTopic]],
       fromBlock,
       toBlock: latestBlock
     });
@@ -102,6 +113,7 @@ export async function buildIndexerSnapshot(): Promise<IndexerSnapshot> {
 
       const pairLogs = await getLogsChunked(client, {
         address: graduationPair,
+        topics: [[swapTopic]],
         fromBlock: graduationBlock && graduationBlock > fromBlock ? graduationBlock : fromBlock,
         toBlock: latestBlock
       });
@@ -151,6 +163,7 @@ async function getLogsChunked(
   client: ReturnType<typeof createPublicClient>,
   params: {
     address: `0x${string}`;
+    topics?: (Hex | Hex[] | null)[];
     fromBlock: bigint;
     toBlock: bigint;
   }
@@ -163,14 +176,19 @@ async function getLogsChunked(
     const end = cursor + batch - 1n > params.toBlock ? params.toBlock : cursor + batch - 1n;
     const chunk = await client.getLogs({
       address: params.address,
+      topics: params.topics,
       fromBlock: cursor,
       toBlock: end
-    });
+    } as any);
     logs.push(...chunk);
     cursor = end + 1n;
   }
 
   return logs;
+}
+
+function eventTopic(signature: string): Hex {
+  return keccak256(stringToHex(signature));
 }
 
 async function readLaunchSnapshot(client: ReturnType<typeof createPublicClient>, tokenAddress: `0x${string}`): Promise<Omit<LaunchWorkspaceSnapshot, "recentActivity" | "segmentedChart">> {

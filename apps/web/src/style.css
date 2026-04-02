@@ -23,6 +23,80 @@ body {
   padding: 40px 24px 72px;
 }
 
+.topbar-actions {
+  display: grid;
+  gap: 14px;
+  justify-items: end;
+}
+
+.topbar-compact {
+  margin-bottom: 18px;
+}
+
+.nav-pills {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.nav-pill {
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.12);
+  color: #dbe7f5;
+}
+
+.nav-pill.active {
+  background: rgba(94, 234, 212, 0.18);
+  color: #f5f7fb;
+  box-shadow: 0 0 0 1px rgba(94, 234, 212, 0.25) inset;
+}
+
+.home-hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 24px;
+  margin-bottom: 20px;
+}
+
+.home-hero h2 {
+  margin: 8px 0 12px;
+  font-size: clamp(1.4rem, 2.4vw, 2.2rem);
+}
+
+.hero-actions {
+  margin-bottom: 0;
+}
+
+.page-grid {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.create-grid {
+  grid-template-columns: 320px minmax(0, 1fr);
+}
+
+.page-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.page-heading h2 {
+  margin: 8px 0 0;
+}
+
+.compact-heading {
+  margin-bottom: 16px;
+}
+
 .topbar {
   display: flex;
   justify-content: space-between;
@@ -253,6 +327,12 @@ body {
 .actions-rail {
   display: grid;
   gap: 20px;
+}
+
+.rail,
+.actions-rail {
+  position: sticky;
+  top: 24px;
 }
 
 .panel {
@@ -828,10 +908,8 @@ button {
   }
 
   .manifesto-grid,
-  .launch-card-grid {
-    grid-template-columns: 1fr;
-  }
-
+  .launch-card-grid,
+  .page-grid,
   .workspace-grid {
     grid-template-columns: 1fr;
   }
@@ -846,13 +924,31 @@ button {
   }
 
   .section-header,
-  .launch-card-head {
+  .launch-card-head,
+  .page-heading,
+  .home-hero,
+  .topbar,
+  .topbar-actions {
     flex-direction: column;
     align-items: flex-start;
   }
 
+  .topbar-actions {
+    justify-items: start;
+  }
+
+  .nav-pills {
+    justify-content: flex-start;
+  }
+
   .launch-hero {
     grid-template-columns: 1fr;
+  }
+
+  .rail,
+  .actions-rail {
+    position: static;
+    top: auto;
   }
 
   .launch-hero-media {

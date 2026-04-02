@@ -8,8 +8,8 @@
     "snapshot": "pnpm build && node dist/main.js",
     "serve": "tsx src/server.ts",
     "build": "rm -rf dist && tsc -p tsconfig.json",
-    "start": "node dist/apps/indexer/src/server.js",
-    "start:snapshot": "node dist/apps/indexer/src/main.js"
+    "start": "node dist/server.js",
+    "start:snapshot": "node dist/main.js"
   },
   "dependencies": {
     "viem": "^2.38.2"

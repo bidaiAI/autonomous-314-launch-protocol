@@ -1,0 +1,19 @@
+{
+  "name": "autonomous-314-launch-protocol",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.33.0",
+  "scripts": {
+    "install:all": "pnpm install",
+    "build": "pnpm --filter @autonomous314/contracts build && pnpm --filter @autonomous314/indexer build && pnpm --filter @autonomous314/web build",
+    "test": "pnpm --filter @autonomous314/contracts test",
+    "compile": "pnpm --filter @autonomous314/contracts compile",
+    "dev:web": "pnpm --filter @autonomous314/web dev",
+    "dev:indexer": "pnpm --filter @autonomous314/indexer dev",
+    "demo:node": "pnpm --filter @autonomous314/contracts node",
+    "demo:prepare": "pnpm --filter @autonomous314/contracts demo:local",
+    "demo:local": "node scripts/run-local-demo.mjs",
+    "snapshot:indexer": "pnpm --filter @autonomous314/indexer snapshot",
+    "serve:indexer": "pnpm --filter @autonomous314/indexer serve"
+  }
+}

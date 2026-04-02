@@ -1,0 +1,23 @@
+{
+  "name": "@autonomous314/contracts",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "build": "hardhat compile",
+    "compile": "hardhat compile",
+    "node": "hardhat node",
+    "test": "hardhat test",
+    "gas:report": "hardhat run scripts/gas-report.ts",
+    "demo:local": "hardhat run scripts/deploy-local-demo.ts --network localhost"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.0.2"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@types/node": "^22.10.1",
+    "hardhat": "^2.22.12",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.2"
+  }
+}

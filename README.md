@@ -124,7 +124,7 @@ Autonomous 314 is designed for:
 - **LP handling**: minted directly to the dead address
 - **fees**: 1% total = 0.3% protocol + 0.7% creator
 - **abandoned creator fees**: if a launch is still pre-graduation after `180 days` and has had no trades for `30 days`, anyone may sweep the unclaimable creator fee vault into the protocol fee vault
-- **safety**: quote-side wrapped-native preload is tolerated only up to the immutable graduation target; oversized preload blocks graduation and any bounded preload is treated as a non-canonical opening-state warning
+- **safety**: quote-side wrapped-native preload is surfaced as a non-canonical opening-state warning rather than a cheap graduation DOS path
 - **deployment**: factory supports `CREATE2` salts for vanity suffix search such as `0314`
 
 ## Lifecycle
@@ -184,7 +184,7 @@ Current design choices include:
 - **explicit buy/sell paths with slippage protection** as the intended execution path
 - **partial fill at graduation boundary** so the market cannot overshoot the target in a single trade
 - **post-grad hard cutover** so the protocol does not keep a permanent second market alive after DEX launch
-- **bounded quote-side preload compatibility** so small stray wrapped-native deposits do not trivially DOS graduation, while oversized preload is still rejected
+- **quote-side preload compatibility** so stray wrapped-native deposits do not trivially DOS graduation, while the frontend still surfaces non-canonical opening state when preload exists
 
 Raw native transfer buys are intentionally **disabled** in the contract runtime. The intended path is an explicit contract call such as `buy(minTokenOut)` so integrations can preserve slippage protection.
 
@@ -324,6 +324,37 @@ pnpm demo:local
 ```
 
 After that you can open the local reference frontend and run a full create → trade → graduate flow without a public faucet.
+
+## Vanity suffix strategy (`0314`)
+
+The protocol tries to use `0314` **where it adds identity without degrading UX**.
+
+Recommended priority:
+
+1. **official factory** — best effort to end with `0314`
+2. **selected launches** — optional `0314` vanity via `createLaunchWithSalt(...)`
+3. **public protocol treasury / ops EOAs** — optional vanity if useful for branding
+
+Bundled helpers:
+
+```bash
+pnpm vanity:eoa -- --suffix 0314
+pnpm vanity:factory -- --suffix 0314 ...
+pnpm vanity:launch -- --suffix 0314 ...
+```
+
+Operational guidance:
+
+- use vanity mining for the **official factory** if you want a canonical, memorable protocol address
+- do **not** force vanity mining on every creator launch
+- for creator launches, only mine a suffix when the creator explicitly cares about it
+
+Important caveat:
+
+- launch vanity results only remain valid for the **exact final launch parameters**
+- if you change factory address, creator, name, symbol, metadata URI, router, fee recipient, or graduation target, the predicted vanity launch address changes too
+
+This is why the repository treats `0314` as a **best-effort identity layer**, not a hard dependency for protocol correctness.
 
 ## Current status
 

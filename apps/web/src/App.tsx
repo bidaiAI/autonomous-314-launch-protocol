@@ -13,12 +13,15 @@ import {
   formatNative,
   formatDateTime,
   formatToken,
+  getWalletChainId,
+  isWalletOnExpectedChain,
   previewBuy,
   previewSell,
   readFactory,
   readIndexedLaunchWorkspace,
   readRecentLaunchSnapshots,
   readToken,
+  switchWalletToExpectedChain,
   sweepAbandonedCreatorFees
 } from "./protocol";
 import type { ActivityFeedItem, CandlePoint, FactorySnapshot, TokenSnapshot } from "./types";
@@ -28,7 +31,7 @@ import { activeProtocolProfile } from "./profiles";
 const protocolSnapshot = {
   preGrad: "314 bonding market, transfers disabled, 1-block sell cooldown",
   postGrad: `${activeProtocolProfile.dexName} only, LP burned, 314 disabled`,
-  pollutionRule: `${activeProtocolProfile.wrappedNativeSymbol} donation no longer blocks graduation; LP initialization or token-side pollution still blocks.`,
+  pollutionRule: `${activeProtocolProfile.wrappedNativeSymbol} preload alone does not stop graduation; LP initialization or token-side pollution still blocks.`,
   economics: "1% total fee = 0.7% creator + 0.3% protocol",
   sovereignty: "The launch contract itself is the market, reserve system, and graduation state machine."
 };
@@ -89,6 +92,8 @@ export function App() {
   const [sellPreviewState, setSellPreviewState] = useState<SellPreview | null>(null);
   const [status, setStatus] = useState<string>("Ready");
   const [loading, setLoading] = useState(false);
+  const [walletChainId, setWalletChainId] = useState<number | null>(null);
+  const [walletOnExpectedChain, setWalletOnExpectedChain] = useState(true);
   const workspaceRequestRef = useRef(0);
 
   const isBonding = tokenSnapshot?.state === "Bonding314";
@@ -112,6 +117,15 @@ export function App() {
       ? tokenSnapshot.graduationQuoteReserve
       : factorySnapshot?.graduationQuoteReserve ?? 0n;
   const runtimeChainLabel = activeProtocolProfile.chainLabel;
+  const walletWrongNetwork = Boolean(wallet) && walletChainId !== null && !walletOnExpectedChain;
+
+  async function refreshWalletNetworkStatus() {
+    const chainId = await getWalletChainId();
+    const onExpectedChain = chainId === null ? true : await isWalletOnExpectedChain();
+    setWalletChainId(chainId);
+    setWalletOnExpectedChain(onExpectedChain);
+    return { chainId, onExpectedChain };
+  }
 
   async function loadLaunchWorkspace(address: string, preferIndexed = true) {
     const requestId = ++workspaceRequestRef.current;
@@ -136,11 +150,30 @@ export function App() {
 
   async function handleConnectWallet() {
     try {
-      const { account } = await connectWallet();
+      const { account, chainId, chainMatches } = await connectWallet();
       setWallet(account);
-      setStatus(`Connected: ${account}`);
+      setWalletChainId(chainId);
+      setWalletOnExpectedChain(chainMatches);
+      setStatus(
+        chainMatches
+          ? `Connected: ${account}`
+          : `Connected: ${account} — switch wallet to ${runtimeChainLabel} before writing`
+      );
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Wallet connection failed");
+    }
+  }
+
+  async function handleSwitchNetwork() {
+    try {
+      setLoading(true);
+      await switchWalletToExpectedChain();
+      await refreshWalletNetworkStatus();
+      setStatus(`Wallet switched to ${runtimeChainLabel}`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Network switch failed");
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -356,6 +389,19 @@ export function App() {
         </button>
       </header>
 
+      {walletWrongNetwork && (
+        <section className="callout danger">
+          <strong>Wrong network</strong>
+          <p>
+            Connected wallet chain is {walletChainId}. Switch to {runtimeChainLabel} (chainId {activeProtocolProfile.chainId}) before
+            creating launches, trading, or claiming fees.
+          </p>
+          <div className="button-row">
+            <button onClick={handleSwitchNetwork}>Switch wallet network</button>
+          </div>
+        </section>
+      )}
+
       <section className="market-strip">
         <div className="strip-card">
           <span className="metric-label">Economics</span>
@@ -416,7 +462,7 @@ export function App() {
             </label>
             <div className="button-row">
               <button onClick={handleLoadFactory}>Load Factory</button>
-              <button className="secondary-button" onClick={handleClaimFactoryFees}>Claim Fees</button>
+              <button className="secondary-button" onClick={handleClaimFactoryFees} disabled={walletWrongNetwork}>Claim Fees</button>
             </div>
             {factorySnapshot && (
               <>
@@ -487,7 +533,7 @@ export function App() {
               Upfront cost = current on-chain create fee ({factorySnapshot ? formatNative(factorySnapshot.createFee) : "load factory"})
               {" "}+ network gas.
             </div>
-            <button onClick={handleCreateLaunch}>Create Launch</button>
+            <button onClick={handleCreateLaunch} disabled={walletWrongNetwork}>Create Launch</button>
           </article>
         </aside>
 
@@ -697,9 +743,9 @@ export function App() {
             </label>
             <div className="button-row stacked">
               <button className="secondary-button" onClick={handlePreviewBuy} disabled={!tokenAddress || !isBonding}>Preview Buy</button>
-              <button onClick={handleExecuteBuy} disabled={!isBonding}>Execute Buy</button>
+              <button onClick={handleExecuteBuy} disabled={!isBonding || walletWrongNetwork}>Execute Buy</button>
               <button className="secondary-button" onClick={handlePreviewSell} disabled={!tokenAddress || !isBonding}>Preview Sell</button>
-              <button onClick={handleExecuteSell} disabled={!isBonding}>Execute Sell</button>
+              <button onClick={handleExecuteSell} disabled={!isBonding || walletWrongNetwork}>Execute Sell</button>
             </div>
 
             {buyPreviewState && (
@@ -724,13 +770,13 @@ export function App() {
           <article className="panel">
             <h2>Claims & permissions</h2>
             <div className="button-row stacked">
-              <button className="secondary-button" onClick={handleClaimTokenProtocolFees} disabled={!tokenSnapshot}>
+              <button className="secondary-button" onClick={handleClaimTokenProtocolFees} disabled={!tokenSnapshot || walletWrongNetwork}>
                 Claim token protocol fees
               </button>
-              <button className="secondary-button" onClick={handleClaimCreatorFees} disabled={!isDexOnly || !connectedAsCreator}>
+              <button className="secondary-button" onClick={handleClaimCreatorFees} disabled={!isDexOnly || !connectedAsCreator || walletWrongNetwork}>
                 Claim creator fees
               </button>
-              <button className="secondary-button" onClick={handleSweepCreatorFees} disabled={!tokenSnapshot || !creatorFeeSweepReady}>
+              <button className="secondary-button" onClick={handleSweepCreatorFees} disabled={!tokenSnapshot || !creatorFeeSweepReady || walletWrongNetwork}>
                 Sweep abandoned creator fees
               </button>
             </div>

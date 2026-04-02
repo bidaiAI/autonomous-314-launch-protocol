@@ -346,7 +346,7 @@ describe("LaunchToken", function () {
     expect(await token.state()).to.equal(3n);
   });
 
-  it("reports bounded preloaded WNATIVE donation in the graduation event", async function () {
+  it("reports preloaded WNATIVE donation in the graduation event", async function () {
     const { token, buyer, wbnb, pair } = await deployFixture();
 
     const donation = ethers.parseEther("0.1");
@@ -374,13 +374,21 @@ describe("LaunchToken", function () {
     await expect(token.connect(buyer).buy(0, { value: OVERBUY })).to.be.revertedWithCustomError(token, "PairPolluted");
   });
 
-  it("reverts graduation when preloaded quote exceeds the graduation target", async function () {
+  it("still allows graduation when preloaded quote exceeds the graduation target", async function () {
     const { token, buyer, wbnb, pair } = await deployFixture();
 
     await wbnb.mint(await pair.getAddress(), GRADUATION_TARGET + 1n);
-    expect(await token.isPairGraduationCompatible()).to.equal(false);
+    expect(await token.isPairGraduationCompatible()).to.equal(true);
 
-    await expect(token.connect(buyer).buy(0, { value: OVERBUY })).to.be.revertedWithCustomError(token, "PairPolluted");
+    await expect(token.connect(buyer).buy(0, { value: OVERBUY }))
+      .to.emit(token, "Graduated")
+      .withArgs(
+        await pair.getAddress(),
+        ethers.parseEther("200000000"),
+        GRADUATION_TARGET,
+        GRADUATION_TARGET + 1n,
+        anyValue
+      );
   });
 
   it("blocks sending tokens back into the token contract after graduation", async function () {

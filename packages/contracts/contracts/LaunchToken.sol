@@ -582,7 +582,6 @@ contract LaunchToken is ERC20, ReentrancyGuard {
         IUniswapV2LikePair lpPair = IUniswapV2LikePair(pair);
         if (lpPair.totalSupply() != 0) return false;
 
-        if (IERC20Minimal(wrappedNative).balanceOf(pair) > graduationQuoteReserve) return false;
         if (balanceOf(pair) != 0) return false;
 
         (uint112 reserve0, uint112 reserve1,) = lpPair.getReserves();

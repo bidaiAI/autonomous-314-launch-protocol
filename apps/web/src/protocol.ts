@@ -28,6 +28,7 @@ const snapshotUrl = import.meta.env.VITE_INDEXER_SNAPSHOT_URL ?? "/data/indexer-
 const zeroAddress = "0x0000000000000000000000000000000000000000";
 
 const appChain = activeProtocolProfile.chain;
+const appRpcUrl = import.meta.env.VITE_RPC_URL || activeProtocolProfile.defaultRpcUrl;
 
 type SnapshotActivityJson =
   | {
@@ -151,18 +152,9 @@ type IndexerSnapshotJson = {
 let cachedIndexerSnapshot: Promise<IndexerSnapshotJson | null> | null = null;
 
 export function getPublicClient() {
-  const rpcUrl = import.meta.env.VITE_RPC_URL;
-
-  if (typeof window !== "undefined" && window.ethereum) {
-    return createPublicClient({
-      chain: appChain,
-      transport: custom(window.ethereum)
-    });
-  }
-
   return createPublicClient({
     chain: appChain,
-    transport: http(rpcUrl || activeProtocolProfile.defaultRpcUrl)
+    transport: http(appRpcUrl)
   });
 }
 
@@ -239,6 +231,7 @@ export async function connectWallet() {
   }
 
   const [account] = await window.ethereum.request({ method: "eth_requestAccounts" });
+  const chainId = await getWalletChainId();
   const walletClient = createWalletClient({
     chain: appChain,
     transport: custom(window.ethereum)
@@ -246,7 +239,10 @@ export async function connectWallet() {
 
   return {
     account: getAddress(account),
-    walletClient
+    walletClient,
+    chainId,
+    expectedChainId: appChain.id,
+    chainMatches: chainId === appChain.id
   };
 }
 
@@ -259,6 +255,61 @@ function getWalletClientOrThrow() {
     chain: appChain,
     transport: custom(window.ethereum)
   });
+}
+
+export async function getWalletChainId() {
+  if (!window.ethereum) {
+    return null;
+  }
+
+  const chainIdHex = (await window.ethereum.request({ method: "eth_chainId" })) as string;
+  return Number.parseInt(chainIdHex, 16);
+}
+
+export async function isWalletOnExpectedChain() {
+  const chainId = await getWalletChainId();
+  return chainId === appChain.id;
+}
+
+export async function switchWalletToExpectedChain() {
+  if (!window.ethereum) {
+    throw new Error("No injected wallet found");
+  }
+
+  const targetChainHex = `0x${appChain.id.toString(16)}`;
+
+  try {
+    await window.ethereum.request({
+      method: "wallet_switchEthereumChain",
+      params: [{ chainId: targetChainHex }]
+    });
+    return;
+  } catch (error) {
+    const switchError = error as { code?: number };
+    if (switchError.code !== 4902) {
+      throw error;
+    }
+  }
+
+  await window.ethereum.request({
+    method: "wallet_addEthereumChain",
+    params: [
+      {
+        chainId: targetChainHex,
+        chainName: activeProtocolProfile.chainLabel,
+        nativeCurrency: appChain.nativeCurrency,
+        rpcUrls: [appRpcUrl],
+        blockExplorerUrls: appChain.blockExplorers?.default?.url ? [appChain.blockExplorers.default.url] : undefined
+      }
+    ]
+  });
+}
+
+async function ensureWalletOnExpectedChain() {
+  const chainId = await getWalletChainId();
+  if (chainId !== appChain.id) {
+    throw new Error(`Wrong network. Switch wallet to ${activeProtocolProfile.chainLabel} (chainId ${appChain.id}).`);
+  }
 }
 
 async function getActiveAccount() {
@@ -508,6 +559,7 @@ export async function createLaunch(
 ) {
   const walletClient = getWalletClientOrThrow();
   const account = await getActiveAccount();
+  await ensureWalletOnExpectedChain();
   const publicClient = getPublicClient();
 
   const hash = await walletClient.writeContract({
@@ -549,6 +601,7 @@ export async function createLaunch(
 export async function executeBuy(address: string, grossQuoteIn: string, minTokenOut: bigint) {
   const walletClient = getWalletClientOrThrow();
   const account = await getActiveAccount();
+  await ensureWalletOnExpectedChain();
   const publicClient = getPublicClient();
 
   const hash = await walletClient.writeContract({
@@ -567,6 +620,7 @@ export async function executeBuy(address: string, grossQuoteIn: string, minToken
 export async function executeSell(address: string, tokenAmount: string, minQuoteOut: bigint) {
   const walletClient = getWalletClientOrThrow();
   const account = await getActiveAccount();
+  await ensureWalletOnExpectedChain();
   const publicClient = getPublicClient();
 
   const hash = await walletClient.writeContract({
@@ -584,6 +638,7 @@ export async function executeSell(address: string, tokenAmount: string, minQuote
 export async function claimFactoryProtocolFees(factoryAddress: string) {
   const walletClient = getWalletClientOrThrow();
   const account = await getActiveAccount();
+  await ensureWalletOnExpectedChain();
   const publicClient = getPublicClient();
 
   const hash = await walletClient.writeContract({
@@ -600,6 +655,7 @@ export async function claimFactoryProtocolFees(factoryAddress: string) {
 export async function claimTokenProtocolFees(tokenAddress: string) {
   const walletClient = getWalletClientOrThrow();
   const account = await getActiveAccount();
+  await ensureWalletOnExpectedChain();
   const publicClient = getPublicClient();
 
   const hash = await walletClient.writeContract({
@@ -616,6 +672,7 @@ export async function claimTokenProtocolFees(tokenAddress: string) {
 export async function claimCreatorFees(tokenAddress: string) {
   const walletClient = getWalletClientOrThrow();
   const account = await getActiveAccount();
+  await ensureWalletOnExpectedChain();
   const publicClient = getPublicClient();
 
   const hash = await walletClient.writeContract({
@@ -632,6 +689,7 @@ export async function claimCreatorFees(tokenAddress: string) {
 export async function sweepAbandonedCreatorFees(tokenAddress: string) {
   const walletClient = getWalletClientOrThrow();
   const account = await getActiveAccount();
+  await ensureWalletOnExpectedChain();
   const publicClient = getPublicClient();
 
   const hash = await walletClient.writeContract({

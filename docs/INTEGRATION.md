@@ -140,21 +140,20 @@ If a factory deployer supplies `address(0)` for the protocol fee recipient, the 
 - `accountedNativeBalance()`
 - `unexpectedNativeBalance()`
 
-## 5. Bounded quote-preload compatibility
+## 5. Quote-preload compatibility
 
-The protocol tolerates quote-side WBNB preload only while it remains **at or below** the immutable graduation target.
+The protocol keeps graduation live even when quote-side WBNB has been preloaded into the pair.
 
 This means:
 
-- bounded preloaded WBNB in the pair may keep graduation live
-- preloaded WBNB above `graduationQuoteReserve()` **does** block graduation
+- preloaded WBNB in the pair does **not** block graduation by itself
 - existing LP initialization **does** block graduation
 - token-side pair pollution **does** block graduation
 
 Integrators should therefore distinguish:
 
 1. **clean pair**
-2. **pair has bounded quote preload and is still compatible**
+2. **pair has quote preload and is still compatible**
 3. **pair is not graduation-compatible**
 
 Do not assume that post-graduation DEX quote reserve equals exactly `graduationQuoteReserve()`.
@@ -162,7 +161,7 @@ Do not assume that post-graduation DEX quote reserve equals exactly `graduationQ
 Instead, treat the opening quote side as:
 
 - canonical protocol contribution: immutable `graduationQuoteReserve()`
-- plus any bounded quote preload that was already sitting in the pair before the canonical mint
+- plus any quote preload that was already sitting in the pair before the canonical mint
 
 Event semantics:
 

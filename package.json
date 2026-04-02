@@ -9,6 +9,8 @@
     "test": "pnpm --filter @autonomous314/contracts test",
     "compile": "pnpm --filter @autonomous314/contracts compile",
     "vanity:eoa": "node scripts/find-vanity-eoa.cjs",
+    "vanity:factory": "node scripts/find-vanity-create2-factory.cjs",
+    "vanity:launch": "node scripts/find-vanity-launch-salt.cjs",
     "dev:web": "pnpm --filter @autonomous314/web dev",
     "dev:indexer": "pnpm --filter @autonomous314/indexer dev",
     "demo:node": "pnpm --filter @autonomous314/contracts node",

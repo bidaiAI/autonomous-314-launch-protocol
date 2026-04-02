@@ -4,6 +4,7 @@ import type { IndexerSnapshot } from "./schema";
 
 const port = Number(process.env.INDEXER_PORT ?? 8787);
 const cacheTtlMs = Number(process.env.INDEXER_CACHE_TTL_MS ?? 15_000);
+const corsOrigin = process.env.INDEXER_CORS_ORIGIN ?? "*";
 
 let cache: { expiresAt: number; snapshot: IndexerSnapshot } | null = null;
 let inflight: Promise<IndexerSnapshot> | null = null;
@@ -35,6 +36,9 @@ async function getSnapshot(forceRefresh = false) {
 
 function sendJson(res: ServerResponse, status: number, body: unknown) {
   res.statusCode = status;
+  res.setHeader("access-control-allow-origin", corsOrigin);
+  res.setHeader("access-control-allow-methods", "GET, OPTIONS");
+  res.setHeader("access-control-allow-headers", "Content-Type");
   res.setHeader("content-type", "application/json; charset=utf-8");
   res.end(JSON.stringify(body, null, 2));
 }
@@ -49,6 +53,15 @@ const server = createServer(async (req, res) => {
   try {
     if (!req.url) {
       sendJson(res, 400, { error: "Missing request URL" });
+      return;
+    }
+
+    if (req.method === "OPTIONS") {
+      res.statusCode = 204;
+      res.setHeader("access-control-allow-origin", corsOrigin);
+      res.setHeader("access-control-allow-methods", "GET, OPTIONS");
+      res.setHeader("access-control-allow-headers", "Content-Type");
+      res.end();
       return;
     }
 

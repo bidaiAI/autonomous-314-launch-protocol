@@ -59,11 +59,45 @@ At a functional level, the protocol already provides:
   - a reference frontend, a bounded-cost indexer, and a local demo flow are included
 - **official vanity create flow**
   - the reference frontend locally mines a `CREATE2` salt so official launches default to addresses ending in `0314`
+- **creator anti-MEV create entrypoints**
+  - `0314` and `1314..9314` support factory-level `create + atomic buy`, while `b314` and `f314` support `create + atomic whitelist seat commit`
 - **rich launch metadata flow**
   - the create UI supports description, image, website, and social links while keeping only `metadataURI` on-chain
+- **mode-based launch families**
+  - `0314`, `b314`, `1314..9314`, and `f314` are first-class protocol families instead of ad hoc frontend presets
+- **protocol-ops batch tooling**
+  - the factory can batch-claim protocol fees and batch-sweep abandoned creator fees across many launches
 
 See [`docs/LAUNCH_METADATA.md`](docs/LAUNCH_METADATA.md) for the recommended metadata schema.
-See [`docs/NEXT_MODE_RESEARCH.md`](docs/NEXT_MODE_RESEARCH.md) for the next-step mode research covering `receive()` restoration, `0314/1314/5314/9314/b314` suffix taxonomy, whitelist gating, and post-grad taxed profiles.
+See [`docs/V2_DOWNSTREAM_CHECKLIST.md`](docs/V2_DOWNSTREAM_CHECKLIST.md) for the current V2 downstream implementation checklist.
+
+## Launch families and suffixes
+
+The protocol is now organized as a small launch-family kit instead of a single launch flavor:
+
+| Family | Suffix | Whitelist | Tax | Creator anti-MEV path | Typical use |
+|---|---|---:|---:|---|---|
+| Standard | `0314` | No | No | `create + atomic buy` | cleanest default launch |
+| Whitelist | `b314` | Yes | No | `create + atomic whitelist seat commit` | fixed-seat whitelist / presale launch |
+| Taxed standard | `1314..9314` | No | Yes (`1%..9%`) | `create + atomic buy` | post-grad tokenomics with buy/sell tax |
+| Whitelist + tax | `f314` | Yes | Yes | `create + atomic whitelist seat commit` | whitelist launch that later enables post-grad tax |
+
+Important suffix rules:
+
+- `1314..9314` directly encode the standard-family tax rate
+- `f314` only means **whitelist + tax family**; the actual tax rate must be read from `taxConfig()`
+- batch ops such as protocol fee sweeping and claiming are protocol tooling, not end-user UI features
+
+## 5-minute launch platform kit
+
+Autonomous 314 is not only a protocol for one official site. It is intended to be a **launch platform kit**:
+
+- deploy a factory profile
+- point a frontend at that factory
+- run a lightweight indexer or even a static snapshot flow
+- launch, trade, graduate, and index without building a separate swap backend
+
+In other words, the goal is that anyone can stand up a usable meme launch platform in minutes, with lower backend cost and more launch modes than typical closed launchpad websites.
 
 ## What problem this solves
 
@@ -192,8 +226,14 @@ Current design choices include:
 - **partial fill at graduation boundary** so the market cannot overshoot the target in a single trade
 - **post-grad hard cutover** so the protocol does not keep a permanent second market alive after DEX launch
 - **quote-side preload compatibility** so stray wrapped-native deposits do not trivially DOS graduation, while the frontend still surfaces non-canonical opening state when preload exists
+- **mode-specific creator anti-MEV entrypoints** so creators can atomically buy or atomically reserve their own whitelist seat at creation time
 
-Raw native transfer buys are intentionally **disabled** in the contract runtime. The intended path is an explicit contract call such as `buy(minTokenOut)` so integrations can preserve slippage protection.
+The protocol intentionally keeps **native transfer entrypoints** for the families that are meant to feel like 314:
+
+- `0314` and `1314..9314`: direct native transfer to the launch contract is a valid bonding-phase buy path
+- `b314` and `f314`: direct native transfer during the whitelist window is a valid fixed-seat commit path
+
+Reference UIs should still prefer explicit contract calls such as `buy(minTokenOut)` for everyday execution, but integrations must not assume `receive()` is disabled.
 
 ## Creator-first economics
 
@@ -201,7 +241,8 @@ The protocol is deliberately positioned against platform-first fee extraction.
 
 - **creator share**: `0.7%`
 - **protocol share**: `0.3%`
-- **create fee**: `0.01 native` in the repository default BSC deployment profile for future factories (`0.03 BNB` on the currently deployed live factory until it is redeployed)
+- **standard/taxed create fee**: `0.01 native`
+- **whitelist/whitelist-tax create fee**: `0.03 native`
 
 This means the protocol keeps a small sustainability fee while routing the majority of the trading fee back toward the project side.
 
@@ -253,7 +294,8 @@ The current **official launch profile** is:
 - DEX: **PancakeSwap V2**
 - wrapped native quote: **WBNB**
 - graduation target: **12 BNB**
-- create fee: **0.01 BNB** (repository default for the next factory deployment)
+- standard/taxed create fee: **0.01 BNB** (repository V2 default)
+- whitelist/whitelist-tax create fee: **0.03 BNB** (repository V2 default)
 - default protocol treasury fallback: **`0xC4187bE6b362DF625696d4a9ec5E6FA461CC0314`**
 
 If a factory deployer passes `address(0)` as the protocol fee recipient, the factory falls back to the default treasury above. Deployers can still override it explicitly.
@@ -329,7 +371,7 @@ See:
 - **Factory:** `0xEFd05ee43A21cc109604050724cEd52ebA200314`
 - **Chain:** BNB Smart Chain
 - **Router:** PancakeSwap V2 Router `0x10ED43C718714eb63d5aA57B78B54704E256024E`
-- **Factory create fee:** currently `0.03 BNB` on the live deployed factory; repository default for the next factory deployment is `0.01 BNB`
+- **Live deployment note:** the currently deployed public factory is the earlier live profile. The repository V2 baseline now targets `0314 / b314 / 1314..9314 / f314`, plus mode-specific create fees and batch ops, for the next official deployment.
 - **Graduation target:** `12 BNB`
 
 The reference web app is intended to be deployed from the monorepo root on Vercel using [`vercel.json`](./vercel.json). The reference indexer/API is intended to be deployed from the monorepo root on Railway using [`railway.json`](./railway.json).
@@ -345,15 +387,18 @@ pnpm demo:local
 
 After that you can open the local reference frontend and run a full create → trade → graduate flow without a public faucet.
 
-## Vanity suffix strategy (`0314`)
+## Vanity suffix strategy
 
-The protocol tries to use `0314` **where it adds identity without degrading UX**.
+The protocol uses suffixes as **mode identity markers** first, and vanity/branding only second.
 
 Recommended priority:
 
 1. **official factory** — best effort to end with `0314`
-2. **selected launches** — optional `0314` vanity via `createLaunchWithSalt(...)`
-3. **public protocol treasury / ops EOAs** — optional vanity if useful for branding
+2. **standard launches** — `0314`
+3. **whitelist launches** — `b314`
+4. **taxed standard launches** — `1314..9314`
+5. **whitelist + tax launches** — `f314`
+6. **public protocol treasury / ops EOAs** — optional vanity if useful for branding
 
 Bundled helpers:
 
@@ -371,7 +416,7 @@ Operational guidance:
 
 Important caveat:
 
-- launch vanity results only remain valid for the **exact final launch parameters**
+- launch vanity results only remain valid for the **exact final launch parameters and launch family**
 - if you change factory address, creator, name, symbol, metadata URI, router, fee recipient, or graduation target, the predicted vanity launch address changes too
 
 This is why the repository treats `0314` as a **best-effort identity layer**, not a hard dependency for protocol correctness.
@@ -387,6 +432,14 @@ The repository already includes:
 - a local demo flow with low graduation target for fast iteration
 
 The current official operating profile is **BSC-first**, while the codebase itself is kept **EVM-generic**.
+
+The repository baseline now includes the full V2 family design:
+
+- `0314`
+- `b314`
+- `1314..9314`
+- `f314`
+- protocol batch ops for sweeping and claiming fee surfaces at scale
 
 ## Build and test
 

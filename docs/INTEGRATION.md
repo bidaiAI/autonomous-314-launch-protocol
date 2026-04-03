@@ -19,6 +19,13 @@ Each launch has a single token contract that behaves as:
 2. `Migrating` during LP handoff
 3. `DEXOnly` after graduation
 
+The repository V2 baseline now exposes four launch families:
+
+- `0314` — standard / zero-tax
+- `b314` — whitelist / zero-tax
+- `1314..9314` — standard taxed family (`1%..9%`)
+- `f314` — whitelist + tax family (tax rate comes from `taxConfig()`)
+
 The canonical graduation path is:
 
 - immutable protocol contribution configured per factory deployment
@@ -36,18 +43,23 @@ Local/dev/test deployments may intentionally use a lower immutable target such a
 
 Third-party UIs should default to:
 
-- `buy(minTokenOut)` instead of raw native transfer
+- `buy(minTokenOut)` for normal explicit UI actions, while still recognizing that `receive()` is a valid protocol-native path:
+  - `0314` / `1314..9314`: direct bonding buy
+  - `b314` / `f314`: direct whitelist seat commit during the whitelist window
 - `sell(tokenAmount, minQuoteOut)` with explicit preview
 - showing graduation progress
+- showing launch family / suffix / mode
+- showing tax config for taxed families
+- showing whitelist snapshot for whitelist families
 - showing pair compatibility
 - showing creator/protocol claim permissions
-- when using the official create path, mining a local `CREATE2` salt first so launch addresses default to suffix `0314`
+- when using the official create path, mining a local `CREATE2` salt against the **mode-specific deployer** so the launch lands in the expected family suffix
 
 ### What should not be the default UI path
 
-Do **not** make “send the native asset directly to the token contract” the default buy flow.
+Do **not** make “send the native asset directly to the token contract” the default path for general users, even though the protocol intentionally preserves native-transfer semantics for 314-style families.
 
-The runtime contract no longer accepts raw native transfer buys as a normal trading path. Integrations should treat explicit contract calls such as `buy(minTokenOut)` as the only intended execution route.
+Integrations should still prefer explicit contract calls such as `buy(minTokenOut)` for normal UI execution, and should present raw native transfer as an advanced/manual 314-compatible path rather than the primary button.
 
 ## 3. State-driven UI rules
 
@@ -103,14 +115,33 @@ Hide/disable:
 
 - `router()`
 - `protocolFeeRecipient()`
-- `createFee()` — read this on-chain from the selected factory. The repository default for future BSC deployments is `0.01 BNB`, while the current live factory is still `0.03 BNB`.
+- `standardCreateFee()`
+- `whitelistCreateFee()`
+- `createFeeForMode(mode)`
+- `standardDeployer()`
+- `whitelistDeployer()`
+- `taxedDeployer()`
+- `whitelistTaxedDeployer()`
+
+For `f314`, the factory uses `whitelistTaxedDeployer()` as the generic CREATE2 target. Frontends/SDKs should assemble raw `initCode` off-chain from the official `LaunchTokenWhitelistTaxed` artifact plus constructor args, then use that deployer address for vanity prediction.
 - `graduationQuoteReserve()` — current official production profile: `12 BNB`
 - `accruedProtocolCreateFees()`
 - `totalLaunches()`
 - `allLaunches(index)`
 - `launchesOf(creator)`
+- `modeOf(token)` — treat `0` as **Unregistered**
 - `predictLaunchAddress(...)`
 - `createLaunchWithSalt(...)`
+- `createLaunchAndBuy(...)`
+- `createLaunchAndBuyWithSalt(...)`
+- `createWhitelistLaunchAndCommit(...)`
+- `createWhitelistLaunchAndCommitWithSalt(...)`
+- `createTaxLaunch(...)`
+- `createTaxLaunchAndBuy(...)`
+- `createWhitelistTaxLaunch(...)`
+- `createWhitelistTaxLaunchAndCommit(...)`
+- `batchClaimProtocolFees(address[] tokens, address recipient)`
+- `batchSweepAbandonedCreatorFees(address[] tokens)`
 
 If a factory deployer supplies `address(0)` for the protocol fee recipient, the contract falls back to the built-in default treasury:
 
@@ -122,6 +153,8 @@ If a factory deployer supplies `address(0)` for the protocol fee recipient, the 
 - `pair()`
 - `creator()`
 - `metadataURI()`
+- `launchMode()`
+- `launchSuffix()`
 - `currentPriceQuotePerToken()`
 - `displayGraduationProgressBps()`
 - `remainingQuoteCapacity()`
@@ -137,6 +170,8 @@ If a factory deployer supplies `address(0)` for the protocol fee recipient, the 
 - `creatorFeeSweepReady()`
 - `createdAt()`
 - `lastTradeAt()`
+- `whitelistSnapshot()` for `b314` / `f314`
+- `taxConfig()` for taxed families
 - `dexReserves()`
 - `pairSnapshot()`
 - `accountedNativeBalance()`
@@ -178,6 +213,7 @@ Event semantics:
 
 - `creator`
 - `token`
+- `mode`
 - `name`
 - `symbol`
 - `metadataURI`
@@ -265,6 +301,13 @@ For a unified launch timeline, merge:
 - the `Graduated` milestone
 - post-grad canonical pair `Swap` events
 
+For whitelist families, also consider adding:
+
+- whitelist seat commits
+- whitelist finalization / expiry markers
+- refund claims
+- whitelist allocation claims
+
 Recommended metadata on each timeline item:
 
 - `source`: `protocol` | `system` | `dex`
@@ -309,6 +352,14 @@ Recommended read-only endpoints:
 - `GET /launches/:token` (lightweight metadata / indexed lifecycle context)
 - `GET /launches/:token/activity?limit=40`
 - `GET /launches/:token/chart`
+
+For V2-aware APIs, include enough metadata so frontends do **not** have to guess family semantics:
+
+- `mode`
+- `suffix`
+- `metadataURI`
+- `taxConfig`
+- `whitelistSnapshot`
 
 This gives dynamic reads without turning the protocol into an unbounded analytics platform.
 

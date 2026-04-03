@@ -1,6 +1,12 @@
-import { createServer, type ServerResponse } from "http";
+import { createServer, type ServerResponse, type IncomingMessage } from "http";
 import { buildIndexerSnapshot } from "./service";
 import type { IndexerSnapshot } from "./schema";
+import { existsSync, mkdirSync, writeFileSync, readFileSync } from "fs";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
+
+const __metadir = dirname(fileURLToPath(import.meta.url));
+const METADATA_DIR = join(__metadir, "..", "metadata");
 
 const port = Number(process.env.PORT ?? process.env.INDEXER_PORT ?? 8787);
 const cacheTtlMs = Number(process.env.INDEXER_CACHE_TTL_MS ?? 15_000);
@@ -49,6 +55,15 @@ function parseLimit(value: string | null, fallback: number, max: number) {
   return Math.min(Math.floor(parsed), max);
 }
 
+function readBody(req: IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk: Buffer) => chunks.push(chunk));
+    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
+    req.on("error", reject);
+  });
+}
+
 const server = createServer(async (req, res) => {
   try {
     if (!req.url) {
@@ -59,9 +74,49 @@ const server = createServer(async (req, res) => {
     if (req.method === "OPTIONS") {
       res.statusCode = 204;
       res.setHeader("access-control-allow-origin", corsOrigin);
-      res.setHeader("access-control-allow-methods", "GET, OPTIONS");
+      res.setHeader("access-control-allow-methods", "GET, POST, OPTIONS");
       res.setHeader("access-control-allow-headers", "Content-Type");
       res.end();
+      return;
+    }
+
+    const url = new URL(req.url, `http://127.0.0.1:${port}`);
+
+    // ── Metadata upload (POST /api/metadata) ──
+    if (req.method === "POST" && url.pathname === "/api/metadata") {
+      const body = await readBody(req);
+      try {
+        const metadata = JSON.parse(body);
+        if (!metadata.name || !metadata.symbol) {
+          sendJson(res, 400, { error: "Metadata must include name and symbol" });
+          return;
+        }
+        if (!existsSync(METADATA_DIR)) mkdirSync(METADATA_DIR, { recursive: true });
+        const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const filename = `${id}.json`;
+        writeFileSync(join(METADATA_DIR, filename), JSON.stringify(metadata, null, 2));
+        const metadataUrl = `http://${req.headers.host ?? `127.0.0.1:${port}`}/api/metadata/${id}`;
+        sendJson(res, 201, { ok: true, id, url: metadataUrl });
+      } catch {
+        sendJson(res, 400, { error: "Invalid JSON body" });
+      }
+      return;
+    }
+
+    // ── Serve saved metadata (GET /api/metadata/:id) ──
+    if (req.method === "GET" && url.pathname.startsWith("/api/metadata/")) {
+      const id = url.pathname.replace("/api/metadata/", "").replace(/\.json$/, "");
+      const filepath = join(METADATA_DIR, `${id}.json`);
+      if (!existsSync(filepath)) {
+        sendJson(res, 404, { error: "Metadata not found" });
+        return;
+      }
+      try {
+        const data = JSON.parse(readFileSync(filepath, "utf-8"));
+        sendJson(res, 200, data);
+      } catch {
+        sendJson(res, 500, { error: "Failed to read metadata" });
+      }
       return;
     }
 
@@ -70,7 +125,6 @@ const server = createServer(async (req, res) => {
       return;
     }
 
-    const url = new URL(req.url, `http://127.0.0.1:${port}`);
     const forceRefresh = url.searchParams.get("refresh") === "1";
 
     if (url.pathname === "/health") {
@@ -113,7 +167,8 @@ const server = createServer(async (req, res) => {
           graduationProgressBps: launch.graduationProgressBps,
           pairPreloadedQuote: launch.pairPreloadedQuote,
           whitelistStatus: launch.whitelistStatus,
-          whitelistSnapshot: launch.whitelistSnapshot
+          whitelistSnapshot: launch.whitelistSnapshot,
+          taxConfig: launch.taxConfig
         }))
       });
       return;
@@ -195,6 +250,7 @@ const server = createServer(async (req, res) => {
           creatorClaimable: launch.creatorClaimable,
           whitelistStatus: launch.whitelistStatus,
           whitelistSnapshot: launch.whitelistSnapshot,
+          taxConfig: launch.taxConfig,
           dexTokenReserve: launch.dexTokenReserve,
           dexQuoteReserve: launch.dexQuoteReserve
         }

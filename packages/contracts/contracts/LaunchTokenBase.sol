@@ -23,6 +23,16 @@ abstract contract LaunchTokenBase is ERC20, ReentrancyGuard {
 
     uint8 public constant MODE_STANDARD_0314 = 1;
     uint8 public constant MODE_WHITELIST_B314 = 2;
+    uint8 public constant MODE_TAXED_1314 = 3;
+    uint8 public constant MODE_TAXED_2314 = 4;
+    uint8 public constant MODE_TAXED_3314 = 5;
+    uint8 public constant MODE_TAXED_4314 = 6;
+    uint8 public constant MODE_TAXED_5314 = 7;
+    uint8 public constant MODE_TAXED_6314 = 8;
+    uint8 public constant MODE_TAXED_7314 = 9;
+    uint8 public constant MODE_TAXED_8314 = 10;
+    uint8 public constant MODE_TAXED_9314 = 11;
+    uint8 public constant MODE_WHITELIST_TAX_F314 = 12;
 
     uint8 public constant WHITELIST_STATUS_NONE = 0;
     uint8 public constant WHITELIST_STATUS_ACTIVE = 1;
@@ -116,6 +126,7 @@ abstract contract LaunchTokenBase is ERC20, ReentrancyGuard {
     error WrappedQuoteTransferFailed();
     error InvalidGraduationConfig();
     error CreatorFeeSweepUnavailable();
+    error UnauthorizedFactoryCaller();
 
     constructor(
         string memory name_,
@@ -161,12 +172,25 @@ abstract contract LaunchTokenBase is ERC20, ReentrancyGuard {
         return launchModeId;
     }
 
-    function launchSuffix() external pure virtual returns (string memory);
+    function launchSuffix() external view virtual returns (string memory);
 
     function buy(uint256 minTokenOut) external payable virtual nonReentrant returns (uint256 tokenOut) {
         _beforeBondingAction();
         if (state != LaunchState.Bonding314) revert InvalidState();
-        tokenOut = _buy(msg.sender, minTokenOut);
+        tokenOut = _buyFrom(msg.sender, payable(msg.sender), minTokenOut);
+    }
+
+    function factoryBuyFor(address recipient, uint256 minTokenOut)
+        external
+        payable
+        virtual
+        nonReentrant
+        returns (uint256 tokenOut)
+    {
+        if (msg.sender != factory) revert UnauthorizedFactoryCaller();
+        _beforeBondingAction();
+        if (state != LaunchState.Bonding314) revert InvalidState();
+        tokenOut = _buyFrom(recipient, payable(recipient), minTokenOut);
     }
 
     function sell(uint256 tokenAmount, uint256 minQuoteOut)
@@ -223,8 +247,13 @@ abstract contract LaunchTokenBase is ERC20, ReentrancyGuard {
         amount = _claimProtocolFees(recipient);
     }
 
+    function factoryClaimProtocolFeesTo(address payable recipient) external nonReentrant returns (uint256 amount) {
+        if (msg.sender != factory) revert UnauthorizedFactoryCaller();
+        amount = _claimProtocolFees(recipient);
+    }
+
     function _claimProtocolFees(address payable recipient) internal returns (uint256 amount) {
-        if (msg.sender != protocolFeeRecipient) revert Unauthorized();
+        if (msg.sender != protocolFeeRecipient && msg.sender != factory) revert Unauthorized();
         if (recipient == address(0)) revert ZeroAddress();
         amount = protocolFeeVault;
         if (amount == 0) revert NothingToClaim();
@@ -503,8 +532,8 @@ abstract contract LaunchTokenBase is ERC20, ReentrancyGuard {
         return 0;
     }
 
-    function _buy(address recipient, uint256 minTokenOut) internal returns (uint256 tokenOut) {
-        if (recipient != msg.sender || recipient == address(0) || recipient == address(this) || recipient == pair) {
+    function _buyFrom(address buyer, address payable refundRecipient, uint256 minTokenOut) internal returns (uint256 tokenOut) {
+        if (buyer == address(0) || buyer == address(this) || buyer == pair) {
             revert InvalidRecipient();
         }
         if (msg.value == 0) revert ZeroAmount();
@@ -527,16 +556,16 @@ abstract contract LaunchTokenBase is ERC20, ReentrancyGuard {
         lastTradeAt = block.timestamp;
         saleTokenReserve -= tokenOut;
 
-        _transfer(address(this), recipient, tokenOut);
-        lastBuyBlock[recipient] = block.number;
+        _transfer(address(this), buyer, tokenOut);
+        lastBuyBlock[buyer] = block.number;
 
         uint256 refundAmount = msg.value - usedGross;
         if (refundAmount > 0) {
-            payable(msg.sender).sendValue(refundAmount);
+            refundRecipient.sendValue(refundAmount);
         }
 
         emit BuyExecuted(
-            msg.sender,
+            buyer,
             usedGross,
             netQuoteIn,
             protocolFee,
@@ -720,7 +749,7 @@ abstract contract LaunchTokenBase is ERC20, ReentrancyGuard {
         }
     }
 
-    function _update(address from, address to, uint256 value) internal override {
+    function _update(address from, address to, uint256 value) internal virtual override {
         if (state == LaunchState.Bonding314 || state == LaunchState.WhitelistCommit) {
             bool isMintOrBurn = from == address(0) || to == address(0);
             bool isProtocolTransfer = from == address(this) || to == address(this);

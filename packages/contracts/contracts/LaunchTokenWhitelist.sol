@@ -31,6 +31,7 @@ contract LaunchTokenWhitelist is LaunchTokenBase {
         uint256 whitelistThreshold;
         uint256 whitelistSlotSize;
         address[] whitelistAddresses;
+        uint8 launchModeId;
     }
 
     uint256 public immutable whitelistDeadline;
@@ -80,7 +81,7 @@ contract LaunchTokenWhitelist is LaunchTokenBase {
         args.protocolFeeRecipient,
         args.router,
         args.graduationQuoteReserve,
-        MODE_WHITELIST_B314,
+        args.launchModeId,
         LaunchState.WhitelistCommit
     ) {
         if (!_isAllowedThreshold(args.whitelistThreshold)) revert InvalidWhitelistThreshold();
@@ -123,20 +124,26 @@ contract LaunchTokenWhitelist is LaunchTokenBase {
             return;
         }
         if (state == LaunchState.Bonding314) {
-            _buy(msg.sender, 0);
+            _buyFrom(msg.sender, payable(msg.sender), 0);
             return;
         }
 
         revert InvalidState();
     }
 
-    function launchSuffix() external pure override returns (string memory) {
+    function launchSuffix() public view virtual override returns (string memory) {
         return "b314";
     }
 
     function commitWhitelistSeat() external payable nonReentrant {
         _advanceWhitelistPhaseIfNeeded();
         _commitWhitelistSeat(msg.sender);
+    }
+
+    function factoryCommitWhitelistSeat(address account) external payable nonReentrant {
+        if (msg.sender != factory) revert UnauthorizedFactoryCaller();
+        _advanceWhitelistPhaseIfNeeded();
+        _commitWhitelistSeat(account);
     }
 
     function advanceWhitelistPhase() external {
@@ -265,7 +272,14 @@ contract LaunchTokenWhitelist is LaunchTokenBase {
     function _isAuthorizedFactoryDeployment(address factory_) private view returns (bool) {
         if (msg.sender == factory_) return true;
         if (factory_.code.length == 0) return false;
-        return msg.sender == ILaunchFactoryRegistry(factory_).whitelistDeployer();
+        ILaunchFactoryRegistry registry = ILaunchFactoryRegistry(factory_);
+        if (launchModeId == MODE_WHITELIST_B314) {
+            return msg.sender == registry.whitelistDeployer();
+        }
+        if (launchModeId == MODE_WHITELIST_TAX_F314) {
+            return msg.sender == registry.whitelistTaxedDeployer();
+        }
+        return false;
     }
 
     function _advanceWhitelistPhaseIfNeeded() internal {

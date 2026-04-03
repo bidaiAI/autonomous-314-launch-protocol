@@ -59,11 +59,45 @@ Autonomous 314 当前的目标很明确，主要有四个：
   - 仓库内已经包含参考前端、低成本 indexer 和本地 demo 流程
 - **官方 vanity 创建流程**
   - 参考前端会在本地先挖出 `CREATE2` salt，因此官方创建的新 launch 默认尽量尾号 `0314`
+- **creator 的 anti-MEV 创建入口**
+  - `0314` 与 `1314..9314` 支持工厂级 `创建 + 原子买入`，`b314` 与 `f314` 支持 `创建 + 原子占白名单席位`
 - **富 metadata 创建流程**
   - 创建界面支持描述、图片、官网和社交链接，但链上仍只保留 `metadataURI`
+- **模式化 launch 家族**
+  - `0314`、`b314`、`1314..9314` 和 `f314` 都是协议层一等公民，而不是前端临时拼出来的选项
+- **协议运维批量工具**
+  - Factory 可批量领取 protocol fee，也可批量 sweep 长期废弃项目的 creator fee
 
 推荐的 metadata 结构见 [`docs/LAUNCH_METADATA.md`](docs/LAUNCH_METADATA.md)。
-关于下一步模式设计（恢复 `receive()`、`0314/1314/5314/9314/b314` 尾号体系、白名单模式、毕业后带税模式）的论证，见 [`docs/NEXT_MODE_RESEARCH.md`](docs/NEXT_MODE_RESEARCH.md)。
+当前 V2 下游适配清单见 [`docs/V2_DOWNSTREAM_CHECKLIST.md`](docs/V2_DOWNSTREAM_CHECKLIST.md)。
+
+## Launch 家族与尾号
+
+协议现在不再只有一种 launch，而是一个小型 launch family kit：
+
+| 家族 | 尾号 | 白名单 | 税 | creator anti-MEV 路径 | 典型用途 |
+|---|---|---:|---:|---|---|
+| 标准版 | `0314` | 否 | 否 | `创建 + 原子买入` | 最干净的默认 launch |
+| 白名单版 | `b314` | 是 | 否 | `创建 + 原子占白名单席位` | 固定席位 whitelist / 预售 |
+| 标准税版 | `1314..9314` | 否 | 是（`1%..9%`） | `创建 + 原子买入` | 毕业后启用买卖税的 tokenomics |
+| 白名单+税版 | `f314` | 是 | 是 | `创建 + 原子占白名单席位` | 先 whitelist，再在毕业后启用税 |
+
+需要特别说明：
+
+- `1314..9314` 直接表达标准税版的税率
+- `f314` 只表达“白名单 + 带税家族”，**具体税率要读 `taxConfig()`**
+- 批量 sweep / batch claim 属于协议运维能力，不是普通用户主界面的按钮
+
+## 5 分钟发射平台套件
+
+Autonomous 314 不只是一个官方前端，而是一套可以被任何人拿去搭建发射台的协议栈：
+
+- 部署一个 factory profile
+- 把前端指向这个 factory
+- 运行一个轻量 indexer，甚至只用静态 snapshot
+- 就能完成创建、交易、毕业和索引
+
+也就是说，它的目标是让任何人都能在几分钟内搭出自己的 meme 发射平台，不需要自己再造 swap 后台，同时拥有比常见封闭 launchpad 更丰富的模式组合。
 
 ## 这个协议解决什么问题
 
@@ -198,8 +232,14 @@ flowchart LR
 - **毕业边界 partial fill**，避免单笔直接冲穿目标
 - **毕业后一刀切到 DEXOnly**，不保留永久双市场
 - **quote 侧 preload 兼容**，避免 stray wrapped native 轻易卡死毕业，同时在前端明确提示这会让 DEX 开盘状态不再严格 canonical
+- **按模式区分的 creator anti-MEV 创建入口**，让 creator 在创建时就能原子买入，或原子抢到自己的白名单席位
 
-另外，协议运行时已经**禁用了直接向合约裸转原生币买入**。预期调用路径是显式 `buy(minTokenOut)`，这样第三方前端、钱包和脚本都能保留滑点保护。
+协议刻意保留了 **native transfer 入口**，但不同家族的语义不同：
+
+- `0314` 与 `1314..9314`：毕业前直接向合约转原生币，是合法的 314 买入路径
+- `b314` 与 `f314`：白名单窗口内直接向合约转原生币，表示固定席位 commit
+
+参考前端仍然应该优先走显式 `buy(minTokenOut)`，但第三方集成不能再假设 `receive()` 被禁用了。
 
 ## Creator-first 经济模型
 
@@ -207,7 +247,8 @@ flowchart LR
 
 - **创建者分成**：`0.7%`
 - **协议分成**：`0.3%`
-- **创建费用**：仓库默认的下一版 BSC 部署 profile 为 `0.01 native`（当前已部署主网 Factory 仍是 `0.03 BNB`，需重部署后才会变更）
+- **标准/税版创建费**：`0.01 native`
+- **白名单/白名单税版创建费**：`0.03 native`
 
 也就是说：
 
@@ -265,7 +306,8 @@ Autonomous 314 比封闭 launch 网站更接近 Web3 精神：
 - DEX：**PancakeSwap V2**
 - wrapped native quote：**WBNB**
 - 毕业目标：**12 BNB**
-- 创建费用：**0.01 BNB**（下一版默认部署配置）
+- 标准/税版创建费：**0.01 BNB**（V2 仓库默认）
+- 白名单/白名单税版创建费：**0.03 BNB**（V2 仓库默认）
 - 默认协议 treasury fallback：**`0xC4187bE6b362DF625696d4a9ec5E6FA461CC0314`**
 
 如果工厂部署时把 `protocolFeeRecipient` 传成 `address(0)`，工厂会自动 fallback 到上面的默认 treasury 地址。  
@@ -359,15 +401,18 @@ pnpm demo:local
 
 执行后，你可以在本地直接跑完整的 create → trade → graduate 流程，不需要测试网水龙头。
 
-## `0314` 尾号策略
+## 尾号策略
 
-这个协议会尽可能追求 `0314`，但不会为了 vanity 牺牲正常使用体验。
+这个协议把尾号首先当成**模式身份**，其次才是品牌 vanity。
 
 推荐优先级：
 
 1. **官方 Factory** —— 尽量做成尾号 `0314`
-2. **特定 Launch** —— 通过 `createLaunchWithSalt(...)` 可选追求 `0314`
-3. **协议公开地址 / 运维地址** —— 如果有品牌诉求，也可以选择 vanity
+2. **标准 launch** —— `0314`
+3. **白名单 launch** —— `b314`
+4. **标准税版 launch** —— `1314..9314`
+5. **白名单税版 launch** —— `f314`
+6. **协议公开地址 / 运维地址** —— 如有品牌诉求可再做 vanity
 
 仓库已内置辅助脚本：
 
@@ -385,7 +430,7 @@ pnpm vanity:launch -- --suffix 0314 ...
 
 要特别注意：
 
-- Launch 地址尾号只对**完全一致的最终参数**有效
+- Launch 地址尾号只对**完全一致的最终参数与 launch 家族**有效
 - 只要 factory、creator、name、symbol、metadata URI、router、fee recipient 或 graduation target 任何一个发生变化，预测出的 vanity 地址就会变化
 
 所以在这个仓库里，`0314` 被视为一种**尽力而为的身份层**，而不是协议正确性的依赖项。
@@ -401,6 +446,14 @@ pnpm vanity:launch -- --suffix 0314 ...
 - 低 graduation target 的本地 demo 流程
 
 当前官方运行策略是 **BSC-first**，但代码层本身保持 **EVM-generic**。
+
+仓库中的 V2 基线现在已经覆盖：
+
+- `0314`
+- `b314`
+- `1314..9314`
+- `f314`
+- 面向大规模运维的 batch sweep / batch claim 能力
 
 ## 构建与测试
 

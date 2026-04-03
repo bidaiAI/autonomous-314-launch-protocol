@@ -2,17 +2,47 @@ export type FactorySnapshot = {
   address: `0x${string}`;
   router: `0x${string}`;
   protocolFeeRecipient: `0x${string}`;
+  standardDeployer: `0x${string}`;
+  whitelistDeployer: `0x${string}`;
+  taxedDeployer: `0x${string}`;
+  whitelistTaxedDeployer: `0x${string}`;
   createFee: bigint;
   standardCreateFee: bigint;
   whitelistCreateFee: bigint;
   supportsWhitelistMode: boolean;
+  supportsTaxedMode: boolean;
+  supportsWhitelistTaxedMode: boolean;
   graduationQuoteReserve: bigint;
   totalLaunches: bigint;
   accruedProtocolCreateFees: bigint;
   recentLaunches: `0x${string}`[];
 };
 
-export type LaunchMode = "Unregistered" | "Standard0314" | "WhitelistB314";
+export type LaunchMode =
+  | "Unregistered"
+  | "Standard0314"
+  | "WhitelistB314"
+  | "Taxed1314"
+  | "Taxed2314"
+  | "Taxed3314"
+  | "Taxed4314"
+  | "Taxed5314"
+  | "Taxed6314"
+  | "Taxed7314"
+  | "Taxed8314"
+  | "Taxed9314"
+  | "WhitelistTaxF314";
+
+export type LaunchCreationFamily = "standard" | "whitelist" | "taxed" | "whitelistTaxed";
+
+export type TaxConfig = {
+  enabled: boolean;
+  configuredTaxBps: bigint;
+  burnBps: bigint;
+  treasuryBps: bigint;
+  wallet: `0x${string}`;
+  active: boolean;
+};
 
 export type WhitelistSnapshot = {
   status: bigint;
@@ -54,6 +84,7 @@ export type TokenSnapshot = {
   creatorFeeSweepReady: boolean;
   createdAt: bigint;
   lastTradeAt: bigint;
+  taxConfig: TaxConfig | null;
   whitelistStatus: bigint;
   whitelistSnapshot: WhitelistSnapshot | null;
   dexTokenReserve: bigint;

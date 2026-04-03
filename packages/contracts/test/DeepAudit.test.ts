@@ -41,6 +41,7 @@ describe("Deep Audit: AMM Math & Edge Cases", function () {
       protocolFeeRecipient: protocol.address,
       router: await mockRouter.getAddress(),
       graduationQuoteReserve: GRADUATION_TARGET,
+      launchModeId: 1,
     });
     await token.waitForDeployment();
 

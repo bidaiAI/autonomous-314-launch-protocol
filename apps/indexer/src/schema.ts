@@ -1,5 +1,27 @@
 export type LaunchState = "Created" | "Bonding314" | "Migrating" | "DEXOnly" | "WhitelistCommit";
-export type LaunchMode = "Unregistered" | "Standard0314" | "WhitelistB314";
+export type LaunchMode =
+  | "Unregistered"
+  | "Standard0314"
+  | "WhitelistB314"
+  | "Taxed1314"
+  | "Taxed2314"
+  | "Taxed3314"
+  | "Taxed4314"
+  | "Taxed5314"
+  | "Taxed6314"
+  | "Taxed7314"
+  | "Taxed8314"
+  | "Taxed9314"
+  | "WhitelistTaxF314";
+
+export type TaxConfigSnapshot = {
+  enabled: boolean;
+  taxBps: string;
+  burnShareBps: string;
+  treasuryShareBps: string;
+  treasuryWallet: `0x${string}` | null;
+  active: boolean;
+} | null;
 
 export type WhitelistSnapshot = {
   status: string;
@@ -105,6 +127,7 @@ export type LaunchWorkspaceSnapshot = {
   creatorClaimable: string;
   whitelistStatus: string;
   whitelistSnapshot: WhitelistSnapshot;
+  taxConfig: TaxConfigSnapshot;
   dexTokenReserve: string;
   dexQuoteReserve: string;
   recentActivity: ActivityRecord[];

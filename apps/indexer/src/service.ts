@@ -3,12 +3,34 @@ import { launchTokenAbi, v2PairAbi } from "./abi";
 import { indexerConfig } from "./config";
 import { resolveIndexerProfile } from "./profiles";
 import { normalizeGraduatedActivity, normalizePairTrade, normalizeProtocolTrade } from "./normalizers";
-import type { CandleBucket, IndexerSnapshot, LaunchMode, LaunchState, LaunchWorkspaceSnapshot, TradeRecord, WhitelistSnapshot } from "./schema";
+import type {
+  CandleBucket,
+  IndexerSnapshot,
+  LaunchMode,
+  LaunchState,
+  LaunchWorkspaceSnapshot,
+  TaxConfigSnapshot,
+  TradeRecord,
+  WhitelistSnapshot
+} from "./schema";
 
 const launchStates = ["Created", "Bonding314", "Migrating", "DEXOnly", "WhitelistCommit"] as const;
-const launchModes = ["Unregistered", "Standard0314", "WhitelistB314"] as const;
+const launchModeLabels: Record<number, LaunchMode> = {
+  0: "Unregistered",
+  1: "Standard0314",
+  2: "WhitelistB314",
+  3: "Taxed1314",
+  4: "Taxed2314",
+  5: "Taxed3314",
+  6: "Taxed4314",
+  7: "Taxed5314",
+  8: "Taxed6314",
+  9: "Taxed7314",
+  10: "Taxed8314",
+  11: "Taxed9314",
+  12: "WhitelistTaxF314"
+} as const;
 const zeroAddress = "0x0000000000000000000000000000000000000000";
-const standardVanitySuffix = "0314";
 const legacyFactoryAbi = [
   {
     type: "function",
@@ -211,7 +233,41 @@ function eventTopic(signature: string): Hex {
 }
 
 function launchModeFromId(mode: number): LaunchMode {
-  return (launchModes[mode] ?? "Unregistered") as LaunchMode;
+  return launchModeLabels[mode] ?? "Unregistered";
+}
+
+function expectedSuffixForMode(mode: number) {
+  switch (mode) {
+    case 2:
+      return "b314";
+    case 3:
+      return "1314";
+    case 4:
+      return "2314";
+    case 5:
+      return "3314";
+    case 6:
+      return "4314";
+    case 7:
+      return "5314";
+    case 8:
+      return "6314";
+    case 9:
+      return "7314";
+    case 10:
+      return "8314";
+    case 11:
+      return "9314";
+    case 12:
+      return "f314";
+    case 1:
+    default:
+      return "0314";
+  }
+}
+
+function isTaxedMode(mode: bigint) {
+  return mode >= 3n;
 }
 
 function rpcLogToLog(entry: {
@@ -297,7 +353,7 @@ async function readLaunchSnapshot(client: ReturnType<typeof createPublicClient>,
   ];
 
   let launchMode = 1n;
-  let launchSuffix = standardVanitySuffix;
+  let launchSuffix = expectedSuffixForMode(Number(launchMode));
   let whitelistStatus = 0n;
   let whitelistSnapshot: readonly [bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint] = [
     0n,
@@ -310,6 +366,7 @@ async function readLaunchSnapshot(client: ReturnType<typeof createPublicClient>,
     0n,
     0n
   ];
+  let taxConfig: TaxConfigSnapshot = null;
 
   try {
     launchMode = (await client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "launchMode" })) as bigint;
@@ -329,6 +386,27 @@ async function readLaunchSnapshot(client: ReturnType<typeof createPublicClient>,
       functionName: "whitelistSnapshot"
     })) as readonly [bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint];
   } catch {}
+  if (isTaxedMode(launchMode)) {
+    try {
+      const [enabled, taxBps, burnShareBps, treasuryShareBps, treasuryWallet, active] = (await client.readContract({
+        address: tokenAddress,
+        abi: launchTokenAbi,
+        functionName: "taxConfig"
+      })) as readonly [boolean, bigint, bigint, bigint, `0x${string}`, boolean];
+      taxConfig = {
+        enabled,
+        taxBps: taxBps.toString(),
+        burnShareBps: burnShareBps.toString(),
+        treasuryShareBps: treasuryShareBps.toString(),
+        treasuryWallet: treasuryWallet === zeroAddress ? null : treasuryWallet,
+        active
+      };
+    } catch {}
+  }
+
+  if (!launchSuffix) {
+    launchSuffix = expectedSuffixForMode(Number(launchMode));
+  }
 
   const parsedWhitelistSnapshot: WhitelistSnapshot =
     whitelistStatus === 0n && whitelistSnapshot[1] === 0n
@@ -367,6 +445,7 @@ async function readLaunchSnapshot(client: ReturnType<typeof createPublicClient>,
     creatorClaimable: creatorClaimable.toString(),
     whitelistStatus: whitelistStatus.toString(),
     whitelistSnapshot: parsedWhitelistSnapshot,
+    taxConfig,
     dexTokenReserve: dexReserves[0].toString(),
     dexQuoteReserve: dexReserves[1].toString()
   };

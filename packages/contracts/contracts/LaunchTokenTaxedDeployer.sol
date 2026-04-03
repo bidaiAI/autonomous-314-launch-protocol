@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {LaunchTokenWhitelist} from "./LaunchTokenWhitelist.sol";
+import {LaunchTokenTaxed} from "./LaunchTokenTaxed.sol";
 
-contract LaunchTokenWhitelistDeployer {
+contract LaunchTokenTaxedDeployer {
     error Unauthorized();
+
     struct DeployConfig {
         string name;
         string symbol;
@@ -14,17 +15,18 @@ contract LaunchTokenWhitelistDeployer {
         address protocolFeeRecipient;
         address router;
         uint256 graduationQuoteReserve;
-        uint256 whitelistThreshold;
-        uint256 whitelistSlotSize;
-        address[] whitelistAddresses;
         uint8 launchModeId;
+        uint16 taxBps;
+        uint16 burnShareBps;
+        uint16 treasuryShareBps;
+        address treasuryWallet;
         bytes32 salt;
     }
 
     function deploy(DeployConfig calldata config) external returns (address token) {
         if (msg.sender != config.factory) revert Unauthorized();
         token = address(
-            new LaunchTokenWhitelist{salt: config.salt}(LaunchTokenWhitelist.ConstructorArgs({
+            new LaunchTokenTaxed{salt: config.salt}(LaunchTokenTaxed.TaxedConstructorArgs({
                 name: config.name,
                 symbol: config.symbol,
                 metadataURI: config.metadataURI,
@@ -33,10 +35,11 @@ contract LaunchTokenWhitelistDeployer {
                 protocolFeeRecipient: config.protocolFeeRecipient,
                 router: config.router,
                 graduationQuoteReserve: config.graduationQuoteReserve,
-                whitelistThreshold: config.whitelistThreshold,
-                whitelistSlotSize: config.whitelistSlotSize,
-                whitelistAddresses: config.whitelistAddresses,
-                launchModeId: config.launchModeId
+                launchModeId: config.launchModeId,
+                taxBps: config.taxBps,
+                burnShareBps: config.burnShareBps,
+                treasuryShareBps: config.treasuryShareBps,
+                treasuryWallet: config.treasuryWallet
             }))
         );
     }

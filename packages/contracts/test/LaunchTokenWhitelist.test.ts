@@ -43,6 +43,7 @@ describe("LaunchTokenWhitelist", function () {
       whitelistThreshold: THRESHOLD,
       whitelistSlotSize: SLOT,
       whitelistAddresses: whitelist,
+      launchModeId: 2,
     });
     await token.waitForDeployment();
 

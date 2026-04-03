@@ -1,4 +1,4 @@
-# V2 downstream checklist (0314 + b314 baseline)
+# V2 downstream checklist (0314 / b314 / 1314–9314 / f314)
 
 This note records the downstream work needed after the new V2 contract baseline.
 It is intentionally practical and implementation-facing.
@@ -10,6 +10,7 @@ It is intentionally practical and implementation-facing.
 - `receive()` buys during `Bonding314`
 - no whitelist
 - no token tax
+- creator path: `create + atomic buy`
 
 ### `b314`
 - whitelist commitment launch
@@ -23,6 +24,22 @@ It is intentionally practical and implementation-facing.
 - self-claim refund on expiry without threshold
 - fallback to normal `Bonding314` after whitelist expiry
 - whitelist accounting kept separate from curve accounting until settlement
+- creator path: `create + atomic whitelist seat commit`
+
+### `1314 .. 9314`
+- standard launch family with post-grad tax
+- suffix encodes tax rate `1% .. 9%`
+- tax only applies in `DEXOnly`
+- only pair buys/sells are taxed
+- wallet-to-wallet transfers stay untaxed
+- creator path: `create + atomic buy`
+
+### `f314`
+- whitelist + tax family
+- whitelist lifecycle matches `b314`
+- suffix identifies the family, not the exact tax rate
+- exact tax config must be read from `taxConfig()`
+- creator path: `create + atomic whitelist seat commit`
 
 ## Contract surface changes that downstream code must consume
 
@@ -33,17 +50,36 @@ It is intentionally practical and implementation-facing.
   - `protocolFeeRecipient`
   - `standardDeployer`
   - `whitelistDeployer`
+  - `taxedDeployer`
+  - `whitelistTaxedDeployer`
   - `standardCreateFee`
   - `whitelistCreateFee`
   - `graduationQuoteReserve`
 - new create entrypoints:
+  - `createLaunchAndBuy(...)`
+  - `createLaunchAndBuyWithSalt(...)`
   - `createWhitelistLaunch(...)`
   - `createWhitelistLaunchWithSalt(...)`
+  - `createWhitelistLaunchAndCommit(...)`
+  - `createWhitelistLaunchAndCommitWithSalt(...)`
+  - `createTaxLaunch(...)`
+  - `createTaxLaunchWithSalt(...)`
+  - `createTaxLaunchAndBuy(...)`
+  - `createTaxLaunchAndBuyWithSalt(...)`
+  - `createWhitelistTaxLaunch(...)`
+  - `createWhitelistTaxLaunchWithSalt(...)`
+  - `createWhitelistTaxLaunchAndCommit(...)`
+  - `createWhitelistTaxLaunchAndCommitWithSalt(...)`
+  - `batchClaimProtocolFees(...)`
+  - `batchSweepAbandonedCreatorFees(...)`
 - new getters:
   - `standardDeployer()`
   - `whitelistDeployer()`
+  - `taxedDeployer()`
+  - `whitelistTaxedDeployer()`
   - `createFeeForMode(...)`
   - `modeOf(token)`
+  - `pendingModeOf(token)`
 - canonical create event is now:
   - `LaunchCreated(creator, token, mode, name, symbol, metadataURI)`
 
@@ -56,7 +92,7 @@ It is intentionally practical and implementation-facing.
 - `canCommitWhitelist(address)`
 - `canClaimWhitelistAllocation(address)`
 - `canClaimWhitelistRefund(address)`
-- `taxConfig()` currently returns disabled defaults for the 0314+b314 baseline
+- `taxConfig()` returns disabled defaults for zero-tax families and real config for taxed families
 
 ### New state enum usage
 UI/indexer must support:
@@ -69,6 +105,8 @@ UI/indexer must support:
 ## Security-sensitive facts frontend must not infer incorrectly
 
 - `b314` is **not** standard 0314 with a cosmetic suffix.
+- `0314` now has a creator anti-MEV path via factory-level `create + atomic buy`.
+- `b314` has the equivalent creator anti-MEV path via `create + atomic whitelist seat commit`.
 - `receive()` on `b314` during whitelist window means **commit**, not direct buy.
 - `receive()` on `b314` after whitelist expiry/finalization means **buy**, because state has moved into `Bonding314`.
 - whitelist settlement now applies the same 1% bonding fee split semantics as normal bonding buys.
@@ -84,8 +122,10 @@ Refresh vendored ABIs in:
 
 ### Create flow
 Split create UX by mode:
-- `0314`: standard create
-- `b314`: whitelist create
+- `0314`: standard create, plus atomic creator buy
+- `b314`: whitelist create, plus atomic creator seat commit
+- `1314..9314`: taxed standard create, plus atomic creator buy
+- `f314`: whitelist+tax create, plus atomic creator seat commit
 
 Whitelist create UI needs:
 - threshold selector (`4 / 6 / 8`)
@@ -93,6 +133,15 @@ Whitelist create UI needs:
 - whitelist address input/import
 - seat-count preview
 - per-seat token estimate preview
+- creator-seat autofill explanation when using the atomic commit path
+
+Taxed create UI needs:
+- family/rate selector (`1314..9314` or `f314`)
+- `taxBps`
+- `burnShareBps`
+- `treasuryShareBps`
+- `treasuryWallet`
+- clear copy that tax only activates after graduation and only on pair transfers
 
 ### Routing / verification
 Current official verification logic must stop assuming only suffix `0314` is official.
@@ -101,9 +150,10 @@ Use:
 - `modeOf(token)`
 - `launchMode()`
 - `launchSuffix()`
+- and for `f314`, `taxConfig()`
 
 ### Workspace UI
-`b314` pages need explicit sections for:
+`b314` / `f314` pages need explicit sections for:
 - whitelist status
 - deadline
 - seat count / seats filled
@@ -112,6 +162,14 @@ Use:
 - commit button
 - claim allocation button
 - claim refund button
+
+Taxed pages need:
+- `taxConfig.enabled`
+- `taxConfig.active`
+- tax rate
+- burn share
+- treasury share
+- treasury wallet
 
 ## Indexer work
 
@@ -126,6 +184,7 @@ Add at minimum:
 - `suffix`
 - `whitelistStatus`
 - whitelist snapshot summary
+- `taxConfig`
 
 ### Event handling
 Update `LaunchCreated` decoding for the new `mode` field.
@@ -143,13 +202,16 @@ Whitelist event ingestion should eventually include:
 Update V2 deployment scripts to deploy in this order:
 1. `LaunchTokenDeployer`
 2. `LaunchTokenWhitelistDeployer`
-3. `LaunchFactory`
+3. `LaunchTokenTaxedDeployer`
+4. `LaunchCreate2Deployer` (used as the `whitelistTaxedDeployer` registry target for `f314`)
+5. `LaunchFactory`
 
 ### Vanity tooling
 The old on-chain predict helper path was removed from the contracts to keep code size deployable.
 Vanity mining must therefore be done off-chain from artifacts + constructor args.
 
-`0314` and `b314` require different init-code builders.
+`0314`, `b314`, `1314..9314`, and `f314` require mode-specific create2 prediction logic.
+For `f314`, raw `initCode` must be assembled off-chain and predicted against the generic `whitelistTaxedDeployer` create2 target.
 
 ## Audit notes already addressed in the baseline
 
@@ -161,7 +223,6 @@ Vanity mining must therefore be done off-chain from artifacts + constructor args
 
 ## Still intentionally deferred
 
-- taxed modes `1314..9314`
-- whitelist+tax family `f314`
-- frontend/indexer migration to the new ABIs and mode-aware UI
-- README/public docs rewrite for the V2 mode matrix
+- richer whitelist event timelines in the reference frontend
+- ops/keeper scripts for batch sweep + batch claim
+- README/public docs polish for the full “5-minute launch platform kit” narrative

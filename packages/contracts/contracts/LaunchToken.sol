@@ -16,6 +16,7 @@ contract LaunchToken is LaunchTokenBase {
         address protocolFeeRecipient;
         address router;
         uint256 graduationQuoteReserve;
+        uint8 launchModeId;
     }
 
     constructor(ConstructorArgs memory args) LaunchTokenBase(
@@ -27,7 +28,7 @@ contract LaunchToken is LaunchTokenBase {
         args.protocolFeeRecipient,
         args.router,
         args.graduationQuoteReserve,
-        MODE_STANDARD_0314,
+        args.launchModeId,
         LaunchState.Bonding314
     ) {
         if (!_isAuthorizedFactoryDeployment(args.factory)) revert UnauthorizedFactoryDeployment();
@@ -35,16 +36,23 @@ contract LaunchToken is LaunchTokenBase {
 
     receive() external payable nonReentrant {
         if (state != LaunchState.Bonding314) revert InvalidState();
-        _buy(msg.sender, 0);
+        _buyFrom(msg.sender, payable(msg.sender), 0);
     }
 
-    function launchSuffix() external pure override returns (string memory) {
+    function launchSuffix() public view virtual override returns (string memory) {
         return "0314";
     }
 
     function _isAuthorizedFactoryDeployment(address factory_) private view returns (bool) {
         if (msg.sender == factory_) return true;
         if (factory_.code.length == 0) return false;
-        return msg.sender == ILaunchFactoryRegistry(factory_).standardDeployer();
+        ILaunchFactoryRegistry registry = ILaunchFactoryRegistry(factory_);
+        if (launchModeId == MODE_STANDARD_0314) {
+            return msg.sender == registry.standardDeployer();
+        }
+        if (launchModeId >= MODE_TAXED_1314 && launchModeId <= MODE_TAXED_9314) {
+            return msg.sender == registry.taxedDeployer();
+        }
+        return false;
     }
 }

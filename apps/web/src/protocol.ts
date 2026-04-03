@@ -20,8 +20,12 @@ import {
   launchFactoryAbi,
   launchTokenAbi,
   launchTokenBytecode,
+  launchTokenTaxedAbi,
+  launchTokenTaxedBytecode,
   launchTokenWhitelistAbi,
   launchTokenWhitelistBytecode,
+  launchTokenWhitelistTaxedAbi,
+  launchTokenWhitelistTaxedBytecode,
   v2PairAbi
 } from "./abi";
 import { activeProtocolProfile } from "./profiles";
@@ -29,21 +33,38 @@ import type {
   ActivityFeedItem,
   CandlePoint,
   FactorySnapshot,
+  LaunchCreationFamily,
   LaunchMode,
   LaunchMetadata,
   ProtocolVerification,
   SegmentedChartSnapshot,
   TokenSnapshot,
+  TaxConfig,
   TradeFeedItem
 } from "./types";
 
 const launchStates = ["Created", "Bonding314", "Migrating", "DEXOnly", "WhitelistCommit"] as const;
-const launchModes = ["Unregistered", "Standard0314", "WhitelistB314"] as const;
+const launchModes = [
+  "Unregistered",
+  "Standard0314",
+  "WhitelistB314",
+  "Taxed1314",
+  "Taxed2314",
+  "Taxed3314",
+  "Taxed4314",
+  "Taxed5314",
+  "Taxed6314",
+  "Taxed7314",
+  "Taxed8314",
+  "Taxed9314",
+  "WhitelistTaxF314"
+] as const;
 const indexerApiBase = import.meta.env.VITE_INDEXER_API_URL?.replace(/\/$/, "");
 const snapshotUrl = import.meta.env.VITE_INDEXER_SNAPSHOT_URL ?? "/data/indexer-snapshot.json";
-const zeroAddress = "0x0000000000000000000000000000000000000000";
+const zeroAddress = getAddress("0x0000000000000000000000000000000000000000");
 const standardVanitySuffix = "0314";
 const whitelistVanitySuffix = "b314";
+const whitelistTaxVanitySuffix = "f314";
 
 const appChain = activeProtocolProfile.chain;
 const appRpcUrl = import.meta.env.VITE_RPC_URL || activeProtocolProfile.defaultRpcUrl;
@@ -205,6 +226,14 @@ type SnapshotLaunchJson = {
   pairGraduationCompatible: boolean;
   protocolClaimable: string;
   creatorClaimable: string;
+  taxConfig?: {
+    enabled: boolean;
+    taxBps: string;
+    burnShareBps: string;
+    treasuryShareBps: string;
+    treasuryWallet: `0x${string}` | null;
+    active: boolean;
+  } | null;
   whitelistStatus?: number;
   whitelistSnapshot?: {
     status: string | number;
@@ -242,6 +271,7 @@ type ApiLaunchSummaryJson = {
   currentPriceQuotePerToken: string;
   graduationProgressBps: number;
   pairPreloadedQuote: string;
+  taxConfig?: SnapshotLaunchJson["taxConfig"];
   whitelistStatus?: string;
   whitelistSnapshot?: SnapshotLaunchJson["whitelistSnapshot"];
 };
@@ -289,10 +319,22 @@ function launchModeFromId(modeId: number): LaunchMode {
   return (launchModes[modeId] ?? "Unregistered") as LaunchMode;
 }
 
-function expectedSuffixForMode(modeId: number) {
+function expectedSuffixForMode(modeId: number, taxBps?: number) {
   if (modeId === 1) return standardVanitySuffix;
   if (modeId === 2) return whitelistVanitySuffix;
+  if (modeId >= 3 && modeId <= 11) {
+    const normalizedTaxBps = taxBps ?? (modeId - 2) * 100;
+    return `${Math.floor(normalizedTaxBps / 100)}314`;
+  }
+  if (modeId === 12) return whitelistTaxVanitySuffix;
   return "";
+}
+
+function deployerForFamily(snapshot: FactorySnapshot, family: LaunchCreationFamily) {
+  if (family === "whitelist") return snapshot.whitelistDeployer || snapshot.standardDeployer;
+  if (family === "taxed") return snapshot.taxedDeployer || snapshot.standardDeployer;
+  if (family === "whitelistTaxed") return snapshot.whitelistTaxedDeployer || snapshot.whitelistDeployer || snapshot.standardDeployer;
+  return snapshot.standardDeployer;
 }
 
 export function getPublicClient() {
@@ -345,6 +387,31 @@ function metadataUriToFetchUrl(uri: string) {
   if (uri.startsWith("ipfs://")) return `https://ipfs.io/ipfs/${uri.replace("ipfs://", "")}`;
   if (uri.startsWith("ar://")) return `https://arweave.net/${uri.replace("ar://", "")}`;
   return null;
+}
+
+function convertJsonTaxConfig(
+  taxConfig:
+    | {
+        enabled: boolean;
+        taxBps: string;
+        burnShareBps: string;
+        treasuryShareBps: string;
+        treasuryWallet: `0x${string}` | null;
+        active: boolean;
+      }
+    | null
+    | undefined
+): TokenSnapshot["taxConfig"] {
+  if (!taxConfig) return null;
+
+  return {
+    enabled: taxConfig.enabled,
+    configuredTaxBps: BigInt(taxConfig.taxBps),
+    burnBps: BigInt(taxConfig.burnShareBps),
+    treasuryBps: BigInt(taxConfig.treasuryShareBps),
+    wallet: getAddress(taxConfig.treasuryWallet ?? zeroAddress),
+    active: taxConfig.active
+  };
 }
 
 function normalizeLaunchMetadata(raw: unknown): LaunchMetadata | null {
@@ -656,8 +723,120 @@ function buildWhitelistLaunchInitCode(params: {
   return concatHex([launchTokenWhitelistBytecode, encodedArgs]);
 }
 
+function buildTaxedLaunchInitCode(params: {
+  name: string;
+  symbol: string;
+  metadataURI: string;
+  creator: `0x${string}`;
+  factory: `0x${string}`;
+  protocolFeeRecipient: `0x${string}`;
+  router: `0x${string}`;
+  graduationQuoteReserve: bigint;
+  launchModeId: number;
+  taxBps: number;
+  burnShareBps: number;
+  treasuryShareBps: number;
+  treasuryWallet: `0x${string}`;
+}): Hex {
+  const encodedArgs = encodeAbiParameters(
+    [
+      { type: "string" },
+      { type: "string" },
+      { type: "string" },
+      { type: "address" },
+      { type: "address" },
+      { type: "address" },
+      { type: "address" },
+      { type: "uint256" },
+      { type: "uint8" },
+      { type: "uint16" },
+      { type: "uint16" },
+      { type: "uint16" },
+      { type: "address" }
+    ],
+    [
+      params.name,
+      params.symbol,
+      params.metadataURI,
+      params.creator,
+      params.factory,
+      params.protocolFeeRecipient,
+      params.router,
+      params.graduationQuoteReserve,
+      params.launchModeId,
+      params.taxBps,
+      params.burnShareBps,
+      params.treasuryShareBps,
+      params.treasuryWallet
+    ]
+  );
+
+  return concatHex([launchTokenTaxedBytecode, encodedArgs]);
+}
+
+function buildWhitelistTaxedLaunchInitCode(params: {
+  name: string;
+  symbol: string;
+  metadataURI: string;
+  creator: `0x${string}`;
+  factory: `0x${string}`;
+  protocolFeeRecipient: `0x${string}`;
+  router: `0x${string}`;
+  graduationQuoteReserve: bigint;
+  whitelistThreshold: bigint;
+  whitelistSlotSize: bigint;
+  whitelistAddresses: readonly `0x${string}`[];
+  launchModeId: number;
+  taxBps: number;
+  burnShareBps: number;
+  treasuryShareBps: number;
+  treasuryWallet: `0x${string}`;
+}): Hex {
+  const encodedArgs = encodeAbiParameters(
+    [
+      { type: "string" },
+      { type: "string" },
+      { type: "string" },
+      { type: "address" },
+      { type: "address" },
+      { type: "address" },
+      { type: "address" },
+      { type: "uint256" },
+      { type: "uint256" },
+      { type: "uint256" },
+      { type: "address[]" },
+      { type: "uint8" },
+      { type: "uint16" },
+      { type: "uint16" },
+      { type: "uint16" },
+      { type: "address" }
+    ],
+    [
+      params.name,
+      params.symbol,
+      params.metadataURI,
+      params.creator,
+      params.factory,
+      params.protocolFeeRecipient,
+      params.router,
+      params.graduationQuoteReserve,
+      params.whitelistThreshold,
+      params.whitelistSlotSize,
+      params.whitelistAddresses,
+      params.launchModeId,
+      params.taxBps,
+      params.burnShareBps,
+      params.treasuryShareBps,
+      params.treasuryWallet
+    ]
+  );
+
+  return concatHex([launchTokenWhitelistTaxedBytecode, encodedArgs]);
+}
+
 async function findVanityLaunchSalt(params: {
-  mode: "standard" | "whitelist";
+  mode: LaunchCreationFamily;
+  deployer: `0x${string}`;
   factory: `0x${string}`;
   name: string;
   symbol: string;
@@ -669,11 +848,22 @@ async function findVanityLaunchSalt(params: {
   whitelistThreshold?: bigint;
   whitelistSlotSize?: bigint;
   whitelistAddresses?: readonly `0x${string}`[];
+  taxBps?: number;
+  burnShareBps?: number;
+  treasuryShareBps?: number;
+  treasuryWallet?: `0x${string}`;
   suffix?: string;
   onProgress?: (update: { attempts: number; elapsedMs: number }) => void;
 }) {
   const suffix =
-    (params.suffix ?? (params.mode === "whitelist" ? whitelistVanitySuffix : standardVanitySuffix)).toLowerCase();
+    (params.suffix ??
+      (params.mode === "whitelist"
+        ? whitelistVanitySuffix
+        : params.mode === "whitelistTaxed"
+          ? whitelistTaxVanitySuffix
+          : params.mode === "taxed"
+            ? `${Math.floor((params.taxBps ?? 100) / 100)}314`
+            : standardVanitySuffix)).toLowerCase();
   const initCode =
     params.mode === "whitelist"
       ? buildWhitelistLaunchInitCode({
@@ -689,7 +879,42 @@ async function findVanityLaunchSalt(params: {
           whitelistSlotSize: params.whitelistSlotSize ?? 0n,
           whitelistAddresses: params.whitelistAddresses ?? []
         })
-      : buildLaunchInitCode({
+      : params.mode === "taxed"
+        ? buildTaxedLaunchInitCode({
+            name: params.name,
+            symbol: params.symbol,
+            metadataURI: params.metadataURI,
+            creator: params.creator,
+            factory: params.factory,
+            protocolFeeRecipient: params.protocolFeeRecipient,
+            router: params.router,
+            graduationQuoteReserve: params.graduationQuoteReserve,
+            launchModeId: Math.floor((params.taxBps ?? 100) / 100) + 2,
+            taxBps: params.taxBps ?? 100,
+            burnShareBps: params.burnShareBps ?? 5000,
+            treasuryShareBps: params.treasuryShareBps ?? 5000,
+            treasuryWallet: params.treasuryWallet ?? params.protocolFeeRecipient
+          })
+        : params.mode === "whitelistTaxed"
+          ? buildWhitelistTaxedLaunchInitCode({
+              name: params.name,
+              symbol: params.symbol,
+              metadataURI: params.metadataURI,
+              creator: params.creator,
+              factory: params.factory,
+              protocolFeeRecipient: params.protocolFeeRecipient,
+              router: params.router,
+              graduationQuoteReserve: params.graduationQuoteReserve,
+              whitelistThreshold: params.whitelistThreshold ?? 0n,
+              whitelistSlotSize: params.whitelistSlotSize ?? 0n,
+              whitelistAddresses: params.whitelistAddresses ?? [],
+              launchModeId: 12,
+              taxBps: params.taxBps ?? 100,
+              burnShareBps: params.burnShareBps ?? 5000,
+              treasuryShareBps: params.treasuryShareBps ?? 5000,
+              treasuryWallet: params.treasuryWallet ?? params.protocolFeeRecipient
+            })
+        : buildLaunchInitCode({
           name: params.name,
           symbol: params.symbol,
           metadataURI: params.metadataURI,
@@ -700,12 +925,13 @@ async function findVanityLaunchSalt(params: {
           graduationQuoteReserve: params.graduationQuoteReserve
         });
   const initCodeHash = keccak256(initCode);
+  const vanityDeployer = params.deployer ?? params.factory;
   const started = performance.now();
   let attempts = 0;
 
   while (true) {
     const salt = randomBytes32Hex();
-    const predictedAddress = computeCreate2Address(params.factory, salt, initCodeHash);
+    const predictedAddress = computeCreate2Address(vanityDeployer, salt, initCodeHash);
     attempts += 1;
 
     if (predictedAddress.toLowerCase().endsWith(suffix)) {
@@ -748,13 +974,25 @@ export async function readFactory(address: string): Promise<FactorySnapshot> {
   let standardCreateFee = createFee;
   let whitelistCreateFee = 0n;
   let supportsWhitelistMode = false;
+  let supportsTaxedMode = false;
+  let supportsWhitelistTaxedMode = false;
+  let standardDeployer = zeroAddress;
+  let whitelistDeployer = zeroAddress;
+  let taxedDeployer = zeroAddress;
+  let whitelistTaxedDeployer = zeroAddress;
 
   try {
-    [standardCreateFee, whitelistCreateFee] = (await Promise.all([
+    [standardCreateFee, whitelistCreateFee, standardDeployer, whitelistDeployer, taxedDeployer, whitelistTaxedDeployer] = (await Promise.all([
       client.readContract({ address: factoryAddress, abi: launchFactoryAbi, functionName: "standardCreateFee" }),
-      client.readContract({ address: factoryAddress, abi: launchFactoryAbi, functionName: "whitelistCreateFee" })
-    ])) as [bigint, bigint];
+      client.readContract({ address: factoryAddress, abi: launchFactoryAbi, functionName: "whitelistCreateFee" }),
+      client.readContract({ address: factoryAddress, abi: launchFactoryAbi, functionName: "standardDeployer" }),
+      client.readContract({ address: factoryAddress, abi: launchFactoryAbi, functionName: "whitelistDeployer" }),
+      client.readContract({ address: factoryAddress, abi: launchFactoryAbi, functionName: "taxedDeployer" }),
+      client.readContract({ address: factoryAddress, abi: launchFactoryAbi, functionName: "whitelistTaxedDeployer" })
+    ])) as [bigint, bigint, `0x${string}`, `0x${string}`, `0x${string}`, `0x${string}`];
     supportsWhitelistMode = true;
+    supportsTaxedMode = taxedDeployer !== zeroAddress;
+    supportsWhitelistTaxedMode = whitelistTaxedDeployer !== zeroAddress;
   } catch {
     standardCreateFee = createFee;
     whitelistCreateFee = 0n;
@@ -777,10 +1015,16 @@ export async function readFactory(address: string): Promise<FactorySnapshot> {
     address: factoryAddress,
     router,
     protocolFeeRecipient,
+    standardDeployer,
+    whitelistDeployer,
+    taxedDeployer,
+    whitelistTaxedDeployer,
     createFee,
     standardCreateFee,
     whitelistCreateFee,
     supportsWhitelistMode,
+    supportsTaxedMode,
+    supportsWhitelistTaxedMode,
     graduationQuoteReserve,
     totalLaunches,
     accruedProtocolCreateFees,
@@ -955,6 +1199,26 @@ export async function readToken(address: string): Promise<TokenSnapshot> {
     })) as readonly [bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint];
   } catch {}
 
+  let taxConfig = null as TokenSnapshot["taxConfig"];
+  try {
+    const rawTaxConfig = (await client.readContract({
+      address: tokenAddress,
+      abi: launchTokenAbi,
+      functionName: "taxConfig"
+    })) as readonly [boolean, bigint, bigint, bigint, `0x${string}`, boolean];
+    const [enabled, configuredTaxBps, burnBps, treasuryBps, wallet, active] = rawTaxConfig;
+    if (enabled || configuredTaxBps > 0n || burnBps > 0n || treasuryBps > 0n || wallet !== zeroAddress || active) {
+      taxConfig = {
+        enabled,
+        configuredTaxBps,
+        burnBps,
+        treasuryBps,
+        wallet: getAddress(wallet),
+        active
+      };
+    }
+  } catch {}
+
   return {
     address: tokenAddress,
     name,
@@ -983,6 +1247,7 @@ export async function readToken(address: string): Promise<TokenSnapshot> {
     creatorFeeSweepReady,
     createdAt,
     lastTradeAt,
+    taxConfig,
     whitelistStatus,
     whitelistSnapshot:
       whitelistStatus === 0n && whitelistSnapshot[1] === 0n
@@ -1203,14 +1468,20 @@ export async function previewSell(address: string, tokenAmount: string) {
 export async function createLaunch(
   factoryAddress: string,
   params: {
-    mode: "standard" | "whitelist";
+    family: LaunchCreationFamily;
     name: string;
     symbol: string;
     metadataURI: string;
     createFee: bigint;
+    atomicQuoteIn?: bigint;
+    minTokenOut?: bigint;
     whitelistThreshold?: bigint;
     whitelistSlotSize?: bigint;
     whitelistAddresses?: readonly `0x${string}`[];
+    taxBps?: number;
+    burnShareBps?: number;
+    treasuryShareBps?: number;
+    treasuryWallet?: `0x${string}`;
     onVanityProgress?: (update: { attempts: number; elapsedMs: number }) => void;
   }
 ) {
@@ -1220,9 +1491,20 @@ export async function createLaunch(
   const publicClient = getPublicClient();
   const normalizedFactoryAddress = getAddress(factoryAddress);
   const factorySnapshot = await readFactory(normalizedFactoryAddress);
+  const family = params.family;
+  const deployer = getAddress(deployerForFamily(factorySnapshot, family));
+  const atomicQuoteIn = params.atomicQuoteIn ?? 0n;
+  const minTokenOut = params.minTokenOut ?? 0n;
+  const whitelistThreshold = params.whitelistThreshold ?? 0n;
+  const whitelistSlotSize = params.whitelistSlotSize ?? 0n;
+  const taxBps = params.taxBps ?? 100;
+  const burnShareBps = params.burnShareBps ?? 5000;
+  const treasuryShareBps = params.treasuryShareBps ?? 5000;
+  const treasuryWallet = params.treasuryWallet ?? factorySnapshot.protocolFeeRecipient;
 
   const vanity = await findVanityLaunchSalt({
-    mode: params.mode,
+    mode: family,
+    deployer,
     factory: normalizedFactoryAddress,
     name: params.name,
     symbol: params.symbol,
@@ -1234,38 +1516,128 @@ export async function createLaunch(
     whitelistThreshold: params.whitelistThreshold,
     whitelistSlotSize: params.whitelistSlotSize,
     whitelistAddresses: params.whitelistAddresses,
-    suffix: params.mode === "whitelist" ? whitelistVanitySuffix : standardVanitySuffix,
+    taxBps,
+    burnShareBps,
+    treasuryShareBps,
+    treasuryWallet,
+    suffix:
+      family === "whitelist"
+        ? whitelistVanitySuffix
+        : family === "whitelistTaxed"
+          ? whitelistTaxVanitySuffix
+          : family === "taxed" && params.taxBps
+            ? `${Math.floor(params.taxBps / 100)}314`
+            : standardVanitySuffix,
     onProgress: params.onVanityProgress
   });
 
-  const hash =
-    params.mode === "whitelist"
-      ? await walletClient.writeContract({
-          account,
-          chain: appChain,
-          address: normalizedFactoryAddress,
-          abi: launchFactoryAbi,
-          functionName: "createWhitelistLaunchWithSalt",
-          args: [
-            params.name,
-            params.symbol,
-            params.metadataURI,
-            params.whitelistThreshold ?? 0n,
-            params.whitelistSlotSize ?? 0n,
-            params.whitelistAddresses ?? [],
-            vanity.salt
-          ],
-          value: params.createFee
-        })
-      : await walletClient.writeContract({
-          account,
-          chain: appChain,
-          address: normalizedFactoryAddress,
-          abi: launchFactoryAbi,
-          functionName: "createLaunchWithSalt",
-          args: [params.name, params.symbol, params.metadataURI, vanity.salt],
-          value: params.createFee
-        });
+  let hash: `0x${string}`;
+  if (family === "standard") {
+    if (atomicQuoteIn <= 0n) {
+      throw new Error("Standard launches require an atomic buy amount.");
+    }
+    hash = await walletClient.writeContract({
+      account,
+      chain: appChain,
+      address: normalizedFactoryAddress,
+      abi: launchFactoryAbi,
+      functionName: "createLaunchAndBuyWithSalt",
+      args: [params.name, params.symbol, params.metadataURI, vanity.salt, minTokenOut],
+      value: params.createFee + atomicQuoteIn
+    });
+  } else if (family === "whitelist") {
+    if (!whitelistThreshold || !whitelistSlotSize) {
+      throw new Error("Whitelist launches require a threshold and seat size.");
+    }
+    hash = await walletClient.writeContract({
+      account,
+      chain: appChain,
+      address: normalizedFactoryAddress,
+      abi: launchFactoryAbi,
+      functionName: "createWhitelistLaunchAndCommitWithSalt",
+      args: [
+        params.name,
+        params.symbol,
+        params.metadataURI,
+        whitelistThreshold,
+        whitelistSlotSize,
+        params.whitelistAddresses ?? [],
+        vanity.salt
+      ],
+      value: params.createFee + whitelistSlotSize
+    });
+  } else if (family === "taxed") {
+    if (atomicQuoteIn <= 0n) {
+      throw new Error("Taxed launches require an atomic buy amount.");
+    }
+    hash = await walletClient.writeContract({
+      account,
+      chain: appChain,
+      address: normalizedFactoryAddress,
+      abi: launchFactoryAbi,
+      functionName: "createTaxLaunchAndBuyWithSalt",
+      args: [
+        params.name,
+        params.symbol,
+        params.metadataURI,
+        taxBps,
+        burnShareBps,
+        treasuryShareBps,
+        treasuryWallet,
+        vanity.salt,
+        minTokenOut
+      ],
+      value: params.createFee + atomicQuoteIn
+    });
+  } else {
+    if (!whitelistThreshold || !whitelistSlotSize) {
+      throw new Error("Whitelist-taxed launches require a threshold and seat size.");
+    }
+    const initCode = buildWhitelistTaxedLaunchInitCode({
+      name: params.name,
+      symbol: params.symbol,
+      metadataURI: params.metadataURI,
+      creator: account,
+      factory: normalizedFactoryAddress,
+      protocolFeeRecipient: factorySnapshot.protocolFeeRecipient,
+      router: factorySnapshot.router,
+      graduationQuoteReserve: factorySnapshot.graduationQuoteReserve,
+      whitelistThreshold,
+      whitelistSlotSize,
+      whitelistAddresses: params.whitelistAddresses ?? [],
+      launchModeId: 12,
+      taxBps,
+      burnShareBps,
+      treasuryShareBps,
+      treasuryWallet
+    });
+    hash = await walletClient.writeContract({
+      account,
+      chain: appChain,
+      address: normalizedFactoryAddress,
+      abi: launchFactoryAbi,
+      functionName: "createWhitelistTaxLaunchAndCommitWithSalt",
+      args: [
+        params.name,
+        params.symbol,
+        params.metadataURI,
+        {
+          whitelistThreshold,
+          whitelistSlotSize,
+          whitelistAddresses: params.whitelistAddresses ?? []
+        },
+        {
+          taxBps,
+          burnShareBps,
+          treasuryShareBps,
+          treasuryWallet
+        },
+        initCode,
+        vanity.salt
+      ],
+      value: params.createFee + whitelistSlotSize
+    });
+  }
 
   const receipt = await publicClient.waitForTransactionReceipt({ hash });
   let createdToken: `0x${string}` | null = null;
@@ -1599,6 +1971,7 @@ function convertSnapshotLaunch(launch: SnapshotLaunchJson): TokenSnapshot {
     creatorFeeSweepReady: false,
     createdAt: 0n,
     lastTradeAt: 0n,
+    taxConfig: convertJsonTaxConfig(launch.taxConfig),
     whitelistStatus: BigInt(launch.whitelistStatus ?? 0),
     whitelistSnapshot: launch.whitelistSnapshot
       ? {
@@ -1648,6 +2021,7 @@ function convertApiLaunchSummary(launch: ApiLaunchSummaryJson, graduationQuoteRe
     creatorFeeSweepReady: false,
     createdAt: 0n,
     lastTradeAt: 0n,
+    taxConfig: convertJsonTaxConfig(launch.taxConfig),
     whitelistStatus: BigInt(launch.whitelistStatus ?? 0),
     whitelistSnapshot: launch.whitelistSnapshot
       ? {
@@ -1823,7 +2197,7 @@ export async function fetchSegmentedChartSnapshot(
     resolveGraduationContext(address, lookbackBlocks)
   ]);
 
-  const zeroAddress = "0x0000000000000000000000000000000000000000";
+const zeroAddress = "0x0000000000000000000000000000000000000000" as const satisfies `0x${string}`;
   const dexCandles: CandlePoint[] = [];
   const pairAddress = graduationContext.pairAddress ?? tokenSnapshot.pair;
 

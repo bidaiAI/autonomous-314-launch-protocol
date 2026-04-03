@@ -14,6 +14,7 @@ contract LaunchTokenDeployer {
         address protocolFeeRecipient;
         address router;
         uint256 graduationQuoteReserve;
+        uint8 launchModeId;
         bytes32 salt;
     }
 
@@ -28,7 +29,8 @@ contract LaunchTokenDeployer {
                 factory: config.factory,
                 protocolFeeRecipient: config.protocolFeeRecipient,
                 router: config.router,
-                graduationQuoteReserve: config.graduationQuoteReserve
+                graduationQuoteReserve: config.graduationQuoteReserve,
+                launchModeId: config.launchModeId
             }))
         );
     }

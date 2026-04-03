@@ -33,6 +33,7 @@ describe("LaunchToken", function () {
       protocolFeeRecipient: protocol.address,
       router: await mockRouter.getAddress(),
       graduationQuoteReserve: GRADUATION_TARGET,
+      launchModeId: 1,
     });
     await token.waitForDeployment();
 

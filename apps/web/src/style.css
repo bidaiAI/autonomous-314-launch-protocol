@@ -377,6 +377,30 @@ a:hover { opacity: 0.8; }
   margin-bottom: 28px;
 }
 
+.protocol-faq-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.protocol-faq-card {
+  display: grid;
+  gap: 10px;
+}
+
+.protocol-faq-card h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.protocol-faq-card p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.89rem;
+  line-height: 1.66;
+}
+
 .protocol-flow-card {
   display: grid;
   gap: 14px;
@@ -1058,6 +1082,51 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   margin-bottom: 18px;
 }
 
+.create-steps-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.create-step-card {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 12px;
+  padding: 16px 18px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+  background: rgba(15, 23, 42, 0.42);
+}
+
+.create-step-index {
+  display: inline-flex;
+  width: 36px;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  letter-spacing: 0.08em;
+  background: rgba(94, 234, 212, 0.08);
+  border: 1px solid rgba(94, 234, 212, 0.18);
+  color: #d7fff8;
+}
+
+.create-step-card strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.92rem;
+}
+
+.create-step-card p {
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
 .launch-family-card {
   padding: 18px 20px;
   border-radius: var(--radius-lg);
@@ -1413,7 +1482,8 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   .manifesto-grid { grid-template-columns: repeat(2, 1fr); }
   .origin-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .protocol-intro,
-  .protocol-flow-grid { grid-template-columns: 1fr; }
+  .protocol-flow-grid,
+  .protocol-faq-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 960px) {
@@ -1423,6 +1493,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   .creator-grid { grid-template-columns: 1fr; }
   .rail, .actions-rail { position: static; }
   .launch-family-strip { grid-template-columns: 1fr; }
+  .create-steps-strip { grid-template-columns: 1fr; }
   .history-grid { grid-template-columns: 1fr; }
   .manifesto-grid { grid-template-columns: 1fr; }
   .origin-grid { grid-template-columns: 1fr; }
@@ -1444,4 +1515,6 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   .launch-hero { grid-template-columns: 1fr; }
   .create-hero-card { flex-direction: column; }
   .tax-split-grid { grid-template-columns: 1fr; }
+  .protocol-faq-grid { grid-template-columns: 1fr; }
+  .create-steps-strip { grid-template-columns: 1fr; }
 }

@@ -19,6 +19,7 @@ contract LaunchTokenWhitelistTaxed is LaunchTokenWhitelist {
         uint256 graduationQuoteReserve;
         uint256 whitelistThreshold;
         uint256 whitelistSlotSize;
+        uint256 whitelistOpensAt;
         address[] whitelistAddresses;
         uint8 launchModeId;
         uint16 taxBps;
@@ -53,6 +54,7 @@ contract LaunchTokenWhitelistTaxed is LaunchTokenWhitelist {
             graduationQuoteReserve: args.graduationQuoteReserve,
             whitelistThreshold: args.whitelistThreshold,
             whitelistSlotSize: args.whitelistSlotSize,
+            whitelistOpensAt: args.whitelistOpensAt,
             whitelistAddresses: args.whitelistAddresses,
             launchModeId: args.launchModeId
         })

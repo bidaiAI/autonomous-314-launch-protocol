@@ -14,7 +14,9 @@ It is intentionally practical and implementation-facing.
 
 ### `b314`
 - whitelist commitment launch
-- 24 hour whitelist window
+- whitelist opens immediately or at a configured `whitelistOpensAt`
+- open time may be delayed by up to `3 days`
+- 24 hour whitelist window counted from `whitelistOpensAt`
 - fixed threshold presets: `4 / 6 / 8 BNB`
 - fixed slot presets: `0.1 / 0.2 / 0.5 / 1 BNB`
 - exact slot-size commit only
@@ -25,6 +27,7 @@ It is intentionally practical and implementation-facing.
 - fallback to normal `Bonding314` after whitelist expiry
 - whitelist accounting kept separate from curve accounting until settlement
 - creator path: `create + atomic whitelist seat commit`
+- delayed-open launches must use plain create; atomic seat commit is only valid for immediate-open launches
 
 ### `1314 .. 9314`
 - standard launch family with post-grad tax
@@ -40,6 +43,7 @@ It is intentionally practical and implementation-facing.
 - suffix identifies the family, not the exact tax rate
 - exact tax config must be read from `taxConfig()`
 - creator path: `create + atomic whitelist seat commit`
+- delayed-open launches must use plain create; atomic seat commit is only valid for immediate-open launches
 
 ## Contract surface changes that downstream code must consume
 
@@ -130,10 +134,12 @@ Split create UX by mode:
 Whitelist create UI needs:
 - threshold selector (`4 / 6 / 8`)
 - slot selector (`0.1 / 0.2 / 0.5 / 1`)
+- optional UTC open time selector (`now .. now + 3 days`)
 - whitelist address input/import
 - seat-count preview
 - per-seat token estimate preview
 - creator-seat autofill explanation when using the atomic commit path
+- explicit copy that delayed-open launches disable atomic creator seat commit
 
 Taxed create UI needs:
 - family/rate selector (`1314..9314` or `f314`)
@@ -155,6 +161,7 @@ Use:
 ### Workspace UI
 `b314` / `f314` pages need explicit sections for:
 - whitelist status
+- whitelist open time
 - deadline
 - seat count / seats filled
 - committed total
@@ -183,6 +190,7 @@ Add at minimum:
 - `mode`
 - `suffix`
 - `whitelistStatus`
+- `whitelistOpensAt`
 - whitelist snapshot summary
 - `taxConfig`
 
@@ -218,6 +226,16 @@ For `f314`, raw `initCode` must be assembled off-chain and predicted against the
 - whitelist settlement no longer bypasses bonding fee accounting
 - whitelist threshold is constrained below graduation target
 - whitelist allocation claim now stamps `lastBuyBlock`
+- delayed whitelist opens are supported for `b314` / `f314`
+- delayed-open whitelist launches explicitly reject atomic creator seat commit
+
+## Deployment hardening
+
+- `Ownable` factory controls still exist for deployer / treasury management
+- after production deployment, finalize the treasury and deployer addresses, then:
+  - transfer ownership to a timelock, **or**
+  - renounce ownership if no further governance is desired
+- do not market a deployment as immutable governance if owner control has not yet been removed or timelocked
 - whitelist funds stay out of curve accounting until settlement
 - factory mode is now included directly in `LaunchCreated`
 

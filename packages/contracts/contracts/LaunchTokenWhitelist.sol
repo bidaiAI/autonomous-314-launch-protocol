@@ -9,6 +9,7 @@ contract LaunchTokenWhitelist is LaunchTokenBase {
     using Address for address payable;
     error UnauthorizedFactoryDeployment();
 
+    uint256 public constant MAX_WHITELIST_DELAY = 3 days;
     uint256 public constant WHITELIST_DURATION = 24 hours;
     uint256 public constant THRESHOLD_4_BNB = 4 ether;
     uint256 public constant THRESHOLD_6_BNB = 6 ether;
@@ -30,15 +31,15 @@ contract LaunchTokenWhitelist is LaunchTokenBase {
         uint256 graduationQuoteReserve;
         uint256 whitelistThreshold;
         uint256 whitelistSlotSize;
+        uint256 whitelistOpensAt;
         address[] whitelistAddresses;
         uint8 launchModeId;
     }
 
-    uint256 public immutable whitelistDeadline;
-    uint256 public immutable whitelistThreshold;
-    uint256 public immutable whitelistSlotSize;
-    uint256 public immutable whitelistSeatCount;
-    uint256 public immutable whitelistAddressCount;
+    uint256 private immutable whitelistDeadline;
+    uint256 private immutable whitelistThreshold;
+    uint256 private immutable whitelistSlotSize;
+    uint256 private immutable whitelistSeatCount;
 
     uint256 public whitelistSeatsFilled;
     uint256 public whitelistCommittedTotal;
@@ -52,7 +53,13 @@ contract LaunchTokenWhitelist is LaunchTokenBase {
     mapping(address => bool) public whitelistAllocationClaimed;
     mapping(address => bool) public whitelistRefundClaimed;
 
-    event WhitelistConfigured(uint256 threshold, uint256 slotSize, uint256 seatCount, uint256 whitelistCount, uint256 deadline);
+    event WhitelistConfigured(
+        uint256 threshold,
+        uint256 slotSize,
+        uint256 seatCount,
+        uint256 opensAt,
+        uint256 deadline
+    );
     event WhitelistSeatCommitted(address indexed account, uint256 seatNumber, uint256 amount, uint256 committedTotal);
     event WhitelistFinalized(uint256 grossCommitted, uint256 netQuoteAdded, uint256 protocolFee, uint256 creatorFee, uint256 seatsFilled, uint256 tokensPerSeat, uint256 reservedTokenAmount);
     event WhitelistExpired(uint256 committedTotal, uint256 seatsFilled);
@@ -63,6 +70,7 @@ contract LaunchTokenWhitelist is LaunchTokenBase {
     error InvalidWhitelistSlotSize();
     error InvalidWhitelistSeatCount();
     error InvalidWhitelistAddressCount();
+    error InvalidWhitelistOpenTime();
     error DuplicateWhitelistAddress();
     error WhitelistNotActive();
     error WhitelistSeatUnavailable();
@@ -93,11 +101,13 @@ contract LaunchTokenWhitelist is LaunchTokenBase {
         if (seatCount == 0 || seatCount > MAX_SEATS) revert InvalidWhitelistSeatCount();
         if (args.whitelistAddresses.length < seatCount) revert InvalidWhitelistAddressCount();
 
-        whitelistDeadline = block.timestamp + WHITELIST_DURATION;
+        uint256 opensAt = args.whitelistOpensAt == 0 ? block.timestamp : args.whitelistOpensAt;
+        if (opensAt < block.timestamp || opensAt > block.timestamp + MAX_WHITELIST_DELAY) revert InvalidWhitelistOpenTime();
+
+        whitelistDeadline = opensAt + WHITELIST_DURATION;
         whitelistThreshold = args.whitelistThreshold;
         whitelistSlotSize = args.whitelistSlotSize;
         whitelistSeatCount = seatCount;
-        whitelistAddressCount = args.whitelistAddresses.length;
 
         for (uint256 i = 0; i < args.whitelistAddresses.length; i++) {
             address account = args.whitelistAddresses[i];
@@ -110,7 +120,7 @@ contract LaunchTokenWhitelist is LaunchTokenBase {
             args.whitelistThreshold,
             args.whitelistSlotSize,
             seatCount,
-            args.whitelistAddresses.length,
+            opensAt,
             whitelistDeadline
         );
         if (!_isAuthorizedFactoryDeployment(args.factory)) revert UnauthorizedFactoryDeployment();
@@ -181,6 +191,7 @@ contract LaunchTokenWhitelist is LaunchTokenBase {
     function whitelistStatus() public view override returns (uint8) {
         if (whitelistFinalized) return WHITELIST_STATUS_FINALIZED;
         if (state == LaunchState.WhitelistCommit) {
+            if (block.timestamp + WHITELIST_DURATION < whitelistDeadline) return WHITELIST_STATUS_SCHEDULED;
             if (block.timestamp < whitelistDeadline) return WHITELIST_STATUS_ACTIVE;
             return WHITELIST_STATUS_EXPIRED;
         }
@@ -196,26 +207,26 @@ contract LaunchTokenWhitelist is LaunchTokenBase {
         override
         returns (
             uint8 status,
+            uint256 opensAt,
             uint256 deadline,
             uint256 threshold,
             uint256 slotSize,
             uint256 seatCount,
             uint256 seatsFilled,
             uint256 committedTotal,
-            uint256 tokensPerSeat,
-            uint256 configuredWhitelistCount
+            uint256 tokensPerSeat
         )
     {
         return (
             whitelistStatus(),
+            whitelistDeadline - WHITELIST_DURATION,
             whitelistDeadline,
             whitelistThreshold,
             whitelistSlotSize,
             whitelistSeatCount,
             whitelistSeatsFilled,
             whitelistCommittedTotal,
-            whitelistTokensPerSeat,
-            whitelistAddressCount
+            whitelistTokensPerSeat
         );
     }
 
@@ -225,6 +236,7 @@ contract LaunchTokenWhitelist is LaunchTokenBase {
 
     function canCommitWhitelist(address account) external view override returns (bool) {
         return state == LaunchState.WhitelistCommit
+            && block.timestamp + WHITELIST_DURATION >= whitelistDeadline
             && block.timestamp < whitelistDeadline
             && whitelist[account]
             && !whitelistSeatCommitted[account]
@@ -251,6 +263,7 @@ contract LaunchTokenWhitelist is LaunchTokenBase {
 
     function _commitWhitelistSeat(address account) internal {
         if (state != LaunchState.WhitelistCommit) revert WhitelistNotActive();
+        if (block.timestamp + WHITELIST_DURATION < whitelistDeadline) revert WhitelistNotActive();
         if (block.timestamp >= whitelistDeadline) revert WhitelistNotActive();
         if (!whitelist[account]) revert WhitelistAddressNotApproved();
         if (msg.value != whitelistSlotSize) revert InvalidWhitelistCommitAmount();

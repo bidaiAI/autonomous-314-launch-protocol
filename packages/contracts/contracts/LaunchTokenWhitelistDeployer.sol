@@ -16,6 +16,7 @@ contract LaunchTokenWhitelistDeployer {
         uint256 graduationQuoteReserve;
         uint256 whitelistThreshold;
         uint256 whitelistSlotSize;
+        uint256 whitelistOpensAt;
         address[] whitelistAddresses;
         uint8 launchModeId;
         bytes32 salt;
@@ -35,6 +36,7 @@ contract LaunchTokenWhitelistDeployer {
                 graduationQuoteReserve: config.graduationQuoteReserve,
                 whitelistThreshold: config.whitelistThreshold,
                 whitelistSlotSize: config.whitelistSlotSize,
+                whitelistOpensAt: config.whitelistOpensAt,
                 whitelistAddresses: config.whitelistAddresses,
                 launchModeId: config.launchModeId
             }))

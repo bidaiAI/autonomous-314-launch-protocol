@@ -86,6 +86,8 @@ Autonomous 314 当前的目标很明确，主要有四个：
 
 - `1314..9314` 直接表达标准税版的税率
 - `f314` 只表达“白名单 + 带税家族”，**具体税率要读 `taxConfig()`**
+- `b314` / `f314` 现在支持 `whitelistOpensAt`，可在创建后最多 3 天内延迟开启白名单窗口
+- 如果选择延迟开启，creator 的“原子占席位”路径会被禁用，只能先创建、到开启时间后再 commit
 - 批量 sweep / batch claim 属于协议运维能力，不是普通用户主界面的按钮
 
 ## 5 分钟发射平台套件
@@ -377,6 +379,18 @@ Autonomous 314 比封闭 launch 网站更接近 Web3 精神：
 - wrapped native token
 - V2-compatible factory/router/pair
 - 可预测的链配置，便于前端和 indexer profile 切换
+
+## 部署后的治理收口
+
+当前 factory 仍然保留 `Ownable` 管理能力，用于 treasury / deployer 等关键配置。
+
+推荐的生产姿势是：
+
+1. 完成部署
+2. 确认 treasury / deployer / router 等参数最终正确
+3. 将 ownership 转给 timelock，或在不再需要治理时直接 renounce
+
+在这一步完成前，不应把部署描述为“完全去治理”或“完全不可变”。
 
 ## 开源边界
 

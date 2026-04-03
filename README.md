@@ -86,6 +86,8 @@ Important suffix rules:
 
 - `1314..9314` directly encode the standard-family tax rate
 - `f314` only means **whitelist + tax family**; the actual tax rate must be read from `taxConfig()`
+- `b314` and `f314` can open immediately or at a configured `whitelistOpensAt` up to `3 days` after creation
+- delayed-open whitelist families intentionally disable atomic creator seat commit
 - batch ops such as protocol fee sweeping and claiming are protocol tooling, not end-user UI features
 
 ## 5-minute launch platform kit
@@ -157,6 +159,16 @@ The current reference stack already reflects this low-backend philosophy:
 So the short answer is:
 
 > **server pressure is not high by design; the protocol pushes execution on-chain and keeps the backend as a lightweight indexing and presentation layer.**
+
+## Governance posture after deployment
+
+The factory still uses `Ownable` for treasury / deployer administration. The intended production posture is:
+
+1. deploy
+2. verify treasury and deployer addresses
+3. transfer ownership to a timelock, or renounce ownership if no further governance is desired
+
+Until that happens, deployments should not be described as governance-final.
 
 ## What problem this solves
 

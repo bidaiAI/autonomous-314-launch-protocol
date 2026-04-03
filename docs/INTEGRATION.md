@@ -26,6 +26,8 @@ The repository V2 baseline now exposes four launch families:
 - `1314..9314` — standard taxed family (`1%..9%`)
 - `f314` — whitelist + tax family (tax rate comes from `taxConfig()`)
 
+For `b314` and `f314`, the whitelist window can either open immediately at creation time or later through `whitelistOpensAt`, capped at `3 days` after creation.
+
 The canonical graduation path is:
 
 - immutable protocol contribution configured per factory deployment
@@ -51,6 +53,7 @@ Third-party UIs should default to:
 - showing launch family / suffix / mode
 - showing tax config for taxed families
 - showing whitelist snapshot for whitelist families
+- showing whitelist open time / deadline for whitelist families
 - showing pair compatibility
 - showing creator/protocol claim permissions
 - when using the official create path, mining a local `CREATE2` salt against the **mode-specific deployer** so the launch lands in the expected family suffix
@@ -134,14 +137,25 @@ For `f314`, the factory uses `whitelistTaxedDeployer()` as the generic CREATE2 t
 - `createLaunchWithSalt(...)`
 - `createLaunchAndBuy(...)`
 - `createLaunchAndBuyWithSalt(...)`
+- `createWhitelistLaunch(...)`
+- `createWhitelistLaunchWithSalt(...)`
 - `createWhitelistLaunchAndCommit(...)`
 - `createWhitelistLaunchAndCommitWithSalt(...)`
 - `createTaxLaunch(...)`
 - `createTaxLaunchAndBuy(...)`
+- `createTaxLaunchWithSalt(...)`
+- `createTaxLaunchAndBuyWithSalt(...)`
 - `createWhitelistTaxLaunch(...)`
+- `createWhitelistTaxLaunchWithSalt(...)`
 - `createWhitelistTaxLaunchAndCommit(...)`
+- `createWhitelistTaxLaunchAndCommitWithSalt(...)`
 - `batchClaimProtocolFees(address[] tokens, address recipient)`
 - `batchSweepAbandonedCreatorFees(address[] tokens)`
+
+For delayed-open whitelist families:
+
+- use `createWhitelistLaunch(...)` / `createWhitelistTaxLaunch(...)`
+- do **not** call the atomic commit variants
 
 If a factory deployer supplies `address(0)` for the protocol fee recipient, the contract falls back to the built-in default treasury:
 
@@ -219,6 +233,8 @@ Event semantics:
 - `metadataURI`
 
 Use this as the canonical new-launch event.
+
+If ownership remains on the factory after deployment, the deployment should not be described as governance-final. Recommended production posture: finalize treasury/deployer settings, then transfer ownership to a timelock or renounce ownership.
 
 ### Launch token
 

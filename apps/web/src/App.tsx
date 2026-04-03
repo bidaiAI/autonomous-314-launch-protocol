@@ -1182,6 +1182,24 @@ export function App() {
             </article>
           </section>
 
+          <section className="protocol-faq-grid">
+            <article className="protocol-faq-card panel">
+              <span className="section-kicker">{t("protocolFaqKicker")}</span>
+              <h3>{t("protocolFaqOneTitle")}</h3>
+              <p>{t("protocolFaqOneDesc")}</p>
+            </article>
+            <article className="protocol-faq-card panel">
+              <span className="section-kicker">{t("protocolFaqKicker")}</span>
+              <h3>{t("protocolFaqTwoTitle")}</h3>
+              <p>{t("protocolFaqTwoDesc")}</p>
+            </article>
+            <article className="protocol-faq-card panel">
+              <span className="section-kicker">{t("protocolFaqKicker")}</span>
+              <h3>{t("protocolFaqThreeTitle")}</h3>
+              <p>{t("protocolFaqThreeDesc")}</p>
+            </article>
+          </section>
+
           <section className="manifesto-grid">
             <article className="manifesto-card">
               <h3>🔗 {t('selfSovereign')}</h3>
@@ -1532,6 +1550,30 @@ export function App() {
                     </article>
                   );
                 })}
+              </section>
+
+              <section className="create-steps-strip">
+                <article className="create-step-card">
+                  <span className="create-step-index">01</span>
+                  <div>
+                    <strong>{t("createStepOneTitle")}</strong>
+                    <p>{t("createStepOneDesc")}</p>
+                  </div>
+                </article>
+                <article className="create-step-card">
+                  <span className="create-step-index">02</span>
+                  <div>
+                    <strong>{t("createStepTwoTitle")}</strong>
+                    <p>{t("createStepTwoDesc")}</p>
+                  </div>
+                </article>
+                <article className="create-step-card">
+                  <span className="create-step-index">03</span>
+                  <div>
+                    <strong>{t("createStepThreeTitle")}</strong>
+                    <p>{t("createStepThreeDesc")}</p>
+                  </div>
+                </article>
               </section>
 
               <div className="create-layout">

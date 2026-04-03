@@ -17,6 +17,7 @@ describe("LaunchTokenWhitelistTaxed", function () {
     graduationQuoteReserve: bigint;
     whitelistThreshold: bigint;
     whitelistSlotSize: bigint;
+    whitelistOpensAt?: bigint;
     whitelistAddresses: string[];
     taxBps: number;
     burnShareBps: number;
@@ -35,6 +36,7 @@ describe("LaunchTokenWhitelistTaxed", function () {
       graduationQuoteReserve: params.graduationQuoteReserve,
       whitelistThreshold: params.whitelistThreshold,
       whitelistSlotSize: params.whitelistSlotSize,
+      whitelistOpensAt: params.whitelistOpensAt ?? 0n,
       whitelistAddresses: params.whitelistAddresses,
       launchModeId: 12,
       taxBps: params.taxBps,
@@ -111,6 +113,7 @@ describe("LaunchTokenWhitelistTaxed", function () {
       graduationQuoteReserve: GRADUATION_TARGET,
       whitelistThreshold: THRESHOLD,
       whitelistSlotSize: SLOT,
+      whitelistOpensAt: 0n,
       whitelistAddresses: whitelistCommitters.map((wallet) => wallet.address),
       taxBps: 500,
       burnShareBps: 5000,
@@ -125,6 +128,7 @@ describe("LaunchTokenWhitelistTaxed", function () {
       {
         whitelistThreshold: THRESHOLD,
         whitelistSlotSize: SLOT,
+        whitelistOpensAt: 0,
         whitelistAddresses: whitelistCommitters.map((wallet) => wallet.address),
       },
       {

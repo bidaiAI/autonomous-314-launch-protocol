@@ -35,9 +35,10 @@ abstract contract LaunchTokenBase is ERC20, ReentrancyGuard {
     uint8 public constant MODE_WHITELIST_TAX_F314 = 12;
 
     uint8 public constant WHITELIST_STATUS_NONE = 0;
-    uint8 public constant WHITELIST_STATUS_ACTIVE = 1;
-    uint8 public constant WHITELIST_STATUS_FINALIZED = 2;
-    uint8 public constant WHITELIST_STATUS_EXPIRED = 3;
+    uint8 public constant WHITELIST_STATUS_SCHEDULED = 1;
+    uint8 public constant WHITELIST_STATUS_ACTIVE = 2;
+    uint8 public constant WHITELIST_STATUS_FINALIZED = 3;
+    uint8 public constant WHITELIST_STATUS_EXPIRED = 4;
 
     uint256 public constant TOTAL_SUPPLY = 1_000_000_000 ether;
     uint256 public constant LP_TOKEN_RESERVE = 200_000_000 ether;
@@ -475,14 +476,14 @@ abstract contract LaunchTokenBase is ERC20, ReentrancyGuard {
         virtual
         returns (
             uint8 status,
+            uint256 opensAt,
             uint256 deadline,
             uint256 threshold,
             uint256 slotSize,
             uint256 seatCount,
             uint256 seatsFilled,
             uint256 committedTotal,
-            uint256 tokensPerSeat,
-            uint256 whitelistCount
+            uint256 tokensPerSeat
         )
     {
         return (WHITELIST_STATUS_NONE, 0, 0, 0, 0, 0, 0, 0, 0);

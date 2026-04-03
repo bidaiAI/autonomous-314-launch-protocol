@@ -42,6 +42,7 @@ describe("LaunchTokenWhitelist", function () {
       graduationQuoteReserve: GRADUATION_TARGET,
       whitelistThreshold: THRESHOLD,
       whitelistSlotSize: SLOT,
+      whitelistOpensAt: 0,
       whitelistAddresses: whitelist,
       launchModeId: 2,
     });
@@ -59,10 +60,10 @@ describe("LaunchTokenWhitelist", function () {
     const { token, buyer } = await deployFixture();
     expect(await token.state()).to.equal(4n);
     const snapshot = await token.whitelistSnapshot();
+    expect(snapshot.opensAt).to.be.gt(0n);
     expect(snapshot.threshold).to.equal(THRESHOLD);
     expect(snapshot.slotSize).to.equal(SLOT);
     expect(snapshot.seatCount).to.equal(20n);
-    expect(snapshot.configuredWhitelistCount).to.equal(20n);
     expect(await token.isWhitelisted(buyer.address)).to.equal(true);
     expect(await token.canCommitWhitelist(buyer.address)).to.equal(true);
   });
@@ -92,7 +93,7 @@ describe("LaunchTokenWhitelist", function () {
     }
 
     expect(await token.state()).to.equal(1n);
-    expect(await token.whitelistStatus()).to.equal(2n);
+    expect(await token.whitelistStatus()).to.equal(3n);
     const tokensPerSeat = await token.whitelistTokensPerSeat();
     expect(tokensPerSeat).to.be.gt(0n);
 
@@ -110,17 +111,71 @@ describe("LaunchTokenWhitelist", function () {
     await buyer.sendTransaction({ to: await token.getAddress(), value: SLOT });
     await increaseTime(24 * 60 * 60 + 1);
 
-    expect(await token.whitelistStatus()).to.equal(3n);
+    expect(await token.whitelistStatus()).to.equal(4n);
     expect(await token.canClaimWhitelistRefund(buyer.address)).to.equal(true);
 
     await token.advanceWhitelistPhase();
 
     expect(await token.state()).to.equal(1n);
-    expect(await token.whitelistStatus()).to.equal(3n);
+    expect(await token.whitelistStatus()).to.equal(4n);
     expect(await token.canClaimWhitelistRefund(buyer.address)).to.equal(true);
 
     await expect(token.connect(buyer).claimWhitelistRefund())
       .to.emit(token, "WhitelistRefundClaimed")
       .withArgs(buyer.address, SLOT);
+  });
+
+  it("supports delayed whitelist opens and reports scheduled status until open", async function () {
+    const { deployer, creator, protocol, whitelistCommitters } = await deployFixture();
+    const buyer = whitelistCommitters[0];
+
+    const MockWNATIVE = await ethers.getContractFactory("MockERC20");
+    const wbnb = await MockWNATIVE.deploy("Wrapped Native", "WNATIVE");
+    await wbnb.waitForDeployment();
+
+    const MockFactory = await ethers.getContractFactory("MockDexV2Factory");
+    const mockFactory = await MockFactory.deploy();
+    await mockFactory.waitForDeployment();
+
+    const MockRouter = await ethers.getContractFactory("MockDexV2Router");
+    const mockRouter = await MockRouter.deploy(await mockFactory.getAddress(), await wbnb.getAddress());
+    await mockRouter.waitForDeployment();
+
+    const whitelist = whitelistCommitters.map((signer) => signer.address);
+    const latestBlock = await ethers.provider.getBlock("latest");
+    const opensAt = BigInt((latestBlock?.timestamp ?? 0) + 2 * 60 * 60);
+
+    const LaunchTokenWhitelist = await ethers.getContractFactory("LaunchTokenWhitelist");
+    const token = await LaunchTokenWhitelist.deploy({
+      name: "DelayedWhitelist314",
+      symbol: "DB314",
+      metadataURI: "ipfs://db314",
+      creator: creator.address,
+      factory: deployer.address,
+      protocolFeeRecipient: protocol.address,
+      router: await mockRouter.getAddress(),
+      graduationQuoteReserve: GRADUATION_TARGET,
+      whitelistThreshold: THRESHOLD,
+      whitelistSlotSize: SLOT,
+      whitelistOpensAt: opensAt,
+      whitelistAddresses: whitelist,
+      launchModeId: 2,
+    });
+    await token.waitForDeployment();
+
+    expect(await token.whitelistStatus()).to.equal(1n);
+    const snapshot = await token.whitelistSnapshot();
+    expect(snapshot.opensAt).to.equal(opensAt);
+    expect(await token.canCommitWhitelist(buyer.address)).to.equal(false);
+    await expect(buyer.sendTransaction({ to: await token.getAddress(), value: SLOT })).to.be.revertedWithCustomError(
+      token,
+      "WhitelistNotActive"
+    );
+
+    await increaseTime(2 * 60 * 60 + 1);
+    expect(await token.whitelistStatus()).to.equal(2n);
+    expect(await token.canCommitWhitelist(buyer.address)).to.equal(true);
+    await buyer.sendTransaction({ to: await token.getAddress(), value: SLOT });
+    expect(await token.whitelistSeatsFilled()).to.equal(1n);
   });
 });

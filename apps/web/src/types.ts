@@ -3,10 +3,26 @@ export type FactorySnapshot = {
   router: `0x${string}`;
   protocolFeeRecipient: `0x${string}`;
   createFee: bigint;
+  standardCreateFee: bigint;
+  whitelistCreateFee: bigint;
   graduationQuoteReserve: bigint;
   totalLaunches: bigint;
   accruedProtocolCreateFees: bigint;
   recentLaunches: `0x${string}`[];
+};
+
+export type LaunchMode = "Unregistered" | "Standard0314" | "WhitelistB314";
+
+export type WhitelistSnapshot = {
+  status: bigint;
+  deadline: bigint;
+  threshold: bigint;
+  slotSize: bigint;
+  seatCount: bigint;
+  seatsFilled: bigint;
+  committedTotal: bigint;
+  tokensPerSeat: bigint;
+  whitelistCount: bigint;
 };
 
 export type TokenSnapshot = {
@@ -14,9 +30,16 @@ export type TokenSnapshot = {
   name: string;
   symbol: string;
   state: string;
+  launchModeId: bigint;
+  launchMode: LaunchMode;
+  launchSuffix: string;
+  factory: `0x${string}`;
   pair: `0x${string}`;
   creator: `0x${string}`;
   protocolFeeRecipient: `0x${string}`;
+  router: `0x${string}`;
+  dexFactory: `0x${string}`;
+  wrappedNative: `0x${string}`;
   metadataURI: string;
   graduationQuoteReserve: bigint;
   currentPriceQuotePerToken: bigint;
@@ -30,8 +53,27 @@ export type TokenSnapshot = {
   creatorFeeSweepReady: boolean;
   createdAt: bigint;
   lastTradeAt: bigint;
+  whitelistStatus: bigint;
+  whitelistSnapshot: WhitelistSnapshot | null;
   dexTokenReserve: bigint;
   dexQuoteReserve: bigint;
+};
+
+export type ProtocolVerification = {
+  status: "official" | "warning" | "foreign" | "error";
+  summary: string;
+  checks: {
+    factoryMatches: boolean;
+    factoryRegistryRecognizesToken: boolean;
+    tokenModeMatchesFactory: boolean;
+    launchEventFound: boolean;
+    eventMetadataMatchesToken: boolean;
+    protocolRecipientMatches: boolean;
+    routerMatches: boolean;
+    graduationTargetMatches: boolean;
+    pairMatchesDex: boolean;
+    suffixMatchesMode: boolean;
+  };
 };
 
 export type TradeFeedItem = {

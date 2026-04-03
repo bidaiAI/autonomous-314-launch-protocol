@@ -4,11 +4,12 @@ import { indexerConfig } from "./config";
 import { resolveIndexerProfile } from "./profiles";
 import { decodeFactoryEvent } from "./events";
 import { normalizeGraduatedActivity, normalizePairTrade, normalizeProtocolTrade } from "./normalizers";
-import type { CandleBucket, IndexerSnapshot, LaunchState, LaunchWorkspaceSnapshot, TradeRecord } from "./schema";
+import type { CandleBucket, IndexerSnapshot, LaunchMode, LaunchState, LaunchWorkspaceSnapshot, TradeRecord, WhitelistSnapshot } from "./schema";
 
-const launchStates = ["Created", "Bonding314", "Migrating", "DEXOnly"] as const;
+const launchStates = ["Created", "Bonding314", "Migrating", "DEXOnly", "WhitelistCommit"] as const;
+const launchModes = ["Unregistered", "Standard0314", "WhitelistB314"] as const;
 const zeroAddress = "0x0000000000000000000000000000000000000000";
-const launchCreatedTopic = eventTopic("LaunchCreated(address,address,string,string,string)");
+const launchCreatedTopic = eventTopic("LaunchCreated(address,address,uint8,string,string,string)");
 const buyExecutedTopic = eventTopic(
   "BuyExecuted(address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256)"
 );
@@ -196,6 +197,10 @@ function eventTopic(signature: string): Hex {
   return keccak256(stringToHex(signature));
 }
 
+function launchModeFromId(mode: number): LaunchMode {
+  return (launchModes[mode] ?? "Unregistered") as LaunchMode;
+}
+
 function rpcLogToLog(entry: {
   address: `0x${string}`;
   blockHash: `0x${string}` | null;
@@ -229,6 +234,8 @@ async function readLaunchSnapshot(client: ReturnType<typeof createPublicClient>,
     name,
     symbol,
     state,
+    launchMode,
+    launchSuffix,
     pair,
     creator,
     metadataURI,
@@ -241,11 +248,15 @@ async function readLaunchSnapshot(client: ReturnType<typeof createPublicClient>,
     pairGraduationCompatible,
     protocolClaimable,
     creatorClaimable,
+    whitelistStatus,
+    whitelistSnapshot,
     dexReserves
   ] = (await Promise.all([
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "name" }),
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "symbol" }),
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "state" }),
+    client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "launchMode" }),
+    client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "launchSuffix" }),
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "pair" }),
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "creator" }),
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "metadataURI" }),
@@ -258,11 +269,15 @@ async function readLaunchSnapshot(client: ReturnType<typeof createPublicClient>,
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "isPairGraduationCompatible" }),
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "protocolClaimable" }),
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "creatorClaimable" }),
+    client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "whitelistStatus" }),
+    client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "whitelistSnapshot" }),
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "dexReserves" })
   ])) as [
     string,
     string,
     bigint,
+    bigint,
+    string,
     `0x${string}`,
     `0x${string}`,
     string,
@@ -275,14 +290,34 @@ async function readLaunchSnapshot(client: ReturnType<typeof createPublicClient>,
     boolean,
     bigint,
     bigint,
+    bigint,
+    readonly [bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint],
     readonly [bigint, bigint]
   ];
+
+  const parsedWhitelistSnapshot: WhitelistSnapshot =
+    whitelistStatus === 0n && whitelistSnapshot[1] === 0n
+      ? null
+      : {
+          status: whitelistSnapshot[0].toString(),
+          deadline: whitelistSnapshot[1].toString(),
+          threshold: whitelistSnapshot[2].toString(),
+          slotSize: whitelistSnapshot[3].toString(),
+          seatCount: whitelistSnapshot[4].toString(),
+          seatsFilled: whitelistSnapshot[5].toString(),
+          committedTotal: whitelistSnapshot[6].toString(),
+          tokensPerSeat: whitelistSnapshot[7].toString(),
+          whitelistCount: whitelistSnapshot[8].toString()
+        };
 
   return {
     token: tokenAddress,
     creator,
     name,
     symbol,
+    mode: Number(launchMode),
+    modeLabel: launchModeFromId(Number(launchMode)),
+    suffix: launchSuffix,
     metadataURI,
     state: (launchStates[Number(state)] ?? "Created") as LaunchState,
     pair,
@@ -295,6 +330,8 @@ async function readLaunchSnapshot(client: ReturnType<typeof createPublicClient>,
     pairGraduationCompatible,
     protocolClaimable: protocolClaimable.toString(),
     creatorClaimable: creatorClaimable.toString(),
+    whitelistStatus: whitelistStatus.toString(),
+    whitelistSnapshot: parsedWhitelistSnapshot,
     dexTokenReserve: dexReserves[0].toString(),
     dexQuoteReserve: dexReserves[1].toString()
   };

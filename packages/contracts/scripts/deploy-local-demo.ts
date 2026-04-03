@@ -2,7 +2,7 @@ import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { ethers } from "hardhat";
 
-const CREATE_FEE = ethers.parseEther(process.env.LOCAL_DEMO_CREATE_FEE_NATIVE ?? process.env.LOCAL_DEMO_CREATE_FEE_BNB ?? "0.03");
+const CREATE_FEE = ethers.parseEther(process.env.LOCAL_DEMO_CREATE_FEE_NATIVE ?? process.env.LOCAL_DEMO_CREATE_FEE_BNB ?? "0.01");
 const GRADUATION_TARGET = ethers.parseEther(process.env.LOCAL_DEMO_GRADUATION_TARGET_NATIVE ?? process.env.LOCAL_DEMO_GRADUATION_TARGET_BNB ?? "0.2");
 const LOCAL_RPC_URL = process.env.LOCAL_DEMO_RPC_URL ?? "http://127.0.0.1:8545";
 const INDEXER_API_URL = process.env.LOCAL_DEMO_INDEXER_API_URL ?? "http://127.0.0.1:8787";

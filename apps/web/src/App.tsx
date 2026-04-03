@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { getAddress, parseEther } from "viem";
 import {
   applySlippageBps,
   buildInlineMetadataUri,
   buildLaunchMetadata,
   claimCreatorFees,
+  claimWhitelistAllocation,
+  claimWhitelistRefund,
   claimFactoryProtocolFees,
   claimTokenProtocolFees,
   connectWallet,
@@ -11,6 +14,7 @@ import {
   downloadLaunchMetadata,
   executeBuy,
   executeSell,
+  executeWhitelistCommit,
   fetchSegmentedChartSnapshot,
   fetchUnifiedActivity,
   formatNative,
@@ -25,10 +29,12 @@ import {
   resolveLaunchMetadata,
   readRecentLaunchSnapshots,
   readToken,
+  readWhitelistAccountState,
   switchWalletToExpectedChain,
-  sweepAbandonedCreatorFees
+  sweepAbandonedCreatorFees,
+  verifyOfficialLaunch
 } from "./protocol";
-import type { ActivityFeedItem, CandlePoint, FactorySnapshot, LaunchMetadata, TokenSnapshot } from "./types";
+import type { ActivityFeedItem, CandlePoint, FactorySnapshot, LaunchMetadata, ProtocolVerification, TokenSnapshot } from "./types";
 import { SegmentedPhaseChart } from "./charts";
 import { activeProtocolProfile } from "./profiles";
 
@@ -89,6 +95,13 @@ function formatUnixTimestamp(timestamp: bigint) {
   return formatDateTime(Number(timestamp) * 1000);
 }
 
+function splitAddressLines(value: string) {
+  return value
+    .split(/\r?\n|,/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
 function resolvePreviewImage(image: string) {
   if (!image) return "";
   if (image.startsWith("ipfs://")) {
@@ -137,6 +150,7 @@ export function App() {
   const [tokenAddress, setTokenAddress] = useState(import.meta.env.VITE_TOKEN_ADDRESS ?? "");
   const [createName, setCreateName] = useState("Autonomous 314");
   const [createSymbol, setCreateSymbol] = useState("A314");
+  const [createMode, setCreateMode] = useState<"standard" | "whitelist">("standard");
   const [createDescription, setCreateDescription] = useState("");
   const [createImageUrl, setCreateImageUrl] = useState("");
   const [createImagePreview, setCreateImagePreview] = useState("");
@@ -146,10 +160,15 @@ export function App() {
   const [createTelegram, setCreateTelegram] = useState("");
   const [createDiscord, setCreateDiscord] = useState("");
   const [createMetadataUri, setCreateMetadataUri] = useState("");
+  const [createWhitelistThreshold, setCreateWhitelistThreshold] = useState("4");
+  const [createWhitelistSlotSize, setCreateWhitelistSlotSize] = useState("0.2");
+  const [createWhitelistAddresses, setCreateWhitelistAddresses] = useState("");
   const [factorySnapshot, setFactorySnapshot] = useState<FactorySnapshot | null>(null);
   const [recentLaunchSnapshots, setRecentLaunchSnapshots] = useState<TokenSnapshot[]>([]);
   const [tokenSnapshot, setTokenSnapshot] = useState<TokenSnapshot | null>(null);
+  const [tokenVerification, setTokenVerification] = useState<ProtocolVerification | null>(null);
   const [launchMetadataByToken, setLaunchMetadataByToken] = useState<Partial<Record<string, LaunchMetadata | null>>>({});
+  const [marketQuery, setMarketQuery] = useState("");
   const [recentActivity, setRecentActivity] = useState<ActivityFeedItem[]>([]);
   const [bondingCandles, setBondingCandles] = useState<CandlePoint[]>([]);
   const [dexCandles, setDexCandles] = useState<CandlePoint[]>([]);
@@ -163,6 +182,12 @@ export function App() {
   const [loading, setLoading] = useState(false);
   const [walletChainId, setWalletChainId] = useState<number | null>(null);
   const [walletOnExpectedChain, setWalletOnExpectedChain] = useState(true);
+  const [whitelistAccountState, setWhitelistAccountState] = useState<{
+    approved: boolean;
+    canCommit: boolean;
+    canClaimAllocation: boolean;
+    canClaimRefund: boolean;
+  } | null>(null);
   const workspaceRequestRef = useRef(0);
 
   const isBonding = tokenSnapshot?.state === "Bonding314";
@@ -175,6 +200,14 @@ export function App() {
   const connectedAsTokenProtocolRecipient =
     wallet && tokenSnapshot ? wallet.toLowerCase() === tokenSnapshot.protocolFeeRecipient.toLowerCase() : false;
   const creatorFeeSweepReady = tokenSnapshot?.creatorFeeSweepReady ?? false;
+  const tokenOfficial = tokenVerification?.status === "official";
+  const canWriteVerifiedLaunch = tokenVerification?.status === "official";
+  const isWhitelistCommit = tokenSnapshot?.state === "WhitelistCommit";
+  const isWhitelistMode = tokenSnapshot?.launchMode === "WhitelistB314";
+  const whitelistSnapshot = tokenSnapshot?.whitelistSnapshot ?? null;
+  const whitelistSeatCount = whitelistSnapshot?.seatCount ?? 0n;
+  const whitelistSeatsFilled = whitelistSnapshot?.seatsFilled ?? 0n;
+  const whitelistSeatsRemaining = whitelistSeatCount > whitelistSeatsFilled ? whitelistSeatCount - whitelistSeatsFilled : 0n;
 
   const pollutionTone = useMemo(() => {
     if (!tokenSnapshot) return "neutral";
@@ -182,6 +215,30 @@ export function App() {
     if (tokenSnapshot.pairGraduationCompatible) return "warn";
     return "danger";
   }, [tokenSnapshot]);
+  const verificationTone = useMemo(() => {
+    if (!tokenVerification) return "neutral";
+    if (tokenVerification.status === "official") return "success";
+    if (tokenVerification.status === "warning") return "warn";
+    return "danger";
+  }, [tokenVerification]);
+  const trimmedMarketQuery = marketQuery.trim();
+  const searchLooksLikeAddress = /^0x[a-fA-F0-9]{40}$/.test(trimmedMarketQuery);
+  const filteredLaunchSnapshots = useMemo(() => {
+    if (!trimmedMarketQuery) return recentLaunchSnapshots;
+    const lower = trimmedMarketQuery.toLowerCase();
+    return recentLaunchSnapshots.filter((launch) => {
+      const metadata = launchMetadataByToken[launch.address.toLowerCase()] ?? null;
+      return (
+        launch.address.toLowerCase().includes(lower) ||
+        launch.name.toLowerCase().includes(lower) ||
+        launch.symbol.toLowerCase().includes(lower) ||
+        launch.creator.toLowerCase().includes(lower) ||
+        (metadata?.name ?? "").toLowerCase().includes(lower) ||
+        (metadata?.symbol ?? "").toLowerCase().includes(lower) ||
+        (metadata?.description ?? "").toLowerCase().includes(lower)
+      );
+    });
+  }, [launchMetadataByToken, recentLaunchSnapshots, trimmedMarketQuery]);
 
   const displayedGraduationTarget =
     tokenSnapshot?.graduationQuoteReserve && tokenSnapshot.graduationQuoteReserve > 0n
@@ -194,6 +251,35 @@ export function App() {
   const selectedLaunchMetadata = selectedLaunchMetadataState ?? null;
   const selectedLaunchMetadataLoading =
     Boolean(tokenSnapshot?.metadataURI) && selectedLaunchMetadataState === undefined;
+  const whitelistApproved = whitelistAccountState?.approved ?? false;
+  const canCommitWhitelist = whitelistAccountState?.canCommit ?? false;
+  const canClaimWhitelistAllocationForWallet = whitelistAccountState?.canClaimAllocation ?? false;
+  const canClaimWhitelistRefundForWallet = whitelistAccountState?.canClaimRefund ?? false;
+  const parsedWhitelistAddresses = useMemo(() => {
+    const unique = new Map<string, `0x${string}`>();
+    for (const entry of splitAddressLines(createWhitelistAddresses)) {
+      try {
+        const normalized = getAddress(entry);
+        unique.set(normalized.toLowerCase(), normalized);
+      } catch {
+        return null;
+      }
+    }
+    return [...unique.values()];
+  }, [createWhitelistAddresses]);
+  const whitelistThresholdValue = useMemo(() => parseFloat(createWhitelistThreshold || "0"), [createWhitelistThreshold]);
+  const whitelistSlotValue = useMemo(() => parseFloat(createWhitelistSlotSize || "0"), [createWhitelistSlotSize]);
+  const whitelistSeatTarget =
+    createMode === "whitelist" && whitelistThresholdValue > 0 && whitelistSlotValue > 0
+      ? Math.round(whitelistThresholdValue / whitelistSlotValue)
+      : 0;
+  const whitelistAddressCount = parsedWhitelistAddresses?.length ?? 0;
+  const whitelistAddressCountValid =
+    createMode !== "whitelist" || (parsedWhitelistAddresses !== null && whitelistAddressCount >= whitelistSeatTarget && whitelistSeatTarget > 0);
+  const selectedCreateFee =
+    createMode === "whitelist"
+      ? factorySnapshot?.whitelistCreateFee ?? 0n
+      : factorySnapshot?.standardCreateFee ?? factorySnapshot?.createFee ?? 0n;
 
   const launchMetadata = useMemo(
     () =>
@@ -263,7 +349,16 @@ export function App() {
   }, [factoryAddress]);
 
   useEffect(() => {
-    if (route.page !== "launch") return;
+    if (!searchLooksLikeAddress && route.page === "home") {
+      setTokenVerification(null);
+    }
+  }, [route.page, searchLooksLikeAddress]);
+
+  useEffect(() => {
+    if (route.page !== "launch") {
+      setTokenVerification(null);
+      return;
+    }
     const normalized = route.token;
     setTokenAddress(normalized);
     void loadLaunchWorkspace(normalized).then(
@@ -319,6 +414,26 @@ export function App() {
     };
   }, [tokenSnapshot, launchMetadataByToken]);
 
+  useEffect(() => {
+    if (!tokenSnapshot || !wallet) {
+      setWhitelistAccountState(null);
+      return;
+    }
+
+    let cancelled = false;
+    void readWhitelistAccountState(tokenSnapshot.address, wallet)
+      .then((state) => {
+        if (!cancelled) setWhitelistAccountState(state);
+      })
+      .catch(() => {
+        if (!cancelled) setWhitelistAccountState(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tokenSnapshot, wallet]);
+
   async function refreshWalletNetworkStatus() {
     const chainId = await getWalletChainId();
     const onExpectedChain = chainId === null ? true : await isWalletOnExpectedChain();
@@ -329,8 +444,30 @@ export function App() {
 
   async function loadLaunchWorkspace(address: string, preferIndexed = true) {
     const requestId = ++workspaceRequestRef.current;
-    const snapshot = await readToken(address);
-    const indexed = preferIndexed ? await readIndexedLaunchWorkspace(address) : null;
+    const [snapshot, indexed, verification] = await Promise.all([
+      readToken(address),
+      preferIndexed ? readIndexedLaunchWorkspace(address) : Promise.resolve(null),
+      factoryAddress
+        ? verifyOfficialLaunch(factoryAddress, address).catch(
+            (): ProtocolVerification => ({
+              status: "error",
+              summary: "Protocol verification could not be completed for this address.",
+              checks: {
+                factoryMatches: false,
+                factoryRegistryRecognizesToken: false,
+                tokenModeMatchesFactory: false,
+                launchEventFound: false,
+                eventMetadataMatchesToken: false,
+                protocolRecipientMatches: false,
+                routerMatches: false,
+                graduationTargetMatches: false,
+                pairMatchesDex: false,
+                suffixMatchesMode: false
+              }
+            })
+          )
+        : Promise.resolve(null)
+    ]);
     const [activity, chart] = indexed
       ? [indexed.recentActivity, indexed.segmentedChart]
       : await Promise.all([fetchUnifiedActivity(address), fetchSegmentedChartSnapshot(address)]);
@@ -340,6 +477,7 @@ export function App() {
     }
 
     setTokenSnapshot(snapshot);
+    setTokenVerification(verification);
     setRecentActivity(activity);
     setBondingCandles(chart.bondingCandles);
     setDexCandles(chart.dexCandles);
@@ -411,6 +549,41 @@ export function App() {
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to load token");
     }
+  }
+
+  async function handleInspectAndLoadSearchToken() {
+    if (!searchLooksLikeAddress) {
+      setStatus("Enter a valid token address to verify and load.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const verification = await verifyOfficialLaunch(factoryAddress, trimmedMarketQuery);
+      if (verification.status === "foreign" || verification.status === "error") {
+        setTokenVerification(verification);
+        setStatus(verification.summary);
+        return;
+      }
+
+      await handleSelectLaunch(trimmedMarketQuery);
+      setStatus(
+        verification.status === "official"
+          ? verification.summary
+          : `${verification.summary} Loaded in read-only mode so you can inspect it safely.`
+      );
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Failed to verify launch address");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleQuickBuyLaunch(address: string) {
+    await handleSelectLaunch(address);
+    window.requestAnimationFrame(() => {
+      document.getElementById("trade-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   }
 
   async function handlePreviewBuy() {
@@ -502,6 +675,7 @@ export function App() {
       setLoading(true);
       const snapshot = await readFactory(factoryAddress);
       setFactorySnapshot(snapshot);
+      const modeFee = createMode === "whitelist" ? snapshot.whitelistCreateFee : snapshot.standardCreateFee;
       const finalMetadataUri = createMetadataUri.trim() || generatedInlineMetadataUri;
       if (!finalMetadataUri) {
         throw new Error(
@@ -510,15 +684,29 @@ export function App() {
             : "Provide a metadata URI or use generated inline metadata first."
         );
       }
-      setStatus("Mining vanity salt for suffix 0314...");
+      const whitelistThreshold = createMode === "whitelist" ? parseEther(createWhitelistThreshold) : undefined;
+      const whitelistSlotSize = createMode === "whitelist" ? parseEther(createWhitelistSlotSize) : undefined;
+      if (createMode === "whitelist") {
+        if (!parsedWhitelistAddresses || whitelistAddressCount < whitelistSeatTarget) {
+          throw new Error("Whitelist mode needs enough valid addresses to cover every seat.");
+        }
+      }
+      const expectedSuffix = createMode === "whitelist" ? "b314" : "0314";
+      setStatus(`Mining vanity salt for suffix ${expectedSuffix}...`);
 
       const { receipt, createdToken, vanity } = await createLaunch(factoryAddress, {
+        mode: createMode,
         name: createName,
         symbol: createSymbol,
         metadataURI: finalMetadataUri,
-        createFee: snapshot.createFee,
+        createFee: modeFee,
+        whitelistThreshold,
+        whitelistSlotSize,
+        whitelistAddresses: parsedWhitelistAddresses ?? undefined,
         onVanityProgress: ({ attempts, elapsedMs }) => {
-          setStatus(`Mining vanity salt for suffix 0314... ${attempts.toLocaleString()} attempts · ${(elapsedMs / 1000).toFixed(1)}s`);
+          setStatus(
+            `Mining vanity salt for suffix ${expectedSuffix}... ${attempts.toLocaleString()} attempts · ${(elapsedMs / 1000).toFixed(1)}s`
+          );
         }
       });
 
@@ -526,7 +714,7 @@ export function App() {
         setTokenAddress(createdToken);
         navigate({ page: "launch", token: createdToken });
         setStatus(
-          `Create launch confirmed: ${createdToken} (0314 vanity found in ${vanity.attempts.toLocaleString()} attempts / ${(vanity.elapsedMs / 1000).toFixed(1)}s)`
+          `Create launch confirmed: ${createdToken} (${expectedSuffix} vanity found in ${vanity.attempts.toLocaleString()} attempts / ${(vanity.elapsedMs / 1000).toFixed(1)}s)`
         );
       } else {
         setStatus(
@@ -539,6 +727,49 @@ export function App() {
       setRecentLaunchSnapshots(launches);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Create launch failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleWhitelistCommit() {
+    if (!tokenSnapshot?.whitelistSnapshot) return;
+    try {
+      setLoading(true);
+      const receipt = await executeWhitelistCommit(tokenAddress, tokenSnapshot.whitelistSnapshot.slotSize);
+      setStatus(`Whitelist seat committed: ${receipt.transactionHash}`);
+      await loadLaunchWorkspace(tokenAddress, false);
+      setTokenSnapshot(await readToken(tokenAddress));
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Whitelist commit failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleClaimWhitelistAllocation() {
+    try {
+      setLoading(true);
+      const receipt = await claimWhitelistAllocation(tokenAddress);
+      setStatus(`Whitelist allocation claimed: ${receipt.transactionHash}`);
+      await loadLaunchWorkspace(tokenAddress, false);
+      setTokenSnapshot(await readToken(tokenAddress));
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Whitelist allocation claim failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleClaimWhitelistRefund() {
+    try {
+      setLoading(true);
+      const receipt = await claimWhitelistRefund(tokenAddress);
+      setStatus(`Whitelist refund claimed: ${receipt.transactionHash}`);
+      await loadLaunchWorkspace(tokenAddress, false);
+      setTokenSnapshot(await readToken(tokenAddress));
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Whitelist refund claim failed");
     } finally {
       setLoading(false);
     }
@@ -691,9 +922,9 @@ export function App() {
           <section className="home-hero panel">
             <div>
               <span className="section-kicker">Open launch market</span>
-              <h2>Simple homepage, heavy functionality moved into subpages.</h2>
+              <h2>Creator-first launches that graduate into a canonical V2 market.</h2>
               <p>
-                Browse launches here, open a dedicated workspace to trade and inspect lifecycle state, or move into a focused create page to deploy a new 0314 launch.
+                Browse live launches here, open a focused workspace to trade and inspect lifecycle state, or move into the create flow to deploy a new official launch.
               </p>
             </div>
             <div className="button-row hero-actions">
@@ -731,18 +962,48 @@ export function App() {
                 <span className="section-kicker">Market board</span>
                 <h2>Open launches</h2>
               </div>
-              <span className="list-item-meta">
-                {recentLaunchSnapshots.length} recent {recentLaunchSnapshots.length === 1 ? "launch" : "launches"}
-              </span>
+              <div className="market-toolbar">
+                <label className="field compact-field search-field">
+                  <span>Search launches</span>
+                  <input
+                    value={marketQuery}
+                    onChange={(e) => setMarketQuery(e.target.value)}
+                    placeholder="Name, symbol, creator, or token address"
+                  />
+                </label>
+                {searchLooksLikeAddress ? (
+                  <button className="secondary-button" onClick={() => void handleInspectAndLoadSearchToken()} disabled={loading}>
+                    Verify & load
+                  </button>
+                ) : null}
+                <span className="list-item-meta">
+                  {filteredLaunchSnapshots.length} of {recentLaunchSnapshots.length} indexed launches
+                </span>
+              </div>
             </div>
 
-            {recentLaunchSnapshots.length === 0 ? (
+            {tokenVerification && searchLooksLikeAddress && (
+              <div className={`callout ${verificationTone}`}>
+                <strong>
+                  {tokenVerification.status === "official"
+                    ? "Verified official Autonomous 314 launch"
+                    : tokenVerification.status === "warning"
+                      ? "Suspicious launch surface"
+                      : "Unverified token"}
+                </strong>
+                <p>{tokenVerification.summary}</p>
+              </div>
+            )}
+
+            {filteredLaunchSnapshots.length === 0 ? (
               <div className="empty-state panel">
-                No launches have been created yet. Go to the create page to deploy the first launch.
+                {trimmedMarketQuery
+                  ? "No indexed launch matched your query. Paste an address and use Verify & load to inspect an arbitrary token."
+                  : "No launches have been created yet. Go to the create page to deploy the first launch."}
               </div>
             ) : (
               <div className="launch-card-grid">
-                {recentLaunchSnapshots.map((launch) => {
+                {filteredLaunchSnapshots.map((launch) => {
                   const metadataState = launchMetadataByToken[launch.address.toLowerCase()];
                   const metadata = metadataState ?? null;
                   const image = resolvePreviewImage(metadata?.image ?? "");
@@ -762,13 +1023,15 @@ export function App() {
                         </span>
                       </div>
                       <div className="launch-card-body">
-                        <div className="launch-card-head">
-                          <div>
-                            <h3>{metadata?.name || launch.name}</h3>
-                            <div className="launch-card-symbol">{metadata?.symbol || launch.symbol}</div>
+                          <div className="launch-card-head">
+                            <div>
+                              <h3>{metadata?.name || launch.name}</h3>
+                              <div className="launch-card-symbol">
+                                {metadata?.symbol || launch.symbol} · {launch.launchSuffix || "launch"}
+                              </div>
+                            </div>
+                            <div className="launch-card-price">{formatNative(launch.currentPriceQuotePerToken)}</div>
                           </div>
-                          <div className="launch-card-price">{formatNative(launch.currentPriceQuotePerToken)}</div>
-                        </div>
                         <p className="launch-card-description">
                           {metadata?.description ||
                             "Metadata has not been resolved yet, but the on-chain launch is already live and can be opened in the dedicated workspace."}
@@ -795,6 +1058,9 @@ export function App() {
                           )}
                         </div>
                         <div className="button-row launch-card-actions">
+                          <button onClick={() => void handleQuickBuyLaunch(launch.address)}>
+                            Buy now
+                          </button>
                           <button className="secondary-button" onClick={() => void handleSelectLaunch(launch.address)}>
                             Open workspace
                           </button>
@@ -843,7 +1109,7 @@ export function App() {
                     {recentLaunchSnapshots.length === 0 ? (
                       <div className="mini-list-empty">No launches yet.</div>
                     ) : (
-                      recentLaunchSnapshots.map((launch) => (
+                      recentLaunchSnapshots.slice(0, 8).map((launch) => (
                         <button key={launch.address} className="list-item" onClick={() => void handleSelectLaunch(launch.address)}>
                           <span className="list-item-main">
                             <strong>{launch.symbol}</strong>
@@ -861,135 +1127,242 @@ export function App() {
 
           <section className="workspace-main">
             <article className="panel">
-              <div className="page-heading">
+              <div className="create-hero-card">
                 <div>
                   <span className="section-kicker">Create</span>
-                  <h2>Create a 0314 launch</h2>
+                  <h2>Launch configuration</h2>
+                  <p className="topbar-copy">
+                    Configure the token surface, metadata, and launch mode in one pass. Standard launches stay minimal and
+                    clean; whitelist launches add a fixed-seat commitment window before normal 314 bonding opens.
+                  </p>
                 </div>
-                <span className="list-item-meta">The create flow lives here instead of cluttering the homepage.</span>
-              </div>
-              <label className="field">
-                <span>Name</span>
-                <input value={createName} onChange={(e) => setCreateName(e.target.value)} placeholder="Token name" />
-              </label>
-              <label className="field">
-                <span>Symbol</span>
-                <input value={createSymbol} onChange={(e) => setCreateSymbol(e.target.value)} placeholder="TOKEN" />
-              </label>
-              <label className="field">
-                <span>Description</span>
-                <textarea
-                  value={createDescription}
-                  onChange={(e) => setCreateDescription(e.target.value)}
-                  placeholder="Explain what this launch is, who it is for, and why it exists."
-                  rows={4}
-                />
-              </label>
-              <div className="metadata-two-column">
-                <label className="field">
-                  <span>Image URL</span>
-                  <input value={createImageUrl} onChange={(e) => setCreateImageUrl(e.target.value)} placeholder="https://... or ipfs://..." />
-                </label>
-                <label className="field">
-                  <span>Upload image (preview only)</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => {
-                      void handleMetadataImageUpload(e.target.files?.[0] ?? null);
-                    }}
-                  />
-                </label>
-              </div>
-              <div className="callout warn compact-callout">
-                <strong>Upload is not a publish step.</strong>
-                <p>
-                  Local image upload only powers preview and metadata export. The protocol does not pin media for you, so
-                  a production launch still needs a permanent metadata URI such as IPFS, Arweave, or an HTTPS endpoint you control.
-                </p>
-                {createImageFileName && <p>Selected local file: {createImageFileName}</p>}
-              </div>
-              <div className="metadata-two-column">
-                <label className="field">
-                  <span>Website</span>
-                  <input value={createWebsite} onChange={(e) => setCreateWebsite(e.target.value)} placeholder="https://..." />
-                </label>
-                <label className="field">
-                  <span>X / Twitter</span>
-                  <input value={createTwitter} onChange={(e) => setCreateTwitter(e.target.value)} placeholder="https://x.com/..." />
-                </label>
-              </div>
-              <div className="metadata-two-column">
-                <label className="field">
-                  <span>Telegram</span>
-                  <input value={createTelegram} onChange={(e) => setCreateTelegram(e.target.value)} placeholder="https://t.me/..." />
-                </label>
-                <label className="field">
-                  <span>Discord</span>
-                  <input value={createDiscord} onChange={(e) => setCreateDiscord(e.target.value)} placeholder="https://discord.gg/..." />
-                </label>
-              </div>
-              <label className="field">
-                <span>Final metadata URI</span>
-                <input
-                  value={createMetadataUri}
-                  onChange={(e) => setCreateMetadataUri(e.target.value)}
-                  placeholder="ipfs://... or leave empty to use generated inline metadata"
-                />
-              </label>
-              <div className="button-row">
-                <button className="secondary-button" onClick={handleUseGeneratedMetadataUri} type="button">
-                  Use generated inline metadata
-                </button>
-                <button className="secondary-button" onClick={handleDownloadMetadata} type="button">
-                  Download metadata.json
-                </button>
-              </div>
-              <div className="metadata-preview-card">
-                <div className="metadata-preview-head">
-                  <div>
-                    <span className="metric-label">Metadata preview</span>
-                    <strong>{createName || "Untitled launch"}</strong>
-                  </div>
-                  <span className="status-pill success">{createSymbol || "TKN"}</span>
+                <div className="mode-toggle" role="tablist" aria-label="Launch mode">
+                  <button
+                    type="button"
+                    className={createMode === "standard" ? "mode-tab active" : "mode-tab"}
+                    onClick={() => setCreateMode("standard")}
+                  >
+                    <span>0314</span>
+                    <small>Standard</small>
+                  </button>
+                  <button
+                    type="button"
+                    className={createMode === "whitelist" ? "mode-tab active" : "mode-tab"}
+                    onClick={() => setCreateMode("whitelist")}
+                  >
+                    <span>b314</span>
+                    <small>Whitelist</small>
+                  </button>
                 </div>
-                <div className="metadata-preview-body">
-                  <div className="metadata-image-shell">
-                    {resolvePreviewImage(launchMetadata.image ?? "") ? (
-                      <img className="metadata-image" src={resolvePreviewImage(launchMetadata.image ?? "")} alt={`${createName || "Launch"} preview`} />
-                    ) : (
-                      <div className="metadata-image-placeholder">No image yet</div>
-                    )}
-                  </div>
-                  <div className="metadata-preview-copy">
-                    <p>{launchMetadata.description || "Add a description, image, and links to make launch cards look like a proper market listing."}</p>
-                    <div className="metadata-links">
-                      {launchMetadata.website && <span>Website</span>}
-                      {launchMetadata.twitter && <span>X</span>}
-                      {launchMetadata.telegram && <span>Telegram</span>}
-                      {launchMetadata.discord && <span>Discord</span>}
-                      {!launchMetadata.website && !launchMetadata.twitter && !launchMetadata.telegram && !launchMetadata.discord && <span>No social links yet</span>}
+              </div>
+
+              <div className="create-layout">
+                <div className="create-sections">
+                  <section className="create-section">
+                    <div className="create-section-head">
+                      <div>
+                        <span className="section-kicker">Identity</span>
+                        <h3>Launch identity</h3>
+                      </div>
+                      <span className="status-pill success">{createMode === "whitelist" ? "b314" : "0314"}</span>
+                    </div>
+                    <div className="metadata-two-column">
+                      <label className="field">
+                        <span>Name</span>
+                        <input value={createName} onChange={(e) => setCreateName(e.target.value)} placeholder="Token name" />
+                      </label>
+                      <label className="field">
+                        <span>Symbol</span>
+                        <input value={createSymbol} onChange={(e) => setCreateSymbol(e.target.value)} placeholder="TOKEN" />
+                      </label>
+                    </div>
+                    <label className="field">
+                      <span>Description</span>
+                      <textarea
+                        value={createDescription}
+                        onChange={(e) => setCreateDescription(e.target.value)}
+                        placeholder="Explain the meme, the community angle, and the launch context."
+                        rows={4}
+                      />
+                    </label>
+                  </section>
+
+                  <section className="create-section">
+                    <div className="create-section-head">
+                      <div>
+                        <span className="section-kicker">Metadata</span>
+                        <h3>Media and socials</h3>
+                      </div>
+                    </div>
+                    <div className="metadata-two-column">
+                      <label className="field">
+                        <span>Image URL</span>
+                        <input value={createImageUrl} onChange={(e) => setCreateImageUrl(e.target.value)} placeholder="https://... or ipfs://..." />
+                      </label>
+                      <label className="field">
+                        <span>Upload image (preview only)</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => {
+                            void handleMetadataImageUpload(e.target.files?.[0] ?? null);
+                          }}
+                        />
+                      </label>
+                    </div>
+                    <div className="metadata-two-column">
+                      <label className="field">
+                        <span>Website</span>
+                        <input value={createWebsite} onChange={(e) => setCreateWebsite(e.target.value)} placeholder="https://..." />
+                      </label>
+                      <label className="field">
+                        <span>X / Twitter</span>
+                        <input value={createTwitter} onChange={(e) => setCreateTwitter(e.target.value)} placeholder="https://x.com/..." />
+                      </label>
+                    </div>
+                    <div className="metadata-two-column">
+                      <label className="field">
+                        <span>Telegram</span>
+                        <input value={createTelegram} onChange={(e) => setCreateTelegram(e.target.value)} placeholder="https://t.me/..." />
+                      </label>
+                      <label className="field">
+                        <span>Discord</span>
+                        <input value={createDiscord} onChange={(e) => setCreateDiscord(e.target.value)} placeholder="https://discord.gg/..." />
+                      </label>
+                    </div>
+                    <div className="callout warn compact-callout">
+                      <strong>Preview is local only.</strong>
+                      <p>
+                        Local uploads only power preview and metadata export. To create a real launch, publish the final
+                        metadata JSON to IPFS, Arweave, or an HTTPS endpoint you control, then paste the URI below.
+                      </p>
+                      {createImageFileName && <p>Selected local file: {createImageFileName}</p>}
+                    </div>
+                    <label className="field">
+                      <span>Final metadata URI</span>
+                      <input
+                        value={createMetadataUri}
+                        onChange={(e) => setCreateMetadataUri(e.target.value)}
+                        placeholder="ipfs://... or leave empty to use generated inline metadata"
+                      />
+                    </label>
+                    <div className="button-row">
+                      <button className="secondary-button" onClick={handleUseGeneratedMetadataUri} type="button">
+                        Use generated inline metadata
+                      </button>
+                      <button className="secondary-button" onClick={handleDownloadMetadata} type="button">
+                        Download metadata.json
+                      </button>
+                    </div>
+                  </section>
+
+                  {createMode === "whitelist" && (
+                    <section className="create-section">
+                      <div className="create-section-head">
+                        <div>
+                          <span className="section-kicker">Whitelist</span>
+                          <h3>Fixed-seat commitment window</h3>
+                        </div>
+                      </div>
+                      <div className="metadata-two-column">
+                        <label className="field">
+                          <span>Threshold (BNB)</span>
+                          <select value={createWhitelistThreshold} onChange={(e) => setCreateWhitelistThreshold(e.target.value)}>
+                            <option value="4">4 BNB</option>
+                            <option value="6">6 BNB</option>
+                            <option value="8">8 BNB</option>
+                          </select>
+                        </label>
+                        <label className="field">
+                          <span>Seat size (BNB)</span>
+                          <select value={createWhitelistSlotSize} onChange={(e) => setCreateWhitelistSlotSize(e.target.value)}>
+                            <option value="0.1">0.1 BNB</option>
+                            <option value="0.2">0.2 BNB</option>
+                            <option value="0.5">0.5 BNB</option>
+                            <option value="1">1 BNB</option>
+                          </select>
+                        </label>
+                      </div>
+                      <div className="create-summary-grid compact">
+                        <div><span>Seat target</span><strong>{whitelistSeatTarget || "—"}</strong></div>
+                        <div><span>Provided addresses</span><strong>{whitelistAddressCount}</strong></div>
+                        <div><span>Window</span><strong>24h</strong></div>
+                      </div>
+                      <label className="field">
+                        <span>Whitelist addresses</span>
+                        <textarea
+                          value={createWhitelistAddresses}
+                          onChange={(e) => setCreateWhitelistAddresses(e.target.value)}
+                          placeholder="One address per line or comma-separated"
+                          rows={7}
+                        />
+                      </label>
+                      <div className={`callout ${whitelistAddressCountValid ? "success" : "warn"} compact-callout`}>
+                        <strong>{whitelistAddressCountValid ? "Seat coverage looks valid." : "More whitelist addresses are needed."}</strong>
+                        <p>
+                          b314 requires at least one eligible address per seat. Users commit by sending the exact seat size; once
+                          the seat cap is filled or the threshold is reached, the launch finalizes automatically.
+                        </p>
+                      </div>
+                    </section>
+                  )}
+                </div>
+
+                <aside className="create-summary-panel">
+                  <div className="metadata-preview-card">
+                    <div className="metadata-preview-head">
+                      <div>
+                        <span className="metric-label">Market preview</span>
+                        <strong>{createName || "Untitled launch"}</strong>
+                      </div>
+                      <span className="status-pill success">{createSymbol || "TKN"}</span>
+                    </div>
+                    <div className="metadata-preview-body">
+                      <div className="metadata-image-shell">
+                        {resolvePreviewImage(launchMetadata.image ?? "") ? (
+                          <img className="metadata-image" src={resolvePreviewImage(launchMetadata.image ?? "")} alt={`${createName || "Launch"} preview`} />
+                        ) : (
+                          <div className="metadata-image-placeholder">No image yet</div>
+                        )}
+                      </div>
+                      <div className="metadata-preview-copy">
+                        <p>{launchMetadata.description || "Write a short pitch so the card reads like a real market listing, not a raw contract shell."}</p>
+                        <div className="metadata-links">
+                          {launchMetadata.website && <span>Website</span>}
+                          {launchMetadata.twitter && <span>X</span>}
+                          {launchMetadata.telegram && <span>Telegram</span>}
+                          {launchMetadata.discord && <span>Discord</span>}
+                          {!launchMetadata.website && !launchMetadata.twitter && !launchMetadata.telegram && !launchMetadata.discord && <span>No social links yet</span>}
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
+
+                  <div className="create-summary-grid">
+                    <div><span>Mode</span><strong>{createMode === "whitelist" ? "Whitelist b314" : "Standard 0314"}</strong></div>
+                    <div><span>Vanity target</span><strong>{createMode === "whitelist" ? "b314" : "0314"}</strong></div>
+                    <div><span>Create fee</span><strong>{selectedCreateFee > 0n ? formatNative(selectedCreateFee) : "Load factory"}</strong></div>
+                    <div><span>Graduation</span><strong>{factorySnapshot ? formatNative(factorySnapshot.graduationQuoteReserve) : "12 BNB"}</strong></div>
+                  </div>
+
+                  <div className="status-hint">
+                    Only <strong>name</strong>, <strong>symbol</strong>, and <strong>metadataURI</strong> go on-chain. Rich launch content lives in metadata.
+                  </div>
+                  <div className="status-hint">
+                    {generatedInlineMetadataUri
+                      ? `Generated inline metadata is ready (${metadataUriSizeBytes.toLocaleString()} bytes).`
+                      : usingUploadedImage
+                        ? "A local uploaded image is good for preview/export, but you still need to publish metadata externally and paste its URI before creating."
+                        : "You can paste a permanent metadata URI or generate an inline one for lightweight launches."}
+                  </div>
+                  <div className="status-hint">
+                    Official creates mine a local CREATE2 salt so the new launch address ends with <strong>{createMode === "whitelist" ? "b314" : "0314"}</strong>.
+                  </div>
+                  <button onClick={handleCreateLaunch} disabled={walletWrongNetwork || (createMode === "whitelist" && !whitelistAddressCountValid)}>
+                    {createMode === "whitelist" ? "Create b314 launch" : "Create 0314 launch"}
+                  </button>
+                </aside>
               </div>
-              <div className="status-hint">
-                Only <strong>name</strong>, <strong>symbol</strong>, and <strong>metadataURI</strong> go on-chain. Rich launch content lives in the metadata JSON.
-              </div>
-              <div className="status-hint">
-                Official creates first mine a CREATE2 salt locally so the new launch address ends with <strong>0314</strong>, then submit <code>createLaunchWithSalt(...)</code>.
-              </div>
-              <div className="status-hint">
-                {generatedInlineMetadataUri
-                  ? `Generated inline metadata is ready (${metadataUriSizeBytes.toLocaleString()} bytes).`
-                  : usingUploadedImage
-                    ? "A local uploaded image is great for preview/export, but you still need to publish metadata externally and paste its URI before creating."
-                    : "You can paste a permanent metadata URI or generate an inline one for lightweight launches."}
-              </div>
-              <div className="status-hint">
-                Upfront cost = current on-chain create fee ({factorySnapshot ? formatNative(factorySnapshot.createFee) : "load factory"}) + network gas.
-              </div>
-              <button onClick={handleCreateLaunch} disabled={walletWrongNetwork}>Create Launch</button>
             </article>
           </section>
         </section>
@@ -1016,7 +1389,7 @@ export function App() {
               </label>
               <div className="button-row">
                 <button onClick={handleLoadFactory}>Load Factory</button>
-                <button className="secondary-button" onClick={handleLoadToken}>Load Launch</button>
+                <button className="secondary-button" onClick={handleLoadToken}>Verify & Load Launch</button>
               </div>
               {factorySnapshot && (
                 <dl className="data-list compact">
@@ -1031,7 +1404,7 @@ export function App() {
                 {recentLaunchSnapshots.length === 0 ? (
                   <div className="mini-list-empty">No launches yet.</div>
                 ) : (
-                  recentLaunchSnapshots.map((launch) => (
+                  recentLaunchSnapshots.slice(0, 8).map((launch) => (
                     <button
                       key={launch.address}
                       className={`list-item ${tokenAddress.toLowerCase() === launch.address.toLowerCase() ? "active" : ""}`}
@@ -1124,10 +1497,36 @@ export function App() {
 
                   <div className="lifecycle-row">
                     <div className={`lifecycle-step ${tokenSnapshot.state === "Created" ? "current" : "done"}`}>Created</div>
+                    <div className={`lifecycle-step ${isWhitelistCommit ? "current" : tokenSnapshot.whitelistStatus > 0n ? "done" : ""}`}>Whitelist</div>
                     <div className={`lifecycle-step ${isBonding ? "current" : isMigrating || isDexOnly ? "done" : ""}`}>Bonding314</div>
                     <div className={`lifecycle-step ${isMigrating ? "current" : isDexOnly ? "done" : ""}`}>Migrating</div>
                     <div className={`lifecycle-step ${isDexOnly ? "current" : ""}`}>DEXOnly</div>
                   </div>
+
+                  {tokenVerification && (
+                    <div className={`callout ${verificationTone}`}>
+                      <strong>
+                        {tokenVerification.status === "official"
+                          ? "Official Autonomous 314 launch"
+                          : tokenVerification.status === "warning"
+                            ? "Suspicious launch surface"
+                            : "Unverified token"}
+                      </strong>
+                      <p>{tokenVerification.summary}</p>
+                      <dl className="data-list compact">
+                        <div><dt>Factory match</dt><dd>{String(tokenVerification.checks.factoryMatches)}</dd></div>
+                        <div><dt>Factory registry</dt><dd>{String(tokenVerification.checks.factoryRegistryRecognizesToken)}</dd></div>
+                        <div><dt>Mode match</dt><dd>{String(tokenVerification.checks.tokenModeMatchesFactory)}</dd></div>
+                        <div><dt>Launch event found</dt><dd>{String(tokenVerification.checks.launchEventFound)}</dd></div>
+                        <div><dt>Event metadata match</dt><dd>{String(tokenVerification.checks.eventMetadataMatchesToken)}</dd></div>
+                        <div><dt>Protocol recipient match</dt><dd>{String(tokenVerification.checks.protocolRecipientMatches)}</dd></div>
+                        <div><dt>Router match</dt><dd>{String(tokenVerification.checks.routerMatches)}</dd></div>
+                        <div><dt>Graduation target match</dt><dd>{String(tokenVerification.checks.graduationTargetMatches)}</dd></div>
+                        <div><dt>Canonical pair match</dt><dd>{String(tokenVerification.checks.pairMatchesDex)}</dd></div>
+                        <div><dt>Suffix / mode</dt><dd>{String(tokenVerification.checks.suffixMatchesMode)}</dd></div>
+                      </dl>
+                    </div>
+                  )}
 
                   <div className={`callout ${pollutionTone}`}>
                     <strong>Graduation compatibility</strong>
@@ -1143,12 +1542,22 @@ export function App() {
                   <div className="detail-grid">
                     <dl className="data-list">
                       <div><dt>Token address</dt><dd>{tokenSnapshot.address}</dd></div>
+                      <div><dt>Mode</dt><dd>{tokenSnapshot.launchMode}</dd></div>
+                      <div><dt>Suffix</dt><dd>{tokenSnapshot.launchSuffix}</dd></div>
                       <div><dt>Metadata URI</dt><dd>{tokenSnapshot.metadataURI}</dd></div>
                       <div><dt>Graduation target</dt><dd>{formatNative(tokenSnapshot.graduationQuoteReserve)}</dd></div>
                       <div><dt>Pair</dt><dd>{tokenSnapshot.pair}</dd></div>
                       <div><dt>Pair clean</dt><dd>{String(tokenSnapshot.pairClean)}</dd></div>
                       <div><dt>Graduation compatible</dt><dd>{String(tokenSnapshot.pairGraduationCompatible)}</dd></div>
                       <div><dt>Preloaded quote</dt><dd>{formatNative(tokenSnapshot.pairPreloadedQuote)}</dd></div>
+                      {tokenSnapshot.whitelistSnapshot && (
+                        <>
+                          <div><dt>Whitelist threshold</dt><dd>{formatNative(tokenSnapshot.whitelistSnapshot.threshold)}</dd></div>
+                          <div><dt>Whitelist seat size</dt><dd>{formatNative(tokenSnapshot.whitelistSnapshot.slotSize)}</dd></div>
+                          <div><dt>Whitelist seats</dt><dd>{tokenSnapshot.whitelistSnapshot.seatCount.toString()}</dd></div>
+                          <div><dt>Whitelist filled</dt><dd>{tokenSnapshot.whitelistSnapshot.seatsFilled.toString()}</dd></div>
+                        </>
+                      )}
                     </dl>
 
                     <dl className="data-list">
@@ -1251,43 +1660,83 @@ export function App() {
           </section>
 
           <aside className="actions-rail">
-            <article className="panel">
-              <h2>Bonding actions</h2>
-              <label className="field">
-                <span>{`Buy amount (${activeProtocolProfile.nativeSymbol})`}</span>
-                <input value={buyInput} onChange={(e) => setBuyInput(e.target.value)} />
-              </label>
-              <label className="field">
-                <span>Sell amount (token)</span>
-                <input value={sellInput} onChange={(e) => setSellInput(e.target.value)} />
-              </label>
-              <label className="field">
-                <span>Slippage tolerance (bps)</span>
-                <input value={slippageBps} onChange={(e) => setSlippageBps(e.target.value)} />
-              </label>
-              <div className="button-row stacked">
-                <button className="secondary-button" onClick={handlePreviewBuy} disabled={!tokenAddress || !isBonding}>Preview Buy</button>
-                <button onClick={handleExecuteBuy} disabled={!isBonding || walletWrongNetwork}>Execute Buy</button>
-                <button className="secondary-button" onClick={handlePreviewSell} disabled={!tokenAddress || !isBonding}>Preview Sell</button>
-                <button onClick={handleExecuteSell} disabled={!isBonding || walletWrongNetwork}>Execute Sell</button>
-              </div>
+            <article className="panel" id="trade-panel">
+              {isWhitelistCommit && whitelistSnapshot ? (
+                <>
+                  <h2>Whitelist commit</h2>
+                  <div className="create-summary-grid compact">
+                    <div><span>Mode</span><strong>b314</strong></div>
+                    <div><span>Seat size</span><strong>{formatNative(whitelistSnapshot.slotSize)}</strong></div>
+                    <div><span>Filled</span><strong>{whitelistSeatsFilled.toString()}</strong></div>
+                    <div><span>Remaining</span><strong>{whitelistSeatsRemaining.toString()}</strong></div>
+                  </div>
+                  <div className={`callout ${whitelistApproved ? "success" : "warn"} compact-callout`}>
+                    <strong>{whitelistApproved ? "Wallet is approved." : "Wallet is not in the whitelist."}</strong>
+                    <p>
+                      Commit mode uses fixed seats. Each approved address sends the exact seat size once; when the threshold is
+                      reached, the whitelist finalizes and allocations become claimable.
+                    </p>
+                  </div>
+                  <div className="button-row stacked">
+                    <button onClick={handleWhitelistCommit} disabled={!canCommitWhitelist || walletWrongNetwork || !canWriteVerifiedLaunch}>
+                      Commit whitelist seat
+                    </button>
+                    <button
+                      className="secondary-button"
+                      onClick={handleClaimWhitelistAllocation}
+                      disabled={!canClaimWhitelistAllocationForWallet || walletWrongNetwork || !canWriteVerifiedLaunch}
+                    >
+                      Claim whitelist allocation
+                    </button>
+                    <button
+                      className="secondary-button"
+                      onClick={handleClaimWhitelistRefund}
+                      disabled={!canClaimWhitelistRefundForWallet || walletWrongNetwork || !canWriteVerifiedLaunch}
+                    >
+                      Claim whitelist refund
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <h2>Bonding actions</h2>
+                  <label className="field">
+                    <span>{`Buy amount (${activeProtocolProfile.nativeSymbol})`}</span>
+                    <input value={buyInput} onChange={(e) => setBuyInput(e.target.value)} />
+                  </label>
+                  <label className="field">
+                    <span>Sell amount (token)</span>
+                    <input value={sellInput} onChange={(e) => setSellInput(e.target.value)} />
+                  </label>
+                  <label className="field">
+                    <span>Slippage tolerance (bps)</span>
+                    <input value={slippageBps} onChange={(e) => setSlippageBps(e.target.value)} />
+                  </label>
+                  <div className="button-row stacked">
+                    <button className="secondary-button" onClick={handlePreviewBuy} disabled={!tokenAddress || !isBonding || !canWriteVerifiedLaunch}>Preview Buy</button>
+                    <button onClick={handleExecuteBuy} disabled={!isBonding || walletWrongNetwork || !canWriteVerifiedLaunch}>Execute Buy</button>
+                    <button className="secondary-button" onClick={handlePreviewSell} disabled={!tokenAddress || !isBonding || !canWriteVerifiedLaunch}>Preview Sell</button>
+                    <button onClick={handleExecuteSell} disabled={!isBonding || walletWrongNetwork || !canWriteVerifiedLaunch}>Execute Sell</button>
+                  </div>
 
-              {buyPreviewState && (
-                <dl className="data-list compact">
-                  <div><dt>Buy token out</dt><dd>{formatToken(buyPreviewState.tokenOut)}</dd></div>
-                  <div><dt>Buy fee</dt><dd>{formatNative(buyPreviewState.feeAmount)}</dd></div>
-                  <div><dt>Refund</dt><dd>{formatNative(buyPreviewState.refundAmount)}</dd></div>
-                  <div><dt>Buy min out</dt><dd>{formatToken(applySlippageBps(buyPreviewState.tokenOut, Number(slippageBps || "0")))}</dd></div>
-                </dl>
-              )}
+                  {buyPreviewState && (
+                    <dl className="data-list compact">
+                      <div><dt>Buy token out</dt><dd>{formatToken(buyPreviewState.tokenOut)}</dd></div>
+                      <div><dt>Buy fee</dt><dd>{formatNative(buyPreviewState.feeAmount)}</dd></div>
+                      <div><dt>Refund</dt><dd>{formatNative(buyPreviewState.refundAmount)}</dd></div>
+                      <div><dt>Buy min out</dt><dd>{formatToken(applySlippageBps(buyPreviewState.tokenOut, Number(slippageBps || "0")))}</dd></div>
+                    </dl>
+                  )}
 
-              {sellPreviewState && (
-                <dl className="data-list compact">
-                  <div><dt>Sell gross out</dt><dd>{formatNative(sellPreviewState.grossQuoteOut)}</dd></div>
-                  <div><dt>Sell net out</dt><dd>{formatNative(sellPreviewState.netQuoteOut)}</dd></div>
-                  <div><dt>Sell fee</dt><dd>{formatNative(sellPreviewState.totalFee)}</dd></div>
-                  <div><dt>Sell min out</dt><dd>{formatNative(applySlippageBps(sellPreviewState.netQuoteOut, Number(slippageBps || "0")))}</dd></div>
-                </dl>
+                  {sellPreviewState && (
+                    <dl className="data-list compact">
+                      <div><dt>Sell gross out</dt><dd>{formatNative(sellPreviewState.grossQuoteOut)}</dd></div>
+                      <div><dt>Sell net out</dt><dd>{formatNative(sellPreviewState.netQuoteOut)}</dd></div>
+                      <div><dt>Sell fee</dt><dd>{formatNative(sellPreviewState.totalFee)}</dd></div>
+                      <div><dt>Sell min out</dt><dd>{formatNative(applySlippageBps(sellPreviewState.netQuoteOut, Number(slippageBps || "0")))}</dd></div>
+                    </dl>
+                  )}
+                </>
               )}
             </article>
 
@@ -1297,14 +1746,14 @@ export function App() {
                 <button
                   className="secondary-button"
                   onClick={handleClaimTokenProtocolFees}
-                  disabled={!tokenSnapshot || !connectedAsTokenProtocolRecipient || walletWrongNetwork}
+                  disabled={!tokenSnapshot || !connectedAsTokenProtocolRecipient || walletWrongNetwork || !canWriteVerifiedLaunch}
                 >
                   Claim token protocol fees
                 </button>
-                <button className="secondary-button" onClick={handleClaimCreatorFees} disabled={!isDexOnly || !connectedAsCreator || walletWrongNetwork}>
+                <button className="secondary-button" onClick={handleClaimCreatorFees} disabled={!isDexOnly || !connectedAsCreator || walletWrongNetwork || !canWriteVerifiedLaunch}>
                   Claim creator fees
                 </button>
-                <button className="secondary-button" onClick={handleSweepCreatorFees} disabled={!tokenSnapshot || !creatorFeeSweepReady || walletWrongNetwork}>
+                <button className="secondary-button" onClick={handleSweepCreatorFees} disabled={!tokenSnapshot || !creatorFeeSweepReady || walletWrongNetwork || !canWriteVerifiedLaunch}>
                   Sweep abandoned creator fees
                 </button>
               </div>
@@ -1313,6 +1762,7 @@ export function App() {
                 <li>Raw native transfer buy is disabled in the reference flow; explicit slippage-protected contract calls are the intended path.</li>
                 <li>Creator fees claim only after DEXOnly; the protocol only takes 0.3% while creators receive 0.7%.</li>
                 <li>Abandoned pre-grad creator fees can be swept after 180 days of age and 30 days without trades.</li>
+                <li>Only official factory launches are writable in the reference UI. Suspicious or foreign contracts load in read-only mode.</li>
                 <li>When graduation compatibility is false, treat migration as blocked.</li>
               </ul>
               <div className="status-hint">

@@ -63,6 +63,7 @@ Autonomous 314 当前的目标很明确，主要有四个：
   - 创建界面支持描述、图片、官网和社交链接，但链上仍只保留 `metadataURI`
 
 推荐的 metadata 结构见 [`docs/LAUNCH_METADATA.md`](docs/LAUNCH_METADATA.md)。
+关于下一步模式设计（恢复 `receive()`、`0314/1314/5314/9314/b314` 尾号体系、白名单模式、毕业后带税模式）的论证，见 [`docs/NEXT_MODE_RESEARCH.md`](docs/NEXT_MODE_RESEARCH.md)。
 
 ## 这个协议解决什么问题
 
@@ -206,7 +207,7 @@ flowchart LR
 
 - **创建者分成**：`0.7%`
 - **协议分成**：`0.3%`
-- **创建费用**：官方 BSC profile 下为 `0.03 native`
+- **创建费用**：仓库默认的下一版 BSC 部署 profile 为 `0.01 native`（当前已部署主网 Factory 仍是 `0.03 BNB`，需重部署后才会变更）
 
 也就是说：
 
@@ -264,7 +265,7 @@ Autonomous 314 比封闭 launch 网站更接近 Web3 精神：
 - DEX：**PancakeSwap V2**
 - wrapped native quote：**WBNB**
 - 毕业目标：**12 BNB**
-- 创建费用：**0.03 BNB**
+- 创建费用：**0.01 BNB**（下一版默认部署配置）
 - 默认协议 treasury fallback：**`0xC4187bE6b362DF625696d4a9ec5E6FA461CC0314`**
 
 如果工厂部署时把 `protocolFeeRecipient` 传成 `address(0)`，工厂会自动 fallback 到上面的默认 treasury 地址。  

@@ -5,6 +5,7 @@ import {
   custom,
   decodeEventLog,
   encodeAbiParameters,
+  encodeEventTopics,
   formatEther,
   formatUnits,
   getAddress,
@@ -15,26 +16,52 @@ import {
   type Hex,
   type Log
 } from "viem";
-import { launchFactoryAbi, launchTokenAbi, launchTokenBytecode, v2PairAbi } from "./abi";
+import {
+  launchFactoryAbi,
+  launchTokenAbi,
+  launchTokenBytecode,
+  launchTokenWhitelistAbi,
+  launchTokenWhitelistBytecode,
+  v2PairAbi
+} from "./abi";
 import { activeProtocolProfile } from "./profiles";
 import type {
   ActivityFeedItem,
   CandlePoint,
   FactorySnapshot,
+  LaunchMode,
   LaunchMetadata,
+  ProtocolVerification,
   SegmentedChartSnapshot,
   TokenSnapshot,
   TradeFeedItem
 } from "./types";
 
-const launchStates = ["Created", "Bonding314", "Migrating", "DEXOnly"] as const;
+const launchStates = ["Created", "Bonding314", "Migrating", "DEXOnly", "WhitelistCommit"] as const;
+const launchModes = ["Unregistered", "Standard0314", "WhitelistB314"] as const;
 const indexerApiBase = import.meta.env.VITE_INDEXER_API_URL?.replace(/\/$/, "");
 const snapshotUrl = import.meta.env.VITE_INDEXER_SNAPSHOT_URL ?? "/data/indexer-snapshot.json";
 const zeroAddress = "0x0000000000000000000000000000000000000000";
-const officialVanitySuffix = "0314";
+const standardVanitySuffix = "0314";
+const whitelistVanitySuffix = "b314";
 
 const appChain = activeProtocolProfile.chain;
 const appRpcUrl = import.meta.env.VITE_RPC_URL || activeProtocolProfile.defaultRpcUrl;
+const v2FactoryAbi = [
+  {
+    type: "function",
+    name: "getPair",
+    stateMutability: "view",
+    inputs: [
+      { name: "tokenA", type: "address" },
+      { name: "tokenB", type: "address" }
+    ],
+    outputs: [{ name: "pair", type: "address" }]
+  }
+] as const;
+const launchCreatedEventAbi = launchFactoryAbi.find(
+  (entry) => entry.type === "event" && entry.name === "LaunchCreated"
+) as (typeof launchFactoryAbi)[number] | undefined;
 
 export function buildLaunchMetadata(params: {
   name: string;
@@ -130,6 +157,8 @@ type SnapshotLaunchJson = {
   creator: `0x${string}`;
   name: string;
   symbol: string;
+  mode: number;
+  suffix: string;
   metadataURI: string;
   state: string;
   pair: `0x${string}`;
@@ -141,6 +170,18 @@ type SnapshotLaunchJson = {
   pairGraduationCompatible: boolean;
   protocolClaimable: string;
   creatorClaimable: string;
+  whitelistStatus?: number;
+  whitelistSnapshot?: {
+    status: string | number;
+    deadline: string;
+    threshold: string;
+    slotSize: string;
+    seatCount: string;
+    seatsFilled: string;
+    committedTotal: string;
+    tokensPerSeat: string;
+    whitelistCount: string;
+  } | null;
   dexTokenReserve: string;
   dexQuoteReserve: string;
   recentActivity: SnapshotActivityJson[];
@@ -157,12 +198,17 @@ type ApiLaunchSummaryJson = {
   metadataURI?: string;
   symbol: string;
   name: string;
+  mode?: number;
+  modeLabel?: LaunchMode;
+  suffix?: string;
   state: string;
   pair: `0x${string}`;
   graduationQuoteReserve: string;
   currentPriceQuotePerToken: string;
   graduationProgressBps: number;
   pairPreloadedQuote: string;
+  whitelistStatus?: string;
+  whitelistSnapshot?: SnapshotLaunchJson["whitelistSnapshot"];
 };
 
 type ApiLaunchesJson = {
@@ -203,6 +249,16 @@ type IndexerSnapshotJson = {
 
 let cachedIndexerSnapshot: Promise<IndexerSnapshotJson | null> | null = null;
 const metadataResolutionCache = new Map<string, Promise<LaunchMetadata | null>>();
+
+function launchModeFromId(modeId: number): LaunchMode {
+  return (launchModes[modeId] ?? "Unregistered") as LaunchMode;
+}
+
+function expectedSuffixForMode(modeId: number) {
+  if (modeId === 1) return standardVanitySuffix;
+  if (modeId === 2) return whitelistVanitySuffix;
+  return "";
+}
 
 export function getPublicClient() {
   return createPublicClient({
@@ -489,6 +545,7 @@ function buildLaunchInitCode(params: {
   symbol: string;
   metadataURI: string;
   creator: `0x${string}`;
+  factory: `0x${string}`;
   protocolFeeRecipient: `0x${string}`;
   router: `0x${string}`;
   graduationQuoteReserve: bigint;
@@ -501,6 +558,7 @@ function buildLaunchInitCode(params: {
       { type: "address" },
       { type: "address" },
       { type: "address" },
+      { type: "address" },
       { type: "uint256" }
     ],
     [
@@ -508,6 +566,7 @@ function buildLaunchInitCode(params: {
       params.symbol,
       params.metadataURI,
       params.creator,
+      params.factory,
       params.protocolFeeRecipient,
       params.router,
       params.graduationQuoteReserve
@@ -517,7 +576,53 @@ function buildLaunchInitCode(params: {
   return concatHex([launchTokenBytecode, encodedArgs]);
 }
 
+function buildWhitelistLaunchInitCode(params: {
+  name: string;
+  symbol: string;
+  metadataURI: string;
+  creator: `0x${string}`;
+  factory: `0x${string}`;
+  protocolFeeRecipient: `0x${string}`;
+  router: `0x${string}`;
+  graduationQuoteReserve: bigint;
+  whitelistThreshold: bigint;
+  whitelistSlotSize: bigint;
+  whitelistAddresses: readonly `0x${string}`[];
+}): Hex {
+  const encodedArgs = encodeAbiParameters(
+    [
+      { type: "string" },
+      { type: "string" },
+      { type: "string" },
+      { type: "address" },
+      { type: "address" },
+      { type: "address" },
+      { type: "address" },
+      { type: "uint256" },
+      { type: "uint256" },
+      { type: "uint256" },
+      { type: "address[]" }
+    ],
+    [
+      params.name,
+      params.symbol,
+      params.metadataURI,
+      params.creator,
+      params.factory,
+      params.protocolFeeRecipient,
+      params.router,
+      params.graduationQuoteReserve,
+      params.whitelistThreshold,
+      params.whitelistSlotSize,
+      params.whitelistAddresses
+    ]
+  );
+
+  return concatHex([launchTokenWhitelistBytecode, encodedArgs]);
+}
+
 async function findVanityLaunchSalt(params: {
+  mode: "standard" | "whitelist";
   factory: `0x${string}`;
   name: string;
   symbol: string;
@@ -526,11 +631,39 @@ async function findVanityLaunchSalt(params: {
   protocolFeeRecipient: `0x${string}`;
   router: `0x${string}`;
   graduationQuoteReserve: bigint;
+  whitelistThreshold?: bigint;
+  whitelistSlotSize?: bigint;
+  whitelistAddresses?: readonly `0x${string}`[];
   suffix?: string;
   onProgress?: (update: { attempts: number; elapsedMs: number }) => void;
 }) {
-  const suffix = (params.suffix ?? officialVanitySuffix).toLowerCase();
-  const initCode = buildLaunchInitCode(params);
+  const suffix =
+    (params.suffix ?? (params.mode === "whitelist" ? whitelistVanitySuffix : standardVanitySuffix)).toLowerCase();
+  const initCode =
+    params.mode === "whitelist"
+      ? buildWhitelistLaunchInitCode({
+          name: params.name,
+          symbol: params.symbol,
+          metadataURI: params.metadataURI,
+          creator: params.creator,
+          factory: params.factory,
+          protocolFeeRecipient: params.protocolFeeRecipient,
+          router: params.router,
+          graduationQuoteReserve: params.graduationQuoteReserve,
+          whitelistThreshold: params.whitelistThreshold ?? 0n,
+          whitelistSlotSize: params.whitelistSlotSize ?? 0n,
+          whitelistAddresses: params.whitelistAddresses ?? []
+        })
+      : buildLaunchInitCode({
+          name: params.name,
+          symbol: params.symbol,
+          metadataURI: params.metadataURI,
+          creator: params.creator,
+          factory: params.factory,
+          protocolFeeRecipient: params.protocolFeeRecipient,
+          router: params.router,
+          graduationQuoteReserve: params.graduationQuoteReserve
+        });
   const initCodeHash = keccak256(initCode);
   const started = performance.now();
   let attempts = 0;
@@ -563,10 +696,21 @@ export async function readFactory(address: string): Promise<FactorySnapshot> {
   const factoryAddress = getAddress(address);
   const client = getPublicClient();
 
-  const [router, protocolFeeRecipient, createFee, graduationQuoteReserve, totalLaunches, accruedProtocolCreateFees] = (await Promise.all([
+  const [
+    router,
+    protocolFeeRecipient,
+    createFee,
+    standardCreateFee,
+    whitelistCreateFee,
+    graduationQuoteReserve,
+    totalLaunches,
+    accruedProtocolCreateFees
+  ] = (await Promise.all([
     client.readContract({ address: factoryAddress, abi: launchFactoryAbi, functionName: "router" }),
     client.readContract({ address: factoryAddress, abi: launchFactoryAbi, functionName: "protocolFeeRecipient" }),
     client.readContract({ address: factoryAddress, abi: launchFactoryAbi, functionName: "createFee" }),
+    client.readContract({ address: factoryAddress, abi: launchFactoryAbi, functionName: "standardCreateFee" }),
+    client.readContract({ address: factoryAddress, abi: launchFactoryAbi, functionName: "whitelistCreateFee" }),
     client.readContract({ address: factoryAddress, abi: launchFactoryAbi, functionName: "graduationQuoteReserve" }),
     client.readContract({ address: factoryAddress, abi: launchFactoryAbi, functionName: "totalLaunches" }),
     client.readContract({
@@ -574,7 +718,7 @@ export async function readFactory(address: string): Promise<FactorySnapshot> {
       abi: launchFactoryAbi,
       functionName: "accruedProtocolCreateFees"
     })
-  ])) as [`0x${string}`, `0x${string}`, bigint, bigint, bigint, bigint];
+  ])) as [`0x${string}`, `0x${string}`, bigint, bigint, bigint, bigint, bigint, bigint];
 
   const recentLaunches: `0x${string}`[] = [];
   const recentCount = Number(totalLaunches > 5n ? 5n : totalLaunches);
@@ -594,6 +738,8 @@ export async function readFactory(address: string): Promise<FactorySnapshot> {
     router,
     protocolFeeRecipient,
     createFee,
+    standardCreateFee,
+    whitelistCreateFee,
     graduationQuoteReserve,
     totalLaunches,
     accruedProtocolCreateFees,
@@ -603,7 +749,7 @@ export async function readFactory(address: string): Promise<FactorySnapshot> {
 
 export async function readRecentLaunchSnapshots(address: string) {
   const snapshot = await readFactory(address);
-  const indexed = await readApiLaunchSummaries(snapshot.address, snapshot.graduationQuoteReserve, 5);
+  const indexed = await readApiLaunchSummaries(snapshot.address, snapshot.graduationQuoteReserve, 24);
   let launches: TokenSnapshot[];
 
   if (indexed) {
@@ -631,9 +777,15 @@ export async function readToken(address: string): Promise<TokenSnapshot> {
     name,
     symbol,
     state,
+    launchModeId,
+    launchSuffix,
+    factory,
     pair,
     creator,
     protocolFeeRecipient,
+    router,
+    dexFactory,
+    wrappedNative,
     metadataURI,
     graduationQuoteReserve,
     currentPriceQuotePerToken,
@@ -647,14 +799,22 @@ export async function readToken(address: string): Promise<TokenSnapshot> {
     creatorFeeSweepReady,
     createdAt,
     lastTradeAt,
+    whitelistStatus,
+    whitelistSnapshot,
     dexReserves
   ] = (await Promise.all([
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "name" }),
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "symbol" }),
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "state" }),
+    client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "launchMode" }),
+    client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "launchSuffix" }),
+    client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "factory" }),
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "pair" }),
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "creator" }),
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "protocolFeeRecipient" }),
+    client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "router" }),
+    client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "dexFactory" }),
+    client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "wrappedNative" }),
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "metadataURI" }),
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "graduationQuoteReserve" }),
     client.readContract({
@@ -688,11 +848,19 @@ export async function readToken(address: string): Promise<TokenSnapshot> {
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "creatorFeeSweepReady" }),
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "createdAt" }),
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "lastTradeAt" }),
+    client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "whitelistStatus" }),
+    client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "whitelistSnapshot" }),
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "dexReserves" })
   ])) as [
     string,
     string,
     bigint,
+    bigint,
+    string,
+    `0x${string}`,
+    `0x${string}`,
+    `0x${string}`,
+    `0x${string}`,
     `0x${string}`,
     `0x${string}`,
     `0x${string}`,
@@ -709,6 +877,8 @@ export async function readToken(address: string): Promise<TokenSnapshot> {
     boolean,
     bigint,
     bigint,
+    bigint,
+    readonly [bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint],
     readonly [bigint, bigint]
   ];
 
@@ -717,9 +887,16 @@ export async function readToken(address: string): Promise<TokenSnapshot> {
     name,
     symbol,
     state: launchStates[Number(state)] ?? `Unknown(${state})`,
+    launchModeId,
+    launchMode: launchModeFromId(Number(launchModeId)),
+    launchSuffix,
+    factory,
     pair,
     creator,
     protocolFeeRecipient,
+    router,
+    dexFactory,
+    wrappedNative,
     metadataURI,
     graduationQuoteReserve,
     currentPriceQuotePerToken,
@@ -733,8 +910,135 @@ export async function readToken(address: string): Promise<TokenSnapshot> {
     creatorFeeSweepReady,
     createdAt,
     lastTradeAt,
+    whitelistStatus,
+    whitelistSnapshot:
+      whitelistStatus === 0n && whitelistSnapshot[1] === 0n
+        ? null
+        : {
+            status: whitelistSnapshot[0],
+            deadline: whitelistSnapshot[1],
+            threshold: whitelistSnapshot[2],
+            slotSize: whitelistSnapshot[3],
+            seatCount: whitelistSnapshot[4],
+            seatsFilled: whitelistSnapshot[5],
+            committedTotal: whitelistSnapshot[6],
+            tokensPerSeat: whitelistSnapshot[7],
+            whitelistCount: whitelistSnapshot[8]
+          },
     dexTokenReserve: dexReserves[0],
     dexQuoteReserve: dexReserves[1]
+  };
+}
+
+export async function verifyOfficialLaunch(factoryAddress: string, tokenAddress: string): Promise<ProtocolVerification> {
+  const expectedFactory = getAddress(factoryAddress);
+  const [factorySnapshot, tokenSnapshot] = await Promise.all([readFactory(expectedFactory), readToken(tokenAddress)]);
+  const client = getPublicClient();
+  const registeredMode = (await client.readContract({
+    address: expectedFactory,
+    abi: launchFactoryAbi,
+    functionName: "modeOf",
+    args: [tokenSnapshot.address]
+  })) as bigint;
+
+  const expectedPair = (await client.readContract({
+    address: tokenSnapshot.dexFactory,
+    abi: v2FactoryAbi,
+    functionName: "getPair",
+    args: [tokenSnapshot.address, tokenSnapshot.wrappedNative]
+  })) as `0x${string}`;
+
+  const launchCreatedLogs =
+    tokenSnapshot.factory.toLowerCase() === expectedFactory.toLowerCase()
+      ? await client.getLogs({
+          address: expectedFactory,
+          fromBlock: 0n,
+          toBlock: "latest"
+        })
+      : [];
+
+  const decodedLaunchEvent = launchCreatedLogs
+    .map((log) => {
+      try {
+        return decodeEventLog({
+          abi: launchFactoryAbi,
+          data: log.data,
+          topics: log.topics
+        });
+      } catch {
+        return null;
+      }
+    })
+    .find((decoded) => {
+      if (!decoded || decoded.eventName !== "LaunchCreated") return false;
+      const args = decoded.args as { token?: `0x${string}` };
+      return args.token?.toLowerCase() === tokenSnapshot.address.toLowerCase();
+    });
+  const launchEventArgs =
+    decodedLaunchEvent?.eventName === "LaunchCreated"
+      ? (decodedLaunchEvent.args as {
+          creator?: `0x${string}`;
+          token?: `0x${string}`;
+          mode?: bigint;
+          name?: string;
+          symbol?: string;
+          metadataURI?: string;
+        })
+      : undefined;
+
+  const expectedSuffix = expectedSuffixForMode(Number(registeredMode));
+  const checks = {
+    factoryMatches: tokenSnapshot.factory.toLowerCase() === expectedFactory.toLowerCase(),
+    factoryRegistryRecognizesToken: registeredMode !== 0n,
+    tokenModeMatchesFactory: tokenSnapshot.launchModeId === registeredMode && registeredMode !== 0n,
+    launchEventFound: Boolean(launchEventArgs),
+    eventMetadataMatchesToken:
+      Boolean(
+        launchEventArgs &&
+          launchEventArgs.creator &&
+          launchEventArgs.name !== undefined &&
+          launchEventArgs.symbol !== undefined &&
+          launchEventArgs.metadataURI !== undefined &&
+          launchEventArgs.mode !== undefined &&
+          launchEventArgs.creator.toLowerCase() === tokenSnapshot.creator.toLowerCase() &&
+          launchEventArgs.mode === registeredMode &&
+          launchEventArgs.name === tokenSnapshot.name &&
+          launchEventArgs.symbol === tokenSnapshot.symbol &&
+          launchEventArgs.metadataURI === tokenSnapshot.metadataURI
+      ),
+    protocolRecipientMatches:
+      tokenSnapshot.protocolFeeRecipient.toLowerCase() === factorySnapshot.protocolFeeRecipient.toLowerCase(),
+    routerMatches: tokenSnapshot.router.toLowerCase() === factorySnapshot.router.toLowerCase(),
+    graduationTargetMatches: tokenSnapshot.graduationQuoteReserve === factorySnapshot.graduationQuoteReserve,
+    pairMatchesDex:
+      tokenSnapshot.pair.toLowerCase() === getAddress(expectedPair).toLowerCase() && tokenSnapshot.pair !== zeroAddress,
+    suffixMatchesMode:
+      expectedSuffix.length > 0 &&
+      tokenSnapshot.launchSuffix === expectedSuffix &&
+      tokenSnapshot.address.toLowerCase().endsWith(expectedSuffix)
+  } satisfies ProtocolVerification["checks"];
+
+  if (Object.values(checks).every(Boolean)) {
+    return {
+      status: "official",
+      summary: `Verified official ${tokenSnapshot.launchSuffix} launch from the canonical Autonomous 314 factory.`,
+      checks
+    };
+  }
+
+  if (checks.factoryMatches || checks.factoryRegistryRecognizesToken || checks.launchEventFound) {
+    return {
+      status: "warning",
+      summary:
+        "This token exposes much of the Autonomous 314 surface, but it is missing one or more official invariants. The reference UI should treat it as read-only and suspicious.",
+      checks
+    };
+  }
+
+  return {
+    status: "foreign",
+    summary: "This address is not verified as an official Autonomous 314 launch from the canonical factory.",
+    checks
   };
 }
 
@@ -794,10 +1098,14 @@ export async function previewSell(address: string, tokenAmount: string) {
 export async function createLaunch(
   factoryAddress: string,
   params: {
+    mode: "standard" | "whitelist";
     name: string;
     symbol: string;
     metadataURI: string;
     createFee: bigint;
+    whitelistThreshold?: bigint;
+    whitelistSlotSize?: bigint;
+    whitelistAddresses?: readonly `0x${string}`[];
     onVanityProgress?: (update: { attempts: number; elapsedMs: number }) => void;
   }
 ) {
@@ -809,6 +1117,7 @@ export async function createLaunch(
   const factorySnapshot = await readFactory(normalizedFactoryAddress);
 
   const vanity = await findVanityLaunchSalt({
+    mode: params.mode,
     factory: normalizedFactoryAddress,
     name: params.name,
     symbol: params.symbol,
@@ -817,19 +1126,41 @@ export async function createLaunch(
     protocolFeeRecipient: factorySnapshot.protocolFeeRecipient,
     router: factorySnapshot.router,
     graduationQuoteReserve: factorySnapshot.graduationQuoteReserve,
-    suffix: officialVanitySuffix,
+    whitelistThreshold: params.whitelistThreshold,
+    whitelistSlotSize: params.whitelistSlotSize,
+    whitelistAddresses: params.whitelistAddresses,
+    suffix: params.mode === "whitelist" ? whitelistVanitySuffix : standardVanitySuffix,
     onProgress: params.onVanityProgress
   });
 
-  const hash = await walletClient.writeContract({
-    account,
-    chain: appChain,
-    address: normalizedFactoryAddress,
-    abi: launchFactoryAbi,
-    functionName: "createLaunchWithSalt",
-    args: [params.name, params.symbol, params.metadataURI, vanity.salt],
-    value: params.createFee
-  });
+  const hash =
+    params.mode === "whitelist"
+      ? await walletClient.writeContract({
+          account,
+          chain: appChain,
+          address: normalizedFactoryAddress,
+          abi: launchFactoryAbi,
+          functionName: "createWhitelistLaunchWithSalt",
+          args: [
+            params.name,
+            params.symbol,
+            params.metadataURI,
+            params.whitelistThreshold ?? 0n,
+            params.whitelistSlotSize ?? 0n,
+            params.whitelistAddresses ?? [],
+            vanity.salt
+          ],
+          value: params.createFee
+        })
+      : await walletClient.writeContract({
+          account,
+          chain: appChain,
+          address: normalizedFactoryAddress,
+          abi: launchFactoryAbi,
+          functionName: "createLaunchWithSalt",
+          args: [params.name, params.symbol, params.metadataURI, vanity.salt],
+          value: params.createFee
+        });
 
   const receipt = await publicClient.waitForTransactionReceipt({ hash });
   let createdToken: `0x${string}` | null = null;
@@ -878,6 +1209,58 @@ export async function executeBuy(address: string, grossQuoteIn: string, minToken
     functionName: "buy",
     args: [minTokenOut],
     value: parseBnbInput(grossQuoteIn)
+  });
+
+  return publicClient.waitForTransactionReceipt({ hash });
+}
+
+export async function executeWhitelistCommit(address: string, slotSize: bigint) {
+  const walletClient = getWalletClientOrThrow();
+  const account = await getActiveAccount();
+  await ensureWalletOnExpectedChain();
+  const publicClient = getPublicClient();
+
+  const hash = await walletClient.writeContract({
+    account,
+    chain: appChain,
+    address: getAddress(address),
+    abi: launchTokenWhitelistAbi,
+    functionName: "commitWhitelistSeat",
+    value: slotSize
+  });
+
+  return publicClient.waitForTransactionReceipt({ hash });
+}
+
+export async function claimWhitelistAllocation(address: string) {
+  const walletClient = getWalletClientOrThrow();
+  const account = await getActiveAccount();
+  await ensureWalletOnExpectedChain();
+  const publicClient = getPublicClient();
+
+  const hash = await walletClient.writeContract({
+    account,
+    chain: appChain,
+    address: getAddress(address),
+    abi: launchTokenWhitelistAbi,
+    functionName: "claimWhitelistAllocation"
+  });
+
+  return publicClient.waitForTransactionReceipt({ hash });
+}
+
+export async function claimWhitelistRefund(address: string) {
+  const walletClient = getWalletClientOrThrow();
+  const account = await getActiveAccount();
+  await ensureWalletOnExpectedChain();
+  const publicClient = getPublicClient();
+
+  const hash = await walletClient.writeContract({
+    account,
+    chain: appChain,
+    address: getAddress(address),
+    abi: launchTokenWhitelistAbi,
+    functionName: "claimWhitelistRefund"
   });
 
   return publicClient.waitForTransactionReceipt({ hash });
@@ -969,6 +1352,41 @@ export async function sweepAbandonedCreatorFees(tokenAddress: string) {
   return publicClient.waitForTransactionReceipt({ hash });
 }
 
+export async function readWhitelistAccountState(tokenAddress: string, account: string) {
+  const client = getPublicClient();
+  const normalizedToken = getAddress(tokenAddress);
+  const normalizedAccount = getAddress(account);
+
+  const [approved, canCommit, canClaimAllocation, canClaimRefund] = (await Promise.all([
+    client.readContract({
+      address: normalizedToken,
+      abi: launchTokenAbi,
+      functionName: "isWhitelisted",
+      args: [normalizedAccount]
+    }),
+    client.readContract({
+      address: normalizedToken,
+      abi: launchTokenAbi,
+      functionName: "canCommitWhitelist",
+      args: [normalizedAccount]
+    }),
+    client.readContract({
+      address: normalizedToken,
+      abi: launchTokenAbi,
+      functionName: "canClaimWhitelistAllocation",
+      args: [normalizedAccount]
+    }),
+    client.readContract({
+      address: normalizedToken,
+      abi: launchTokenAbi,
+      functionName: "canClaimWhitelistRefund",
+      args: [normalizedAccount]
+    })
+  ])) as [boolean, boolean, boolean, boolean];
+
+  return { approved, canCommit, canClaimAllocation, canClaimRefund };
+}
+
 function tradePrice(netQuote: bigint, tokenAmount: bigint) {
   if (tokenAmount === 0n) {
     return 0n;
@@ -1053,9 +1471,16 @@ function convertSnapshotLaunch(launch: SnapshotLaunchJson): TokenSnapshot {
     name: launch.name,
     symbol: launch.symbol,
     state: launch.state,
+    launchModeId: BigInt(launch.mode ?? 0),
+    launchMode: launchModeFromId(launch.mode ?? 0),
+    launchSuffix: launch.suffix ?? expectedSuffixForMode(launch.mode ?? 0),
+    factory: zeroAddress,
     pair: getAddress(launch.pair),
     creator: getAddress(launch.creator),
     protocolFeeRecipient: zeroAddress,
+    router: zeroAddress,
+    dexFactory: zeroAddress,
+    wrappedNative: zeroAddress,
     metadataURI: launch.metadataURI,
     graduationQuoteReserve: 0n,
     currentPriceQuotePerToken: BigInt(launch.currentPriceQuotePerToken),
@@ -1069,6 +1494,20 @@ function convertSnapshotLaunch(launch: SnapshotLaunchJson): TokenSnapshot {
     creatorFeeSweepReady: false,
     createdAt: 0n,
     lastTradeAt: 0n,
+    whitelistStatus: BigInt(launch.whitelistStatus ?? 0),
+    whitelistSnapshot: launch.whitelistSnapshot
+      ? {
+          status: BigInt(launch.whitelistSnapshot.status),
+          deadline: BigInt(launch.whitelistSnapshot.deadline),
+          threshold: BigInt(launch.whitelistSnapshot.threshold),
+          slotSize: BigInt(launch.whitelistSnapshot.slotSize),
+          seatCount: BigInt(launch.whitelistSnapshot.seatCount),
+          seatsFilled: BigInt(launch.whitelistSnapshot.seatsFilled),
+          committedTotal: BigInt(launch.whitelistSnapshot.committedTotal),
+          tokensPerSeat: BigInt(launch.whitelistSnapshot.tokensPerSeat),
+          whitelistCount: BigInt(launch.whitelistSnapshot.whitelistCount)
+        }
+      : null,
     dexTokenReserve: BigInt(launch.dexTokenReserve),
     dexQuoteReserve: BigInt(launch.dexQuoteReserve)
   };
@@ -1081,9 +1520,16 @@ function convertApiLaunchSummary(launch: ApiLaunchSummaryJson, graduationQuoteRe
     name: launch.name,
     symbol: launch.symbol,
     state: launch.state,
+    launchModeId: BigInt(launch.mode ?? 0),
+    launchMode: launch.modeLabel ?? launchModeFromId(launch.mode ?? 0),
+    launchSuffix: launch.suffix ?? expectedSuffixForMode(launch.mode ?? 0),
+    factory: zeroAddress,
     pair: getAddress(launch.pair),
     creator: launch.creator ? getAddress(launch.creator) : zeroAddress,
     protocolFeeRecipient: zeroAddress,
+    router: zeroAddress,
+    dexFactory: zeroAddress,
+    wrappedNative: zeroAddress,
     metadataURI: launch.metadataURI ?? "",
     graduationQuoteReserve: target,
     currentPriceQuotePerToken: BigInt(launch.currentPriceQuotePerToken),
@@ -1097,6 +1543,20 @@ function convertApiLaunchSummary(launch: ApiLaunchSummaryJson, graduationQuoteRe
     creatorFeeSweepReady: false,
     createdAt: 0n,
     lastTradeAt: 0n,
+    whitelistStatus: BigInt(launch.whitelistStatus ?? 0),
+    whitelistSnapshot: launch.whitelistSnapshot
+      ? {
+          status: BigInt(launch.whitelistSnapshot.status),
+          deadline: BigInt(launch.whitelistSnapshot.deadline),
+          threshold: BigInt(launch.whitelistSnapshot.threshold),
+          slotSize: BigInt(launch.whitelistSnapshot.slotSize),
+          seatCount: BigInt(launch.whitelistSnapshot.seatCount),
+          seatsFilled: BigInt(launch.whitelistSnapshot.seatsFilled),
+          committedTotal: BigInt(launch.whitelistSnapshot.committedTotal),
+          tokensPerSeat: BigInt(launch.whitelistSnapshot.tokensPerSeat),
+          whitelistCount: BigInt(launch.whitelistSnapshot.whitelistCount)
+        }
+      : null,
     dexTokenReserve: 0n,
     dexQuoteReserve: 0n
   };

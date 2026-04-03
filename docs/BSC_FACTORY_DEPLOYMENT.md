@@ -7,7 +7,7 @@ This document describes the official BSC deployment path for the open protocol f
 - chain: **BSC Mainnet**
 - router: `0x10ED43C718714eb63d5aA57B78B54704E256024E`
 - protocol fee recipient fallback: `0xC4187bE6b362DF625696d4a9ec5E6FA461CC0314`
-- create fee: `0.03 BNB`
+- create fee: `0.01 BNB` (repository default for the next deployment; the currently deployed live factory is still `0.03 BNB`)
 - graduation target: `12 BNB`
 - desired factory suffix: `0314`
 
@@ -15,7 +15,7 @@ This document describes the official BSC deployment path for the open protocol f
 
 - CREATE2 deployer: `0x4e59b44847b379578588920cA78FbF26c0B4956C`
 - salt: `0x58dc751d9dc996e4ef6912e2ea0100e65c3c3c811a17deb11f0dc86deaeb3945`
-- expected factory address: `0xEFd05ee43A21cc109604050724cEd52ebA200314`
+- expected factory address: recompute with `pnpm deploy:bsc:factory:dry` after freezing deployment parameters (changing create fee changes the CREATE2 address)
 
 ## Environment
 
@@ -68,7 +68,7 @@ Immediately verify:
 
 - `factory address == 0xEFd05ee43A21cc109604050724cEd52ebA200314`
 - `protocolFeeRecipient() == 0xC4187bE6b362DF625696d4a9ec5E6FA461CC0314`
-- `createFee() == 0.03 BNB`
+- `createFee()` matches your intended deployment target (`0.01 BNB` for the repository default, `0.03 BNB` on the currently deployed live factory)
 - `graduationQuoteReserve() == 12 BNB`
 - `router()` equals the official BSC router
 - `owner()` equals the configured owner

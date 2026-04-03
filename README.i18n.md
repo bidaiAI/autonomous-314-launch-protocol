@@ -35,4 +35,4 @@ Autonomous 314 is an open-source, creator-first, EVM launch protocol:
 - DEX: PancakeSwap V2
 - Wrapped native quote: WBNB
 - Graduation target: 12 BNB
-- Create fee: 0.03 BNB
+- Create fee: 0.01 BNB (repo default for future deployments; current live BSC factory remains 0.03 BNB until redeployed)

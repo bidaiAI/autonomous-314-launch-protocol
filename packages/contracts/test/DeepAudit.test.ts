@@ -32,15 +32,16 @@ describe("Deep Audit: AMM Math & Edge Cases", function () {
     await mockRouter.waitForDeployment();
 
     const LaunchToken = await ethers.getContractFactory("LaunchToken");
-    const token = await LaunchToken.deploy(
-      "AuditTest",
-      "AUDIT",
-      "ipfs://audit",
-      creator.address,
-      protocol.address,
-      await mockRouter.getAddress(),
-      GRADUATION_TARGET
-    );
+    const token = await LaunchToken.deploy({
+      name: "AuditTest",
+      symbol: "AUDIT",
+      metadataURI: "ipfs://audit",
+      creator: creator.address,
+      factory: deployer.address,
+      protocolFeeRecipient: protocol.address,
+      router: await mockRouter.getAddress(),
+      graduationQuoteReserve: GRADUATION_TARGET,
+    });
     await token.waitForDeployment();
 
     const pairAddress = await token.pair();
@@ -494,17 +495,18 @@ describe("Deep Audit: AMM Math & Edge Cases", function () {
   });
 
   // =====================================================================
-  // receive() 行为 — raw native transfers are blocked
+  // receive() 行为 — raw native transfers are allowed for pure 0314 bonding
   // =====================================================================
   describe("receive() behavior", function () {
-    it("raw native transfer is blocked during bonding", async function () {
+    it("raw native transfer buys during bonding", async function () {
       const { token, buyer } = await deployFixture();
       await expect(
         buyer.sendTransaction({
           to: await token.getAddress(),
           value: TINY_BUY,
         })
-      ).to.be.revertedWithCustomError(token, "InvalidState");
+      ).to.not.be.reverted;
+      expect(await token.balanceOf(buyer.address)).to.be.gt(0n);
     });
   });
 });

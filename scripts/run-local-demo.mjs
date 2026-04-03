@@ -92,7 +92,7 @@ async function main() {
     env: {
       LOCAL_DEMO_RPC_URL: "http://127.0.0.1:8545",
       LOCAL_DEMO_GRADUATION_TARGET_BNB: process.env.LOCAL_DEMO_GRADUATION_TARGET_BNB ?? "0.2",
-      LOCAL_DEMO_CREATE_FEE_BNB: process.env.LOCAL_DEMO_CREATE_FEE_BNB ?? "0.03",
+      LOCAL_DEMO_CREATE_FEE_BNB: process.env.LOCAL_DEMO_CREATE_FEE_BNB ?? "0.01",
       LOCAL_DEMO_INDEXER_API_URL: "http://127.0.0.1:8787"
     }
   });

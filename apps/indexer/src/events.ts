@@ -7,6 +7,7 @@ type DecodedFactoryEvent =
       args: {
         creator: `0x${string}`;
         token: `0x${string}`;
+        mode: bigint;
         name: string;
         symbol: string;
         metadataURI: string;
@@ -80,6 +81,7 @@ export function decodeFactoryEvent(log: Log): DecodedFactoryEvent {
         args: {
           creator: decoded.args.creator,
           token: decoded.args.token,
+          mode: decoded.args.mode,
           name: decoded.args.name,
           symbol: decoded.args.symbol,
           metadataURI: decoded.args.metadataURI

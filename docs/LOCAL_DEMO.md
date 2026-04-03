@@ -5,7 +5,7 @@ This repo supports a **local fast-graduation demo profile** so you can test the 
 ## Profile
 
 - chain: local Hardhat (`31337`)
-- create fee: `0.03 native`
+- create fee: `0.01 native`
 - graduation target: `0.2 native`
 
 The official BSC production profile remains `12 BNB`, but local demo uses `0.2 native` to reach graduation quickly.

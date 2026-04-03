@@ -103,7 +103,7 @@ Hide/disable:
 
 - `router()`
 - `protocolFeeRecipient()`
-- `createFee()` — current default official factory setting: `0.03 BNB`
+- `createFee()` — read this on-chain from the selected factory. The repository default for future BSC deployments is `0.01 BNB`, while the current live factory is still `0.03 BNB`.
 - `graduationQuoteReserve()` — current official production profile: `12 BNB`
 - `accruedProtocolCreateFees()`
 - `totalLaunches()`

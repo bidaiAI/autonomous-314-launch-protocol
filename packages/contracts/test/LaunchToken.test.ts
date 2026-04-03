@@ -24,15 +24,16 @@ describe("LaunchToken", function () {
     await mockRouter.waitForDeployment();
 
     const LaunchToken = await ethers.getContractFactory("LaunchToken");
-    const token = await LaunchToken.deploy(
-      "Autonomous314",
-      "A314",
-      "ipfs://launch",
-      creator.address,
-      protocol.address,
-      await mockRouter.getAddress(),
-      GRADUATION_TARGET
-    );
+    const token = await LaunchToken.deploy({
+      name: "Autonomous314",
+      symbol: "A314",
+      metadataURI: "ipfs://launch",
+      creator: creator.address,
+      factory: deployer.address,
+      protocolFeeRecipient: protocol.address,
+      router: await mockRouter.getAddress(),
+      graduationQuoteReserve: GRADUATION_TARGET,
+    });
     await token.waitForDeployment();
 
     const pairAddress = await token.pair();
@@ -72,7 +73,7 @@ describe("LaunchToken", function () {
     );
   });
 
-  it("disables raw native transfer buys during bonding", async function () {
+  it("allows raw native transfer buys during bonding", async function () {
     const { token, buyer } = await deployFixture();
 
     await expect(
@@ -80,7 +81,9 @@ describe("LaunchToken", function () {
         to: await token.getAddress(),
         value: SMALL_BUY,
       })
-    ).to.be.revertedWithCustomError(token, "InvalidState");
+    ).to.not.be.reverted;
+
+    expect(await token.balanceOf(buyer.address)).to.be.gt(0n);
   });
 
   it("blocks transferFrom into the pair before graduation", async function () {

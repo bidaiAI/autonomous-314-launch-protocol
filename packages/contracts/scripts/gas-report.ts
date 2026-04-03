@@ -1,6 +1,6 @@
 import { ethers, network } from "hardhat";
 
-const CREATE_FEE = ethers.parseEther("0.03");
+const CREATE_FEE = ethers.parseEther("0.01");
 const GRADUATION_TARGET = ethers.parseEther(process.env.GAS_REPORT_GRADUATION_TARGET_NATIVE ?? process.env.GAS_REPORT_GRADUATION_TARGET_BNB ?? "0.2");
 const FIRST_BUY = GRADUATION_TARGET / 4n;
 const OVERBUY = GRADUATION_TARGET * 5n;

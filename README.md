@@ -63,6 +63,7 @@ At a functional level, the protocol already provides:
   - the create UI supports description, image, website, and social links while keeping only `metadataURI` on-chain
 
 See [`docs/LAUNCH_METADATA.md`](docs/LAUNCH_METADATA.md) for the recommended metadata schema.
+See [`docs/NEXT_MODE_RESEARCH.md`](docs/NEXT_MODE_RESEARCH.md) for the next-step mode research covering `receive()` restoration, `0314/1314/5314/9314/b314` suffix taxonomy, whitelist gating, and post-grad taxed profiles.
 
 ## What problem this solves
 
@@ -200,7 +201,7 @@ The protocol is deliberately positioned against platform-first fee extraction.
 
 - **creator share**: `0.7%`
 - **protocol share**: `0.3%`
-- **create fee**: `0.03 native` in the official BSC profile
+- **create fee**: `0.01 native` in the repository default BSC deployment profile for future factories (`0.03 BNB` on the currently deployed live factory until it is redeployed)
 
 This means the protocol keeps a small sustainability fee while routing the majority of the trading fee back toward the project side.
 
@@ -252,7 +253,7 @@ The current **official launch profile** is:
 - DEX: **PancakeSwap V2**
 - wrapped native quote: **WBNB**
 - graduation target: **12 BNB**
-- create fee: **0.03 BNB**
+- create fee: **0.01 BNB** (repository default for the next factory deployment)
 - default protocol treasury fallback: **`0xC4187bE6b362DF625696d4a9ec5E6FA461CC0314`**
 
 If a factory deployer passes `address(0)` as the protocol fee recipient, the factory falls back to the default treasury above. Deployers can still override it explicitly.
@@ -328,7 +329,7 @@ See:
 - **Factory:** `0xEFd05ee43A21cc109604050724cEd52ebA200314`
 - **Chain:** BNB Smart Chain
 - **Router:** PancakeSwap V2 Router `0x10ED43C718714eb63d5aA57B78B54704E256024E`
-- **Factory create fee:** `0.03 BNB`
+- **Factory create fee:** currently `0.03 BNB` on the live deployed factory; repository default for the next factory deployment is `0.01 BNB`
 - **Graduation target:** `12 BNB`
 
 The reference web app is intended to be deployed from the monorepo root on Vercel using [`vercel.json`](./vercel.json). The reference indexer/API is intended to be deployed from the monorepo root on Railway using [`railway.json`](./railway.json).

@@ -1,4 +1,17 @@
-export type LaunchState = "Created" | "Bonding314" | "Migrating" | "DEXOnly";
+export type LaunchState = "Created" | "Bonding314" | "Migrating" | "DEXOnly" | "WhitelistCommit";
+export type LaunchMode = "Unregistered" | "Standard0314" | "WhitelistB314";
+
+export type WhitelistSnapshot = {
+  status: string;
+  deadline: string;
+  threshold: string;
+  slotSize: string;
+  seatCount: string;
+  seatsFilled: string;
+  committedTotal: string;
+  tokensPerSeat: string;
+  whitelistCount: string;
+} | null;
 
 export type LaunchSnapshot = {
   token: `0x${string}`;
@@ -75,6 +88,9 @@ export type LaunchWorkspaceSnapshot = {
   creator: `0x${string}`;
   name: string;
   symbol: string;
+  mode: number;
+  modeLabel: LaunchMode;
+  suffix: string;
   metadataURI: string;
   state: LaunchState;
   pair: `0x${string}`;
@@ -87,6 +103,8 @@ export type LaunchWorkspaceSnapshot = {
   pairGraduationCompatible: boolean;
   protocolClaimable: string;
   creatorClaimable: string;
+  whitelistStatus: string;
+  whitelistSnapshot: WhitelistSnapshot;
   dexTokenReserve: string;
   dexQuoteReserve: string;
   recentActivity: ActivityRecord[];

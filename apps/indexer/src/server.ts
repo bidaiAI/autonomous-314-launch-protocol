@@ -103,12 +103,17 @@ const server = createServer(async (req, res) => {
           metadataURI: launch.metadataURI,
           symbol: launch.symbol,
           name: launch.name,
+          mode: launch.mode,
+          modeLabel: launch.modeLabel,
+          suffix: launch.suffix,
           state: launch.state,
           pair: launch.pair,
           graduationQuoteReserve: launch.graduationQuoteReserve,
           currentPriceQuotePerToken: launch.currentPriceQuotePerToken,
           graduationProgressBps: launch.graduationProgressBps,
-          pairPreloadedQuote: launch.pairPreloadedQuote
+          pairPreloadedQuote: launch.pairPreloadedQuote,
+          whitelistStatus: launch.whitelistStatus,
+          whitelistSnapshot: launch.whitelistSnapshot
         }))
       });
       return;
@@ -174,6 +179,9 @@ const server = createServer(async (req, res) => {
           name: launch.name,
           symbol: launch.symbol,
           metadataURI: launch.metadataURI,
+          mode: launch.mode,
+          modeLabel: launch.modeLabel,
+          suffix: launch.suffix,
           state: launch.state,
           pair: launch.pair,
           graduationQuoteReserve: launch.graduationQuoteReserve,
@@ -185,6 +193,8 @@ const server = createServer(async (req, res) => {
           pairGraduationCompatible: launch.pairGraduationCompatible,
           protocolClaimable: launch.protocolClaimable,
           creatorClaimable: launch.creatorClaimable,
+          whitelistStatus: launch.whitelistStatus,
+          whitelistSnapshot: launch.whitelistSnapshot,
           dexTokenReserve: launch.dexTokenReserve,
           dexQuoteReserve: launch.dexQuoteReserve
         }

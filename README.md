@@ -99,6 +99,65 @@ Autonomous 314 is not only a protocol for one official site. It is intended to b
 
 In other words, the goal is that anyone can stand up a usable meme launch platform in minutes, with lower backend cost and more launch modes than typical closed launchpad websites.
 
+## Why the server load stays low
+
+One of the core design goals is to avoid turning the protocol into a heavy backend business.
+
+The protocol keeps the most important execution path **on-chain**:
+
+- creation happens through the factory
+- pre-grad trading happens inside the launch contract
+- graduation happens inside the launch contract
+- post-grad trading happens on the canonical V2 DEX
+
+That means the server is **not** responsible for:
+
+- running the market
+- holding user balances
+- matching orders
+- executing swaps
+- manually graduating launches
+
+The reference server is intentionally lightweight. It mainly does:
+
+- launch list aggregation
+- activity normalization
+- segmented candle generation
+- metadata upload helpers for the reference UI
+
+In practical terms, this means the backend pressure is usually much lower than a typical platform launchpad, because:
+
+- there is no custom swap engine to operate
+- there is no custody layer
+- there is no off-chain orderbook
+- there is no heavy launch orchestration daemon
+
+The real pressure surface is mostly **RPC read pressure**, not server-side business logic pressure.
+
+### What can become the bottleneck
+
+If the protocol grows, the main scaling pressure points are:
+
+- archive/RPC log reads
+- launch list indexing windows
+- chart generation across many launches
+- metadata hosting and image delivery
+
+These are operationally much cheaper than running a proprietary trading engine, but they still need sensible limits, caching, and pagination.
+
+### Current operational model
+
+The current reference stack already reflects this low-backend philosophy:
+
+- frontend can read critical truth directly from chain
+- indexer responses are bounded and cached
+- activity and chart endpoints are token-scoped
+- metadata publishing is optional helper functionality, not protocol truth
+
+So the short answer is:
+
+> **server pressure is not high by design; the protocol pushes execution on-chain and keeps the backend as a lightweight indexing and presentation layer.**
+
 ## What problem this solves
 
 This protocol is designed to solve a specific class of launch problems:

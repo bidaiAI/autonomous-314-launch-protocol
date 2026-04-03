@@ -364,6 +364,15 @@ Autonomous 314 比封闭 launch 网站更接近 Web3 精神：
 
 graduation target 会在 **factory 部署时**确定，并作为 immutable 参数传入每个 `LaunchToken`。
 
+## 官方 BSC 部署
+
+- **Factory**：`0xB7cc1e41D997667fa1e1314415b3F2ec815D0314`
+- **模式**：`0314 / b314 / 1314..9314 / f314`
+- **Router**：PancakeSwap V2 Router `0x10ED43C718714eb63d5aA57B78B54704E256024E`
+- **Support deployers**：`0x502C1605B17E2c0B67Dd4C855E095989945aB3cc` / `0xA45921Dc733188c8C68D017984224E0EC125b095` / `0xf0Ef9342fB2866580F4d428E6FF00E5394E15182` / `0x8Cb985D86eAdF6D92d9204338583332e2A8313F0`
+- **创建费**：标准/税版 `0.01 BNB`，白名单/`f314` `0.03 BNB`
+- **Graduation target**：`12 BNB`
+
 ## 仓库结构
 
 - `packages/contracts` — Solidity 合约、测试、脚本

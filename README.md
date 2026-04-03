@@ -368,10 +368,12 @@ See:
 
 ## Official BSC deployment
 
-- **Factory:** `0xEFd05ee43A21cc109604050724cEd52ebA200314`
+- **Factory:** `0xB7cc1e41D997667fa1e1314415b3F2ec815D0314`
 - **Chain:** BNB Smart Chain
 - **Router:** PancakeSwap V2 Router `0x10ED43C718714eb63d5aA57B78B54704E256024E`
-- **Live deployment note:** the currently deployed public factory is the earlier live profile. The repository V2 baseline now targets `0314 / b314 / 1314..9314 / f314`, plus mode-specific create fees and batch ops, for the next official deployment.
+- **Modes:** `0314 / b314 / 1314..9314 / f314`
+- **Support deployers:** `0x502C1605B17E2c0B67Dd4C855E095989945aB3cc` / `0xA45921Dc733188c8C68D017984224E0EC125b095` / `0xf0Ef9342fB2866580F4d428E6FF00E5394E15182` / `0x8Cb985D86eAdF6D92d9204338583332e2A8313F0`
+- **Create fees:** standard/tax `0.01 BNB`, whitelist/f314 `0.03 BNB`
 - **Graduation target:** `12 BNB`
 
 The reference web app is intended to be deployed from the monorepo root on Vercel using [`vercel.json`](./vercel.json). The reference indexer/API is intended to be deployed from the monorepo root on Railway using [`railway.json`](./railway.json).

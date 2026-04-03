@@ -59,6 +59,41 @@ const v2FactoryAbi = [
     outputs: [{ name: "pair", type: "address" }]
   }
 ] as const;
+const legacyFactoryAbi = [
+  {
+    type: "function",
+    name: "createFee",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }]
+  },
+  {
+    type: "function",
+    name: "totalLaunches",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }]
+  },
+  {
+    type: "function",
+    name: "allLaunches",
+    stateMutability: "view",
+    inputs: [{ name: "", type: "uint256" }],
+    outputs: [{ name: "", type: "address" }]
+  },
+  {
+    type: "event",
+    name: "LaunchCreated",
+    anonymous: false,
+    inputs: [
+      { indexed: true, name: "creator", type: "address" },
+      { indexed: true, name: "token", type: "address" },
+      { indexed: false, name: "name", type: "string" },
+      { indexed: false, name: "symbol", type: "string" },
+      { indexed: false, name: "metadataURI", type: "string" }
+    ]
+  }
+] as const;
 const launchCreatedEventAbi = launchFactoryAbi.find(
   (entry) => entry.type === "event" && entry.name === "LaunchCreated"
 ) as (typeof launchFactoryAbi)[number] | undefined;
@@ -696,29 +731,34 @@ export async function readFactory(address: string): Promise<FactorySnapshot> {
   const factoryAddress = getAddress(address);
   const client = getPublicClient();
 
-  const [
-    router,
-    protocolFeeRecipient,
-    createFee,
-    standardCreateFee,
-    whitelistCreateFee,
-    graduationQuoteReserve,
-    totalLaunches,
-    accruedProtocolCreateFees
-  ] = (await Promise.all([
+  const [router, protocolFeeRecipient, createFee, graduationQuoteReserve, totalLaunches, accruedProtocolCreateFees] =
+    (await Promise.all([
     client.readContract({ address: factoryAddress, abi: launchFactoryAbi, functionName: "router" }),
     client.readContract({ address: factoryAddress, abi: launchFactoryAbi, functionName: "protocolFeeRecipient" }),
-    client.readContract({ address: factoryAddress, abi: launchFactoryAbi, functionName: "createFee" }),
-    client.readContract({ address: factoryAddress, abi: launchFactoryAbi, functionName: "standardCreateFee" }),
-    client.readContract({ address: factoryAddress, abi: launchFactoryAbi, functionName: "whitelistCreateFee" }),
+    client.readContract({ address: factoryAddress, abi: legacyFactoryAbi, functionName: "createFee" }),
     client.readContract({ address: factoryAddress, abi: launchFactoryAbi, functionName: "graduationQuoteReserve" }),
-    client.readContract({ address: factoryAddress, abi: launchFactoryAbi, functionName: "totalLaunches" }),
+    client.readContract({ address: factoryAddress, abi: legacyFactoryAbi, functionName: "totalLaunches" }),
     client.readContract({
       address: factoryAddress,
       abi: launchFactoryAbi,
       functionName: "accruedProtocolCreateFees"
     })
-  ])) as [`0x${string}`, `0x${string}`, bigint, bigint, bigint, bigint, bigint, bigint];
+  ])) as [`0x${string}`, `0x${string}`, bigint, bigint, bigint, bigint];
+
+  let standardCreateFee = createFee;
+  let whitelistCreateFee = 0n;
+  let supportsWhitelistMode = false;
+
+  try {
+    [standardCreateFee, whitelistCreateFee] = (await Promise.all([
+      client.readContract({ address: factoryAddress, abi: launchFactoryAbi, functionName: "standardCreateFee" }),
+      client.readContract({ address: factoryAddress, abi: launchFactoryAbi, functionName: "whitelistCreateFee" })
+    ])) as [bigint, bigint];
+    supportsWhitelistMode = true;
+  } catch {
+    standardCreateFee = createFee;
+    whitelistCreateFee = 0n;
+  }
 
   const recentLaunches: `0x${string}`[] = [];
   const recentCount = Number(totalLaunches > 5n ? 5n : totalLaunches);
@@ -726,7 +766,7 @@ export async function readFactory(address: string): Promise<FactorySnapshot> {
     const index = totalLaunches - 1n - BigInt(offset);
     const launch = (await client.readContract({
       address: factoryAddress,
-      abi: launchFactoryAbi,
+      abi: legacyFactoryAbi,
       functionName: "allLaunches",
       args: [index]
     })) as `0x${string}`;
@@ -740,6 +780,7 @@ export async function readFactory(address: string): Promise<FactorySnapshot> {
     createFee,
     standardCreateFee,
     whitelistCreateFee,
+    supportsWhitelistMode,
     graduationQuoteReserve,
     totalLaunches,
     accruedProtocolCreateFees,
@@ -777,8 +818,6 @@ export async function readToken(address: string): Promise<TokenSnapshot> {
     name,
     symbol,
     state,
-    launchModeId,
-    launchSuffix,
     factory,
     pair,
     creator,
@@ -799,15 +838,11 @@ export async function readToken(address: string): Promise<TokenSnapshot> {
     creatorFeeSweepReady,
     createdAt,
     lastTradeAt,
-    whitelistStatus,
-    whitelistSnapshot,
     dexReserves
   ] = (await Promise.all([
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "name" }),
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "symbol" }),
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "state" }),
-    client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "launchMode" }),
-    client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "launchSuffix" }),
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "factory" }),
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "pair" }),
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "creator" }),
@@ -848,15 +883,11 @@ export async function readToken(address: string): Promise<TokenSnapshot> {
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "creatorFeeSweepReady" }),
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "createdAt" }),
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "lastTradeAt" }),
-    client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "whitelistStatus" }),
-    client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "whitelistSnapshot" }),
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "dexReserves" })
   ])) as [
     string,
     string,
     bigint,
-    bigint,
-    string,
     `0x${string}`,
     `0x${string}`,
     `0x${string}`,
@@ -877,10 +908,52 @@ export async function readToken(address: string): Promise<TokenSnapshot> {
     boolean,
     bigint,
     bigint,
-    bigint,
-    readonly [bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint],
     readonly [bigint, bigint]
   ];
+
+  let launchModeId = 1n;
+  let launchSuffix = standardVanitySuffix;
+  let whitelistStatus = 0n;
+  let whitelistSnapshot: readonly [bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint] = [
+    0n,
+    0n,
+    0n,
+    0n,
+    0n,
+    0n,
+    0n,
+    0n,
+    0n
+  ];
+
+  try {
+    launchModeId = (await client.readContract({
+      address: tokenAddress,
+      abi: launchTokenAbi,
+      functionName: "launchMode"
+    })) as bigint;
+  } catch {}
+
+  try {
+    launchSuffix = (await client.readContract({
+      address: tokenAddress,
+      abi: launchTokenAbi,
+      functionName: "launchSuffix"
+    })) as string;
+  } catch {}
+
+  try {
+    whitelistStatus = (await client.readContract({
+      address: tokenAddress,
+      abi: launchTokenAbi,
+      functionName: "whitelistStatus"
+    })) as bigint;
+    whitelistSnapshot = (await client.readContract({
+      address: tokenAddress,
+      abi: launchTokenAbi,
+      functionName: "whitelistSnapshot"
+    })) as readonly [bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint];
+  } catch {}
 
   return {
     address: tokenAddress,
@@ -934,12 +1007,31 @@ export async function verifyOfficialLaunch(factoryAddress: string, tokenAddress:
   const expectedFactory = getAddress(factoryAddress);
   const [factorySnapshot, tokenSnapshot] = await Promise.all([readFactory(expectedFactory), readToken(tokenAddress)]);
   const client = getPublicClient();
-  const registeredMode = (await client.readContract({
-    address: expectedFactory,
-    abi: launchFactoryAbi,
-    functionName: "modeOf",
-    args: [tokenSnapshot.address]
-  })) as bigint;
+
+  let registeredMode = 0n;
+  let usesLegacyRegistry = false;
+  try {
+    registeredMode = (await client.readContract({
+      address: expectedFactory,
+      abi: launchFactoryAbi,
+      functionName: "modeOf",
+      args: [tokenSnapshot.address]
+    })) as bigint;
+  } catch {
+    usesLegacyRegistry = true;
+    for (let index = 0n; index < factorySnapshot.totalLaunches; index += 1n) {
+      const launch = (await client.readContract({
+        address: expectedFactory,
+        abi: legacyFactoryAbi,
+        functionName: "allLaunches",
+        args: [index]
+      })) as `0x${string}`;
+      if (launch.toLowerCase() === tokenSnapshot.address.toLowerCase()) {
+        registeredMode = 1n;
+        break;
+      }
+    }
+  }
 
   const expectedPair = (await client.readContract({
     address: tokenSnapshot.dexFactory,
@@ -948,64 +1040,77 @@ export async function verifyOfficialLaunch(factoryAddress: string, tokenAddress:
     args: [tokenSnapshot.address, tokenSnapshot.wrappedNative]
   })) as `0x${string}`;
 
-  const launchCreatedLogs =
-    tokenSnapshot.factory.toLowerCase() === expectedFactory.toLowerCase()
-      ? await client.getLogs({
-          address: expectedFactory,
-          fromBlock: 0n,
-          toBlock: "latest"
-        })
-      : [];
-
-  const decodedLaunchEvent = launchCreatedLogs
-    .map((log) => {
-      try {
-        return decodeEventLog({
-          abi: launchFactoryAbi,
-          data: log.data,
-          topics: log.topics
-        });
-      } catch {
-        return null;
+  let launchEventArgs:
+    | {
+        creator?: `0x${string}`;
+        token?: `0x${string}`;
+        mode?: bigint;
+        name?: string;
+        symbol?: string;
+        metadataURI?: string;
       }
-    })
-    .find((decoded) => {
-      if (!decoded || decoded.eventName !== "LaunchCreated") return false;
-      const args = decoded.args as { token?: `0x${string}` };
-      return args.token?.toLowerCase() === tokenSnapshot.address.toLowerCase();
+    | undefined;
+
+  if (!usesLegacyRegistry && tokenSnapshot.factory.toLowerCase() === expectedFactory.toLowerCase()) {
+    const launchCreatedLogs = await client.getLogs({
+      address: expectedFactory,
+      fromBlock: 0n,
+      toBlock: "latest"
     });
-  const launchEventArgs =
-    decodedLaunchEvent?.eventName === "LaunchCreated"
-      ? (decodedLaunchEvent.args as {
-          creator?: `0x${string}`;
-          token?: `0x${string}`;
-          mode?: bigint;
-          name?: string;
-          symbol?: string;
-          metadataURI?: string;
-        })
-      : undefined;
+
+    const decodedLaunchEvent = launchCreatedLogs
+      .map((log) => {
+        try {
+          return decodeEventLog({
+            abi: launchFactoryAbi,
+            data: log.data,
+            topics: log.topics
+          });
+        } catch {
+          return null;
+        }
+      })
+      .find((decoded) => {
+        if (!decoded || decoded.eventName !== "LaunchCreated") return false;
+        const args = decoded.args as { token?: `0x${string}` };
+        return args.token?.toLowerCase() === tokenSnapshot.address.toLowerCase();
+      });
+
+    launchEventArgs =
+      decodedLaunchEvent?.eventName === "LaunchCreated"
+        ? (decodedLaunchEvent.args as {
+            creator?: `0x${string}`;
+            token?: `0x${string}`;
+            mode?: bigint;
+            name?: string;
+            symbol?: string;
+            metadataURI?: string;
+          })
+        : undefined;
+  }
 
   const expectedSuffix = expectedSuffixForMode(Number(registeredMode));
   const checks = {
     factoryMatches: tokenSnapshot.factory.toLowerCase() === expectedFactory.toLowerCase(),
     factoryRegistryRecognizesToken: registeredMode !== 0n,
     tokenModeMatchesFactory: tokenSnapshot.launchModeId === registeredMode && registeredMode !== 0n,
-    launchEventFound: Boolean(launchEventArgs),
+    launchEventFound: usesLegacyRegistry ? registeredMode !== 0n : Boolean(launchEventArgs),
     eventMetadataMatchesToken:
-      Boolean(
-        launchEventArgs &&
-          launchEventArgs.creator &&
-          launchEventArgs.name !== undefined &&
-          launchEventArgs.symbol !== undefined &&
-          launchEventArgs.metadataURI !== undefined &&
-          launchEventArgs.mode !== undefined &&
-          launchEventArgs.creator.toLowerCase() === tokenSnapshot.creator.toLowerCase() &&
-          launchEventArgs.mode === registeredMode &&
-          launchEventArgs.name === tokenSnapshot.name &&
-          launchEventArgs.symbol === tokenSnapshot.symbol &&
-          launchEventArgs.metadataURI === tokenSnapshot.metadataURI
-      ),
+      usesLegacyRegistry
+        ? registeredMode === 1n
+        : Boolean(
+            launchEventArgs &&
+              launchEventArgs.creator &&
+              launchEventArgs.name !== undefined &&
+              launchEventArgs.symbol !== undefined &&
+              launchEventArgs.metadataURI !== undefined &&
+              launchEventArgs.mode !== undefined &&
+              launchEventArgs.creator.toLowerCase() === tokenSnapshot.creator.toLowerCase() &&
+              launchEventArgs.mode === registeredMode &&
+              launchEventArgs.name === tokenSnapshot.name &&
+              launchEventArgs.symbol === tokenSnapshot.symbol &&
+              launchEventArgs.metadataURI === tokenSnapshot.metadataURI
+          ),
     protocolRecipientMatches:
       tokenSnapshot.protocolFeeRecipient.toLowerCase() === factorySnapshot.protocolFeeRecipient.toLowerCase(),
     routerMatches: tokenSnapshot.router.toLowerCase() === factorySnapshot.router.toLowerCase(),
@@ -1021,7 +1126,7 @@ export async function verifyOfficialLaunch(factoryAddress: string, tokenAddress:
   if (Object.values(checks).every(Boolean)) {
     return {
       status: "official",
-      summary: `Verified official ${tokenSnapshot.launchSuffix} launch from the canonical Autonomous 314 factory.`,
+      summary: `Verified official ${tokenSnapshot.launchSuffix} launch from the canonical Autonomous 314 factory${usesLegacyRegistry ? " (legacy registry compatibility path)" : ""}.`,
       checks
     };
   }

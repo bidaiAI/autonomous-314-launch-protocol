@@ -276,10 +276,17 @@ export function App() {
   const whitelistAddressCount = parsedWhitelistAddresses?.length ?? 0;
   const whitelistAddressCountValid =
     createMode !== "whitelist" || (parsedWhitelistAddresses !== null && whitelistAddressCount >= whitelistSeatTarget && whitelistSeatTarget > 0);
+  const factorySupportsWhitelistMode = factorySnapshot?.supportsWhitelistMode ?? false;
   const selectedCreateFee =
     createMode === "whitelist"
       ? factorySnapshot?.whitelistCreateFee ?? 0n
       : factorySnapshot?.standardCreateFee ?? factorySnapshot?.createFee ?? 0n;
+
+  useEffect(() => {
+    if (createMode === "whitelist" && !factorySupportsWhitelistMode) {
+      setCreateMode("standard");
+    }
+  }, [createMode, factorySupportsWhitelistMode]);
 
   const launchMetadata = useMemo(
     () =>
@@ -1149,9 +1156,15 @@ export function App() {
                     type="button"
                     className={createMode === "whitelist" ? "mode-tab active" : "mode-tab"}
                     onClick={() => setCreateMode("whitelist")}
+                    disabled={!factorySupportsWhitelistMode}
+                    title={
+                      factorySupportsWhitelistMode
+                        ? "Deploy a whitelist-fixed-seat launch"
+                        : "Whitelist mode unlocks after the V2 factory is deployed"
+                    }
                   >
                     <span>b314</span>
-                    <small>Whitelist</small>
+                    <small>{factorySupportsWhitelistMode ? "Whitelist" : "Coming next"}</small>
                   </button>
                 </div>
               </div>

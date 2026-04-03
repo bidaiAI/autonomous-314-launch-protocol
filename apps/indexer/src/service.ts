@@ -2,14 +2,29 @@ import { createPublicClient, getAddress, hexToBigInt, hexToNumber, http, keccak2
 import { launchTokenAbi, v2PairAbi } from "./abi";
 import { indexerConfig } from "./config";
 import { resolveIndexerProfile } from "./profiles";
-import { decodeFactoryEvent } from "./events";
 import { normalizeGraduatedActivity, normalizePairTrade, normalizeProtocolTrade } from "./normalizers";
 import type { CandleBucket, IndexerSnapshot, LaunchMode, LaunchState, LaunchWorkspaceSnapshot, TradeRecord, WhitelistSnapshot } from "./schema";
 
 const launchStates = ["Created", "Bonding314", "Migrating", "DEXOnly", "WhitelistCommit"] as const;
 const launchModes = ["Unregistered", "Standard0314", "WhitelistB314"] as const;
 const zeroAddress = "0x0000000000000000000000000000000000000000";
-const launchCreatedTopic = eventTopic("LaunchCreated(address,address,uint8,string,string,string)");
+const standardVanitySuffix = "0314";
+const legacyFactoryAbi = [
+  {
+    type: "function",
+    name: "totalLaunches",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }]
+  },
+  {
+    type: "function",
+    name: "allLaunches",
+    stateMutability: "view",
+    inputs: [{ name: "", type: "uint256" }],
+    outputs: [{ name: "", type: "address" }]
+  }
+] as const;
 const buyExecutedTopic = eventTopic(
   "BuyExecuted(address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256)"
 );
@@ -36,48 +51,41 @@ export async function buildIndexerSnapshot(): Promise<IndexerSnapshot> {
     indexerConfig.fromBlock ??
     (latestBlock > indexerConfig.lookbackBlocks ? latestBlock - indexerConfig.lookbackBlocks : 0n);
 
-  const factoryLogs = await getLogsChunked(client, {
-    address: getAddress(indexerConfig.factoryAddress),
-    topics: [[launchCreatedTopic]],
-    fromBlock,
-    toBlock: latestBlock
-  });
+  const factoryAddress = getAddress(indexerConfig.factoryAddress);
+  const totalLaunches = (await client.readContract({
+    address: factoryAddress,
+    abi: legacyFactoryAbi,
+    functionName: "totalLaunches"
+  })) as bigint;
+  const launchCount = Number(totalLaunches > BigInt(indexerConfig.launchLimit) ? BigInt(indexerConfig.launchLimit) : totalLaunches);
+  const launches: `0x${string}`[] = [];
 
-  const launches: Array<{
-    log: Log;
-    decoded: {
-      type: "LaunchCreated";
-      args: {
-        creator: `0x${string}`;
-        token: `0x${string}`;
-        name: string;
-        symbol: string;
-        metadataURI: string;
-      };
-    };
-  }> = [];
-
-  for (const log of factoryLogs) {
-    const decoded = decodeFactoryEvent(log);
-    if (decoded.type !== "LaunchCreated") continue;
-    launches.push({ log, decoded });
+  for (let offset = 0; offset < launchCount; offset += 1) {
+    const index = totalLaunches - 1n - BigInt(offset);
+    const token = (await client.readContract({
+      address: factoryAddress,
+      abi: legacyFactoryAbi,
+      functionName: "allLaunches",
+      args: [index]
+    })) as `0x${string}`;
+    launches.push(token);
   }
-
-  launches.sort((a, b) => compareLogsDesc(a.log, b.log));
-  launches.splice(indexerConfig.launchLimit);
 
   const workspaceSnapshots: LaunchWorkspaceSnapshot[] = [];
 
-  for (const launch of launches) {
-    const token = launch.decoded.args.token;
+  for (const token of launches) {
     const tokenSnapshot = await readLaunchSnapshot(client, token);
-
-    const tokenLogs = await getLogsChunked(client, {
-      address: token,
-      topics: [[buyExecutedTopic, sellExecutedTopic, graduatedTopic]],
-      fromBlock,
-      toBlock: latestBlock
-    });
+    let tokenLogs: Log[] = [];
+    try {
+      tokenLogs = await getLogsChunked(client, {
+        address: token,
+        topics: [[buyExecutedTopic, sellExecutedTopic, graduatedTopic]],
+        fromBlock,
+        toBlock: latestBlock
+      });
+    } catch {
+      tokenLogs = [];
+    }
     const orderedTokenLogs = [...tokenLogs].sort(compareLogsAsc);
     const tokenTimes = await buildBlockTimes(client, orderedTokenLogs);
 
@@ -112,12 +120,17 @@ export async function buildIndexerSnapshot(): Promise<IndexerSnapshot> {
         client.readContract({ address: graduationPair, abi: v2PairAbi, functionName: "token1" })
       ])) as [`0x${string}`, `0x${string}`];
 
-      const pairLogs = await getLogsChunked(client, {
-        address: graduationPair,
-        topics: [[swapTopic]],
-        fromBlock: graduationBlock && graduationBlock > fromBlock ? graduationBlock : fromBlock,
-        toBlock: latestBlock
-      });
+      let pairLogs: Log[] = [];
+      try {
+        pairLogs = await getLogsChunked(client, {
+          address: graduationPair,
+          topics: [[swapTopic]],
+          fromBlock: graduationBlock && graduationBlock > fromBlock ? graduationBlock : fromBlock,
+          toBlock: latestBlock
+        });
+      } catch {
+        pairLogs = [];
+      }
       const orderedPairLogs = [...pairLogs].sort(compareLogsAsc);
       const pairTimes = await buildBlockTimes(client, orderedPairLogs);
 
@@ -234,8 +247,6 @@ async function readLaunchSnapshot(client: ReturnType<typeof createPublicClient>,
     name,
     symbol,
     state,
-    launchMode,
-    launchSuffix,
     pair,
     creator,
     metadataURI,
@@ -248,15 +259,11 @@ async function readLaunchSnapshot(client: ReturnType<typeof createPublicClient>,
     pairGraduationCompatible,
     protocolClaimable,
     creatorClaimable,
-    whitelistStatus,
-    whitelistSnapshot,
     dexReserves
   ] = (await Promise.all([
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "name" }),
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "symbol" }),
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "state" }),
-    client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "launchMode" }),
-    client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "launchSuffix" }),
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "pair" }),
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "creator" }),
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "metadataURI" }),
@@ -269,15 +276,11 @@ async function readLaunchSnapshot(client: ReturnType<typeof createPublicClient>,
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "isPairGraduationCompatible" }),
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "protocolClaimable" }),
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "creatorClaimable" }),
-    client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "whitelistStatus" }),
-    client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "whitelistSnapshot" }),
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "dexReserves" })
   ])) as [
     string,
     string,
     bigint,
-    bigint,
-    string,
     `0x${string}`,
     `0x${string}`,
     string,
@@ -290,10 +293,42 @@ async function readLaunchSnapshot(client: ReturnType<typeof createPublicClient>,
     boolean,
     bigint,
     bigint,
-    bigint,
-    readonly [bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint],
     readonly [bigint, bigint]
   ];
+
+  let launchMode = 1n;
+  let launchSuffix = standardVanitySuffix;
+  let whitelistStatus = 0n;
+  let whitelistSnapshot: readonly [bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint] = [
+    0n,
+    0n,
+    0n,
+    0n,
+    0n,
+    0n,
+    0n,
+    0n,
+    0n
+  ];
+
+  try {
+    launchMode = (await client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "launchMode" })) as bigint;
+  } catch {}
+  try {
+    launchSuffix = (await client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "launchSuffix" })) as string;
+  } catch {}
+  try {
+    whitelistStatus = (await client.readContract({
+      address: tokenAddress,
+      abi: launchTokenAbi,
+      functionName: "whitelistStatus"
+    })) as bigint;
+    whitelistSnapshot = (await client.readContract({
+      address: tokenAddress,
+      abi: launchTokenAbi,
+      functionName: "whitelistSnapshot"
+    })) as readonly [bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint];
+  } catch {}
 
   const parsedWhitelistSnapshot: WhitelistSnapshot =
     whitelistStatus === 0n && whitelistSnapshot[1] === 0n

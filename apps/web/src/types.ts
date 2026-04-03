@@ -5,6 +5,7 @@ export type FactorySnapshot = {
   createFee: bigint;
   standardCreateFee: bigint;
   whitelistCreateFee: bigint;
+  supportsWhitelistMode: boolean;
   graduationQuoteReserve: bigint;
   totalLaunches: bigint;
   accruedProtocolCreateFees: bigint;

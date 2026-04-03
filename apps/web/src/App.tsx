@@ -296,6 +296,9 @@ export function App() {
   const whitelistSlotValue = useMemo(() => parseFloat(createWhitelistSlotSize || "0"), [createWhitelistSlotSize]);
   const isWhitelistFamily = createMode === "whitelist" || createMode === "whitelistTaxed";
   const isTaxedFamily = createMode === "taxed" || createMode === "whitelistTaxed";
+  const taxRatePercent = Math.max(1, Math.min(9, Number.parseInt(createTaxBps || "1", 10) || 1));
+  const burnSharePercent = Math.max(0, Math.min(100, Math.round((Number.parseInt(createTaxBurnShareBps || "0", 10) || 0) / 100)));
+  const treasurySharePercent = Math.max(0, 100 - burnSharePercent);
   const whitelistSeatTarget =
     isWhitelistFamily && whitelistThresholdValue > 0 && whitelistSlotValue > 0
       ? Math.round(whitelistThresholdValue / whitelistSlotValue)
@@ -1116,6 +1119,69 @@ export function App() {
             </div>
           </section>
 
+          <section className="protocol-intro panel">
+            <div className="protocol-intro-copy">
+              <span className="section-kicker">{t("protocolIntroKicker")}</span>
+              <h2>{t("protocolIntroTitle")}</h2>
+              <p>{t("protocolIntroDesc")}</p>
+            </div>
+            <div className="protocol-intro-points">
+              <article className="protocol-point">
+                <span className="protocol-point-index">01</span>
+                <div>
+                  <h3>{t("protocolPointOneTitle")}</h3>
+                  <p>{t("protocolPointOneDesc")}</p>
+                </div>
+              </article>
+              <article className="protocol-point">
+                <span className="protocol-point-index">02</span>
+                <div>
+                  <h3>{t("protocolPointTwoTitle")}</h3>
+                  <p>{t("protocolPointTwoDesc")}</p>
+                </div>
+              </article>
+              <article className="protocol-point">
+                <span className="protocol-point-index">03</span>
+                <div>
+                  <h3>{t("protocolPointThreeTitle")}</h3>
+                  <p>{t("protocolPointThreeDesc")}</p>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <section className="protocol-flow-grid">
+            <article className="panel protocol-flow-card">
+              <span className="section-kicker">{t("protocolFlowKicker")}</span>
+              <h3>{t("protocolFlowTitle")}</h3>
+              <div className="protocol-flow-steps">
+                <div>
+                  <strong>{t("protocolFlowStepOneTitle")}</strong>
+                  <p>{t("protocolFlowStepOneDesc")}</p>
+                </div>
+                <div>
+                  <strong>{t("protocolFlowStepTwoTitle")}</strong>
+                  <p>{t("protocolFlowStepTwoDesc")}</p>
+                </div>
+                <div>
+                  <strong>{t("protocolFlowStepThreeTitle")}</strong>
+                  <p>{t("protocolFlowStepThreeDesc")}</p>
+                </div>
+              </div>
+            </article>
+
+            <article className="panel protocol-flow-card">
+              <span className="section-kicker">{t("protocolCompareKicker")}</span>
+              <h3>{t("protocolCompareTitle")}</h3>
+              <ul className="protocol-compare-list">
+                <li>{t("protocolCompareOne")}</li>
+                <li>{t("protocolCompareTwo")}</li>
+                <li>{t("protocolCompareThree")}</li>
+                <li>{t("protocolCompareFour")}</li>
+              </ul>
+            </article>
+          </section>
+
           <section className="manifesto-grid">
             <article className="manifesto-card">
               <h3>🔗 {t('selfSovereign')}</h3>
@@ -1152,6 +1218,29 @@ export function App() {
               <span className="metric-label">{t('marketMode')}</span>
               <strong>{t('preGradDesc')}</strong>
             </div>
+          </section>
+
+          <section className="origin-grid">
+            <article className="origin-card panel">
+              <span className="section-kicker">{t("originKicker")}</span>
+              <h3>{t("originTitle")}</h3>
+              <p>{t("originDesc")}</p>
+            </article>
+            <article className="origin-card panel">
+              <span className="origin-pill">01</span>
+              <h3>{t("originTransferTitle")}</h3>
+              <p>{t("originTransferDesc")}</p>
+            </article>
+            <article className="origin-card panel">
+              <span className="origin-pill">02</span>
+              <h3>{t("originNoSwapTitle")}</h3>
+              <p>{t("originNoSwapDesc")}</p>
+            </article>
+            <article className="origin-card panel">
+              <span className="origin-pill">03</span>
+              <h3>{t("originCooldownTitle")}</h3>
+              <p>{t("originCooldownDesc")}</p>
+            </article>
           </section>
 
           <section className="search-hero">
@@ -1599,19 +1688,48 @@ export function App() {
                           />
                         </label>
                       </div>
-                      <div className="metadata-two-column">
+                      <div className="tax-slider-card">
+                        <div className="tax-slider-head">
+                          <div>
+                            <span className="section-kicker">{t("taxSplitKicker")}</span>
+                            <strong>{tf("taxSplitPreview", { tax: taxRatePercent })}</strong>
+                          </div>
+                          <span className="status-pill warn">{taxRatePercent}%</span>
+                        </div>
                         <label className="field">
-                          <span>{t("burnShare")}</span>
-                          <input value={createTaxBurnShareBps} onChange={(e) => setCreateTaxBurnShareBps(e.target.value)} placeholder="5000" />
-                        </label>
-                        <label className="field">
-                          <span>{t("treasuryShare")}</span>
+                          <span>{t("burnShareSlider")}</span>
                           <input
-                            value={createTaxTreasuryShareBps}
-                            onChange={(e) => setCreateTaxTreasuryShareBps(e.target.value)}
-                            placeholder="5000"
+                            type="range"
+                            min="0"
+                            max="100"
+                            step="1"
+                            value={burnSharePercent}
+                            onChange={(e) => {
+                              const burn = Math.max(0, Math.min(100, Number.parseInt(e.target.value || "0", 10) || 0));
+                              const treasury = 100 - burn;
+                              setCreateTaxBurnShareBps(String(burn * 100));
+                              setCreateTaxTreasuryShareBps(String(treasury * 100));
+                            }}
                           />
                         </label>
+                        <div className="tax-split-grid">
+                          <div>
+                            <span>{t("burnShare")}</span>
+                            <strong>{burnSharePercent}%</strong>
+                          </div>
+                          <div>
+                            <span>{t("treasuryShare")}</span>
+                            <strong>{treasurySharePercent}%</strong>
+                          </div>
+                          <div>
+                            <span>{t("burnRateEffective")}</span>
+                            <strong>{((taxRatePercent * burnSharePercent) / 100).toFixed(2)}%</strong>
+                          </div>
+                          <div>
+                            <span>{t("treasuryRateEffective")}</span>
+                            <strong>{((taxRatePercent * treasurySharePercent) / 100).toFixed(2)}%</strong>
+                          </div>
+                        </div>
                       </div>
                       <div className="callout compact-callout">
                         <strong>{t("taxOnlyPostGrad")}</strong>
@@ -1651,6 +1769,10 @@ export function App() {
                           <div><span>{t("wlSeatTarget")}</span><strong>{whitelistSeatTarget || "—"}</strong></div>
                         <div><span>{t("wlAddressCount")}</span><strong>{whitelistAddressCount}</strong></div>
                         <div><span>{t("wlWindow")}</span><strong>24h</strong></div>
+                      </div>
+                      <div className="callout warn compact-callout">
+                        <strong>{t("wlStartTimePendingTitle")}</strong>
+                        <p>{t("wlStartTimePendingDesc")}</p>
                       </div>
                       <label className="field">
                         <span>{t("wlAddresses")}</span>

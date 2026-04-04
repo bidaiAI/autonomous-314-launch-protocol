@@ -492,6 +492,9 @@ const strings = {
 
     // launch — details
     tokenAddressLabel: "Token Address",
+    copyContract: "Copy Contract",
+    copyCreator: "Copy Creator",
+    viewOnExplorer: "View on Explorer",
     mode: "Mode",
     suffix: "Suffix",
     metadataUriLabel: "Metadata URI",
@@ -537,6 +540,7 @@ const strings = {
     dexHandoff: "DEX handoff mode",
     noChartData: "No chart data available in the current lookback window.",
     recentActivity: "Recent Activity",
+    detailsTab: "Details",
     events: "events",
     noActivity: "No activity found in the current lookback window.",
     graduated: "Graduated",
@@ -1049,6 +1053,9 @@ const strings = {
 
     // 详情 — 数据字段
     tokenAddressLabel: "代币地址",
+    copyContract: "复制合约",
+    copyCreator: "复制创建者",
+    viewOnExplorer: "在浏览器中查看",
     mode: "模式",
     suffix: "后缀",
     metadataUriLabel: "元数据 URI",
@@ -1094,6 +1101,7 @@ const strings = {
     dexHandoff: "DEX 接管模式",
     noChartData: "当前回溯窗口内无图表数据。",
     recentActivity: "最近动态",
+    detailsTab: "详情",
     events: "条记录",
     noActivity: "当前回溯窗口内无交易记录。",
     graduated: "已毕业",

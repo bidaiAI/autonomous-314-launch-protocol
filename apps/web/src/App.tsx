@@ -80,6 +80,16 @@ function routeHref(route: AppRoute) {
   return "/";
 }
 
+function explorerAddressUrl(address: string) {
+  if (activeProtocolProfile.chainId === 56) {
+    return `https://bscscan.com/address/${address}`;
+  }
+  if (activeProtocolProfile.chainId === 1) {
+    return `https://etherscan.io/address/${address}`;
+  }
+  return "";
+}
+
 function shortAddress(value: string) {
   if (!value) return "—";
   return `${value.slice(0, 6)}…${value.slice(-4)}`;
@@ -284,6 +294,7 @@ export function App() {
   const [bondingCandles, setBondingCandles] = useState<CandlePoint[]>([]);
   const [dexCandles, setDexCandles] = useState<CandlePoint[]>([]);
   const [graduationTimestampMs, setGraduationTimestampMs] = useState<number | null>(null);
+  const [launchInfoTab, setLaunchInfoTab] = useState<"activity" | "details">("activity");
   const [buyInput, setBuyInput] = useState("1");
   const [sellInput, setSellInput] = useState("1");
   const [slippagePercent, setSlippagePercent] = useState("3");
@@ -2405,6 +2416,19 @@ export function App() {
                           <span>{t("noSocialLinks")}</span>
                         )}
                       </div>
+                      <div className="launch-utility-row">
+                        <button type="button" className="copy-chip" onClick={() => void handleCopyText(tokenSnapshot.address, t("tokenAddressLabel"))}>
+                          {t("copyContract")}
+                        </button>
+                        <button type="button" className="copy-chip" onClick={() => void handleCopyText(tokenSnapshot.creator, t("creator"))}>
+                          {t("copyCreator")}
+                        </button>
+                        {explorerAddressUrl(tokenSnapshot.address) ? (
+                          <a className="copy-chip inline-link chip-link" href={explorerAddressUrl(tokenSnapshot.address)} target="_blank" rel="noreferrer">
+                            {t("viewOnExplorer")}
+                          </a>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
 
@@ -2520,50 +2544,6 @@ export function App() {
                     </p>
                   </div>
 
-                  <div className="detail-grid">
-                    <dl className="data-list">
-                      <div><dt>{t("tokenAddressLabel")}</dt><dd>{tokenSnapshot.address}</dd></div>
-                      <div><dt>{t("mode")}</dt><dd>{tokenSnapshot.launchMode}</dd></div>
-                      <div><dt>{t("suffix")}</dt><dd>{tokenSnapshot.launchSuffix}</dd></div>
-                      <div><dt>{t("metadataUriLabel")}</dt><dd>{tokenSnapshot.metadataURI}</dd></div>
-                      <div><dt>{t("gradTarget")}</dt><dd>{formatNative(tokenSnapshot.graduationQuoteReserve)}</dd></div>
-                      <div><dt>{t("pair")}</dt><dd>{tokenSnapshot.pair}</dd></div>
-                      <div><dt>{t("pairClean")}</dt><dd>{String(tokenSnapshot.pairClean)}</dd></div>
-                      <div><dt>{t("gradCompatible")}</dt><dd>{String(tokenSnapshot.pairGraduationCompatible)}</dd></div>
-                      <div><dt>{t("preloadedQuote")}</dt><dd>{formatNative(tokenSnapshot.pairPreloadedQuote)}</dd></div>
-                      {tokenSnapshot.whitelistSnapshot && (
-                        <>
-                          <div><dt>{t("wlThresholdLabel")}</dt><dd>{formatNative(tokenSnapshot.whitelistSnapshot.threshold)}</dd></div>
-                          <div><dt>{t("wlSeatSizeLabel")}</dt><dd>{formatNative(tokenSnapshot.whitelistSnapshot.slotSize)}</dd></div>
-                          <div><dt>{t("wlSeats")}</dt><dd>{tokenSnapshot.whitelistSnapshot.seatCount.toString()}</dd></div>
-                          <div><dt>{t("wlFilled")}</dt><dd>{tokenSnapshot.whitelistSnapshot.seatsFilled.toString()}</dd></div>
-                        </>
-                      )}
-                      {tokenSnapshot.taxConfig && (
-                        <>
-                          <div><dt>{t("taxActive")}</dt><dd>{String(tokenSnapshot.taxConfig.active)}</dd></div>
-                          <div><dt>{t("configuredTax")}</dt><dd>{formatPercentFromBps(tokenSnapshot.taxConfig.configuredTaxBps)}</dd></div>
-                          <div><dt>{t("burnShareLabel")}</dt><dd>{formatPercentFromBps(tokenSnapshot.taxConfig.burnBps)}</dd></div>
-                          <div><dt>{t("treasuryShareLabel")}</dt><dd>{formatPercentFromBps(tokenSnapshot.taxConfig.treasuryBps)}</dd></div>
-                          <div><dt>{t("treasuryWalletLabel")}</dt><dd className="address-value"><span className="mono-address">{tokenSnapshot.taxConfig.wallet}</span><button type="button" className="copy-chip" onClick={() => void handleCopyText(tokenSnapshot.taxConfig!.wallet, t("treasuryWalletLabel"))}>{t("copyAddress")}</button></dd></div>
-                        </>
-                      )}
-                    </dl>
-
-                    <dl className="data-list">
-                      <div><dt>{t("protocolClaimable")}</dt><dd>{formatNative(tokenSnapshot.protocolClaimable)}</dd></div>
-                      <div><dt>{t("creatorClaimable")}</dt><dd>{formatNative(tokenSnapshot.creatorClaimable)}</dd></div>
-                      <div><dt>{t("tokenProtocolRecipient")}</dt><dd className="address-value"><span className="mono-address">{tokenSnapshot.protocolFeeRecipient}</span><button type="button" className="copy-chip" onClick={() => void handleCopyText(tokenSnapshot.protocolFeeRecipient, t("tokenProtocolRecipient"))}>{t("copyAddress")}</button></dd></div>
-                      <div><dt>{t("creatorFeeSweepReady")}</dt><dd>{creatorFeeSweepReady ? t("yes") : t("no")}</dd></div>
-                      <div><dt>{t("createdAt")}</dt><dd>{formatUnixTimestamp(tokenSnapshot.createdAt)}</dd></div>
-                      <div><dt>{t("lastTradeAt")}</dt><dd>{formatUnixTimestamp(tokenSnapshot.lastTradeAt)}</dd></div>
-                      <div><dt>{t("dexTokenReserve")}</dt><dd>{formatToken(tokenSnapshot.dexTokenReserve)}</dd></div>
-                      <div><dt>{t("dexQuoteReserve")}</dt><dd>{formatNative(tokenSnapshot.dexQuoteReserve)}</dd></div>
-                      <div><dt>{t("connectedAsCreator")}</dt><dd>{connectedAsCreator ? t("yes") : t("no")}</dd></div>
-                      <div><dt>{t("statusMessage")}</dt><dd>{status}</dd></div>
-                    </dl>
-                  </div>
-
                   {creatorFeeSweepReady && isBonding && (
                     <div className="callout warn">
                       <strong>{t("abandonedSweep")}</strong>
@@ -2571,60 +2551,123 @@ export function App() {
                     </div>
                   )}
 
-                  <div className="history-grid single-column-activity">
-                    <article className="subpanel">
-                      <div className="subpanel-header">
-                        <h3>{t("recentActivity")}</h3>
-                        <span className="list-item-meta">{recentActivity.length} {t("events")}</span>
-                      </div>
-                      {recentActivity.length === 0 ? (
-                        <div className="empty-state">{t("noActivity")}</div>
-                      ) : (
-                        <div className="trade-list">
-                          {recentActivity.map((activity) => (
-                            <div
-                              key={`${activity.txHash}-${activity.blockNumber.toString()}-${activity.logIndex}`}
-                              className={`trade-row ${activityTone(activity)}`}
-                            >
-                              <div>
-                                <strong>{activityLabel(activity)}</strong>
-                                <div className="trade-meta">{formatDateTime(activity.timestampMs)} · {activityPhaseLabel(activity)}</div>
-                              </div>
-                              <div>
-                                {activity.kind === "graduated" ? (
-                                  <>
-                                    <strong>{formatNative(activity.quoteAmountContributed)}</strong>
-                                    <div className="trade-meta">
-                                      {t("lpSeed")} · {formatToken(activity.tokenAmount)} {t("tokenUnit")}
-                                      {activity.preloadedQuoteAmount > 0n ? ` + ${formatNative(activity.preloadedQuoteAmount)} ${t("preload")}` : ""}
-                                    </div>
-                                  </>
-                                ) : (
-                                  <>
-                                    <strong>{formatNative(activity.netQuote)}</strong>
-                                    <div className="trade-meta">{formatToken(activity.tokenAmount)} {t("tokenUnit")}</div>
-                                  </>
-                                )}
-                              </div>
-                              <div>
-                                {activity.kind === "graduated" ? (
-                                  <>
-                                    <strong>{shortAddress(activity.marketAddress)}</strong>
-                                    <div className="trade-meta">{formatToken(activity.liquidityBurned)} {t("lpBurned")}</div>
-                                  </>
-                                ) : (
-                                  <>
-                                    <strong>{formatNative(activity.priceQuotePerToken)}</strong>
-                                    <div className="trade-meta">{shortAddress(activity.txHash)}</div>
-                                  </>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </article>
+                  <div className="content-tabs">
+                    <button
+                      type="button"
+                      className={`content-tab ${launchInfoTab === "activity" ? "active" : ""}`}
+                      onClick={() => setLaunchInfoTab("activity")}
+                    >
+                      {t("recentActivity")}
+                    </button>
+                    <button
+                      type="button"
+                      className={`content-tab ${launchInfoTab === "details" ? "active" : ""}`}
+                      onClick={() => setLaunchInfoTab("details")}
+                    >
+                      {t("detailsTab")}
+                    </button>
                   </div>
+
+                  {launchInfoTab === "activity" ? (
+                    <div className="history-grid single-column-activity">
+                      <article className="subpanel">
+                        <div className="subpanel-header">
+                          <h3>{t("recentActivity")}</h3>
+                          <span className="list-item-meta">{recentActivity.length} {t("events")}</span>
+                        </div>
+                        {recentActivity.length === 0 ? (
+                          <div className="empty-state">{t("noActivity")}</div>
+                        ) : (
+                          <div className="trade-list">
+                            {recentActivity.map((activity) => (
+                              <div
+                                key={`${activity.txHash}-${activity.blockNumber.toString()}-${activity.logIndex}`}
+                                className={`trade-row ${activityTone(activity)}`}
+                              >
+                                <div>
+                                  <strong>{activityLabel(activity)}</strong>
+                                  <div className="trade-meta">{formatDateTime(activity.timestampMs)} · {activityPhaseLabel(activity)}</div>
+                                </div>
+                                <div>
+                                  {activity.kind === "graduated" ? (
+                                    <>
+                                      <strong>{formatNative(activity.quoteAmountContributed)}</strong>
+                                      <div className="trade-meta">
+                                        {t("lpSeed")} · {formatToken(activity.tokenAmount)} {t("tokenUnit")}
+                                        {activity.preloadedQuoteAmount > 0n ? ` + ${formatNative(activity.preloadedQuoteAmount)} ${t("preload")}` : ""}
+                                      </div>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <strong>{formatNative(activity.netQuote)}</strong>
+                                      <div className="trade-meta">{formatToken(activity.tokenAmount)} {t("tokenUnit")}</div>
+                                    </>
+                                  )}
+                                </div>
+                                <div>
+                                  {activity.kind === "graduated" ? (
+                                    <>
+                                      <strong>{shortAddress(activity.marketAddress)}</strong>
+                                      <div className="trade-meta">{formatToken(activity.liquidityBurned)} {t("lpBurned")}</div>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <strong>{formatNative(activity.priceQuotePerToken)}</strong>
+                                      <div className="trade-meta">{shortAddress(activity.txHash)}</div>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </article>
+                    </div>
+                  ) : (
+                    <div className="detail-grid">
+                      <dl className="data-list">
+                        <div><dt>{t("tokenAddressLabel")}</dt><dd>{tokenSnapshot.address}</dd></div>
+                        <div><dt>{t("mode")}</dt><dd>{tokenSnapshot.launchMode}</dd></div>
+                        <div><dt>{t("suffix")}</dt><dd>{tokenSnapshot.launchSuffix}</dd></div>
+                        <div><dt>{t("metadataUriLabel")}</dt><dd>{tokenSnapshot.metadataURI}</dd></div>
+                        <div><dt>{t("gradTarget")}</dt><dd>{formatNative(tokenSnapshot.graduationQuoteReserve)}</dd></div>
+                        <div><dt>{t("pair")}</dt><dd>{tokenSnapshot.pair}</dd></div>
+                        <div><dt>{t("pairClean")}</dt><dd>{String(tokenSnapshot.pairClean)}</dd></div>
+                        <div><dt>{t("gradCompatible")}</dt><dd>{String(tokenSnapshot.pairGraduationCompatible)}</dd></div>
+                        <div><dt>{t("preloadedQuote")}</dt><dd>{formatNative(tokenSnapshot.pairPreloadedQuote)}</dd></div>
+                        {tokenSnapshot.whitelistSnapshot && (
+                          <>
+                            <div><dt>{t("wlThresholdLabel")}</dt><dd>{formatNative(tokenSnapshot.whitelistSnapshot.threshold)}</dd></div>
+                            <div><dt>{t("wlSeatSizeLabel")}</dt><dd>{formatNative(tokenSnapshot.whitelistSnapshot.slotSize)}</dd></div>
+                            <div><dt>{t("wlSeats")}</dt><dd>{tokenSnapshot.whitelistSnapshot.seatCount.toString()}</dd></div>
+                            <div><dt>{t("wlFilled")}</dt><dd>{tokenSnapshot.whitelistSnapshot.seatsFilled.toString()}</dd></div>
+                          </>
+                        )}
+                        {tokenSnapshot.taxConfig && (
+                          <>
+                            <div><dt>{t("taxActive")}</dt><dd>{String(tokenSnapshot.taxConfig.active)}</dd></div>
+                            <div><dt>{t("configuredTax")}</dt><dd>{formatPercentFromBps(tokenSnapshot.taxConfig.configuredTaxBps)}</dd></div>
+                            <div><dt>{t("burnShareLabel")}</dt><dd>{formatPercentFromBps(tokenSnapshot.taxConfig.burnBps)}</dd></div>
+                            <div><dt>{t("treasuryShareLabel")}</dt><dd>{formatPercentFromBps(tokenSnapshot.taxConfig.treasuryBps)}</dd></div>
+                            <div><dt>{t("treasuryWalletLabel")}</dt><dd className="address-value"><span className="mono-address">{tokenSnapshot.taxConfig.wallet}</span><button type="button" className="copy-chip" onClick={() => void handleCopyText(tokenSnapshot.taxConfig!.wallet, t("treasuryWalletLabel"))}>{t("copyAddress")}</button></dd></div>
+                          </>
+                        )}
+                      </dl>
+
+                      <dl className="data-list">
+                        <div><dt>{t("protocolClaimable")}</dt><dd>{formatNative(tokenSnapshot.protocolClaimable)}</dd></div>
+                        <div><dt>{t("creatorClaimable")}</dt><dd>{formatNative(tokenSnapshot.creatorClaimable)}</dd></div>
+                        <div><dt>{t("tokenProtocolRecipient")}</dt><dd className="address-value"><span className="mono-address">{tokenSnapshot.protocolFeeRecipient}</span><button type="button" className="copy-chip" onClick={() => void handleCopyText(tokenSnapshot.protocolFeeRecipient, t("tokenProtocolRecipient"))}>{t("copyAddress")}</button></dd></div>
+                        <div><dt>{t("creatorFeeSweepReady")}</dt><dd>{creatorFeeSweepReady ? t("yes") : t("no")}</dd></div>
+                        <div><dt>{t("createdAt")}</dt><dd>{formatUnixTimestamp(tokenSnapshot.createdAt)}</dd></div>
+                        <div><dt>{t("lastTradeAt")}</dt><dd>{formatUnixTimestamp(tokenSnapshot.lastTradeAt)}</dd></div>
+                        <div><dt>{t("dexTokenReserve")}</dt><dd>{formatToken(tokenSnapshot.dexTokenReserve)}</dd></div>
+                        <div><dt>{t("dexQuoteReserve")}</dt><dd>{formatNative(tokenSnapshot.dexQuoteReserve)}</dd></div>
+                        <div><dt>{t("connectedAsCreator")}</dt><dd>{connectedAsCreator ? t("yes") : t("no")}</dd></div>
+                        <div><dt>{t("statusMessage")}</dt><dd>{status}</dd></div>
+                      </dl>
+                    </div>
+                  )}
                 </>
               ) : (
                 <div className="empty-state">{t("loadWorkspace")}</div>

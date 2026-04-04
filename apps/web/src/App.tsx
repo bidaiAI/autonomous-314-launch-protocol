@@ -295,6 +295,7 @@ export function App() {
   const [dexCandles, setDexCandles] = useState<CandlePoint[]>([]);
   const [graduationTimestampMs, setGraduationTimestampMs] = useState<number | null>(null);
   const [launchInfoTab, setLaunchInfoTab] = useState<"activity" | "details">("activity");
+  const [tradeSide, setTradeSide] = useState<"buy" | "sell">("buy");
   const [buyInput, setBuyInput] = useState("1");
   const [sellInput, setSellInput] = useState("1");
   const [slippagePercent, setSlippagePercent] = useState("3");
@@ -2713,28 +2714,77 @@ export function App() {
               ) : (
                 <>
                   <h2>{t("bondingActions")}</h2>
-                  <label className="field">
-                    <span>{`${t("buyAmount")} (${activeProtocolProfile.nativeSymbol})`}</span>
-                    <input value={buyInput} inputMode="decimal" onChange={(e) => setBuyInput(e.target.value)} />
-                    {buyPreviewState && <small className="field-note">{tf("estimatedTokenOut", { amount: formatToken(buyPreviewState.tokenOut) })}</small>}
-                  </label>
-                  <label className="field">
-                    <span>{t("sellAmount")}</span>
-                    <input value={sellInput} onChange={(e) => setSellInput(e.target.value)} />
-                  </label>
+                  <div className="trade-side-tabs">
+                    <button
+                      type="button"
+                      className={`trade-side-tab ${tradeSide === "buy" ? "active" : ""}`}
+                      onClick={() => setTradeSide("buy")}
+                    >
+                      {t("tradeModeBuy")}
+                    </button>
+                    <button
+                      type="button"
+                      className={`trade-side-tab ${tradeSide === "sell" ? "active" : ""}`}
+                      onClick={() => setTradeSide("sell")}
+                    >
+                      {t("tradeModeSell")}
+                    </button>
+                  </div>
+                  {tradeSide === "buy" ? (
+                    <>
+                      <label className="field">
+                        <span>{`${t("buyAmount")} (${activeProtocolProfile.nativeSymbol})`}</span>
+                        <input value={buyInput} inputMode="decimal" onChange={(e) => setBuyInput(e.target.value)} />
+                        <small className="field-note">
+                          {buyPreviewState
+                            ? tf("estimatedTokenOut", { amount: formatToken(buyPreviewState.tokenOut) })
+                            : t("marketPreviewPending")}
+                        </small>
+                      </label>
+                      <div className="quick-amount-row">
+                        {[0.1, 0.5, 1, 3].map((amount) => (
+                          <button
+                            type="button"
+                            key={`buy-${amount}`}
+                            className="quick-amount-chip"
+                            onClick={() => setBuyInput(String(amount))}
+                          >
+                            {amount} {activeProtocolProfile.nativeSymbol}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <label className="field">
+                      <span>{t("sellAmount")}</span>
+                      <input value={sellInput} onChange={(e) => setSellInput(e.target.value)} />
+                      <small className="field-note">
+                        {sellPreviewState
+                          ? tf("estimatedQuoteOut", { amount: formatNative(sellPreviewState.netQuoteOut) })
+                          : t("marketPreviewPending")}
+                      </small>
+                    </label>
+                  )}
                   <label className="field">
                     <span>{t("slippage")}</span>
                     <input value={slippagePercent} inputMode="decimal" onChange={(e) => setSlippagePercent(e.target.value)} />
                     <small className="field-note">{tf("slippageHint", { percent: formatPercentInput(slippagePercent), bps: slippageToleranceBps.toString() })}</small>
                   </label>
                   <div className="button-row stacked">
-                    <button className="secondary-button" onClick={handlePreviewBuy} disabled={!tokenAddress || !isBonding || !canWriteVerifiedLaunch}>{t("previewBuy")}</button>
-                    <button onClick={handleExecuteBuy} disabled={!isBonding || walletWrongNetwork || !canWriteVerifiedLaunch}>{t("executeBuy")}</button>
-                    <button className="secondary-button" onClick={handlePreviewSell} disabled={!tokenAddress || !isBonding || !canWriteVerifiedLaunch}>{t("previewSell")}</button>
-                    <button onClick={handleExecuteSell} disabled={!isBonding || walletWrongNetwork || !canWriteVerifiedLaunch}>{t("executeSell")}</button>
+                    {tradeSide === "buy" ? (
+                      <>
+                        <button className="secondary-button" onClick={handlePreviewBuy} disabled={!tokenAddress || !isBonding || !canWriteVerifiedLaunch}>{t("previewBuy")}</button>
+                        <button onClick={handleExecuteBuy} disabled={!isBonding || walletWrongNetwork || !canWriteVerifiedLaunch}>{t("executeBuy")}</button>
+                      </>
+                    ) : (
+                      <>
+                        <button className="secondary-button" onClick={handlePreviewSell} disabled={!tokenAddress || !isBonding || !canWriteVerifiedLaunch}>{t("previewSell")}</button>
+                        <button onClick={handleExecuteSell} disabled={!isBonding || walletWrongNetwork || !canWriteVerifiedLaunch}>{t("executeSell")}</button>
+                      </>
+                    )}
                   </div>
 
-                  {buyPreviewState && (
+                  {tradeSide === "buy" && buyPreviewState && (
                     <dl className="data-list compact">
                       <div><dt>{t("buyTokenOut")}</dt><dd>{formatToken(buyPreviewState.tokenOut)}</dd></div>
                       <div><dt>{t("buyFee")}</dt><dd>{formatNative(buyPreviewState.feeAmount)}</dd></div>
@@ -2743,7 +2793,7 @@ export function App() {
                     </dl>
                   )}
 
-                  {sellPreviewState && (
+                  {tradeSide === "sell" && sellPreviewState && (
                     <dl className="data-list compact">
                       <div><dt>{t("sellGrossOut")}</dt><dd>{formatNative(sellPreviewState.grossQuoteOut)}</dd></div>
                       <div><dt>{t("sellNetOut")}</dt><dd>{formatNative(sellPreviewState.netQuoteOut)}</dd></div>

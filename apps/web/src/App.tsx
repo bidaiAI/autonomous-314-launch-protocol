@@ -337,6 +337,10 @@ export function App() {
   const factorySupportsWhitelistMode = factorySnapshot?.supportsWhitelistMode ?? assumeOfficialFactoryCapabilities;
   const factorySupportsTaxedMode = factorySnapshot?.supportsTaxedMode ?? assumeOfficialFactoryCapabilities;
   const factorySupportsWhitelistTaxedMode = factorySnapshot?.supportsWhitelistTaxedMode ?? assumeOfficialFactoryCapabilities;
+  const customFactorySelected = Boolean(factoryAddress.trim()) && !usingOfficialFactory;
+  const whitelistModeUnsupported = Boolean(customFactorySelected && factorySnapshot && !factorySupportsWhitelistMode);
+  const taxedModeUnsupported = Boolean(customFactorySelected && factorySnapshot && !factorySupportsTaxedMode);
+  const whitelistTaxedModeUnsupported = Boolean(customFactorySelected && factorySnapshot && !factorySupportsWhitelistTaxedMode);
   const selectedCreateFee =
     isWhitelistFamily
       ? factorySnapshot?.whitelistCreateFee ?? (usingOfficialFactory ? parseEther('0.03') : 0n)
@@ -366,7 +370,7 @@ export function App() {
       {
         suffix: "b314",
         title: t("modeB314Title"),
-        status: factorySupportsWhitelistMode ? "live" as const : "factory" as const,
+        status: "live" as const,
         eyebrow: t("modeB314Eyebrow"),
         description: t("modeB314Desc"),
         operations: ta("modeB314Points")
@@ -374,7 +378,7 @@ export function App() {
       {
         suffix: "1314–9314",
         title: t("modeTaxTitle"),
-        status: factorySupportsTaxedMode ? "live" as const : "planned" as const,
+        status: "live" as const,
         eyebrow: t("modeTaxEyebrow"),
         description: t("modeTaxDesc"),
         operations: ta("modeTaxPoints")
@@ -382,7 +386,7 @@ export function App() {
       {
         suffix: "f314",
         title: t("modeF314Title"),
-        status: factorySupportsWhitelistTaxedMode ? "live" as const : "planned" as const,
+        status: "live" as const,
         eyebrow: t("modeF314Eyebrow"),
         description: t("modeF314Desc"),
         operations: ta("modeF314Points")
@@ -408,36 +412,19 @@ export function App() {
     }
     return launchFamilies[0];
   }, [createMode, createTaxBps, factorySupportsTaxedMode, factorySupportsWhitelistTaxedMode]);
-  const visibleLaunchFamilies = launchFamilies.map((family) =>
-    family.suffix === "b314"
-      ? {
-          ...family,
-          status: factorySupportsWhitelistMode ? "live" : "factory"
-        }
-      : family.suffix === "1314–9314"
-        ? {
-            ...family,
-            status: factorySupportsTaxedMode ? "live" : "planned"
-          }
-        : family.suffix === "f314"
-          ? {
-              ...family,
-              status: factorySupportsWhitelistTaxedMode ? "live" : "planned"
-            }
-          : family
-  );
+  const visibleLaunchFamilies = launchFamilies;
 
   useEffect(() => {
-    if (createMode === "whitelist" && !factorySupportsWhitelistMode) {
+    if (createMode === "whitelist" && whitelistModeUnsupported) {
       setCreateMode("standard");
     }
-    if (createMode === "taxed" && !factorySupportsTaxedMode) {
+    if (createMode === "taxed" && taxedModeUnsupported) {
       setCreateMode("standard");
     }
-    if (createMode === "whitelistTaxed" && !factorySupportsWhitelistTaxedMode) {
-      setCreateMode(factorySupportsWhitelistMode ? "whitelist" : "standard");
+    if (createMode === "whitelistTaxed" && whitelistTaxedModeUnsupported) {
+      setCreateMode(whitelistModeUnsupported ? "standard" : "whitelist");
     }
-  }, [createMode, factorySupportsWhitelistMode, factorySupportsTaxedMode, factorySupportsWhitelistTaxedMode]);
+  }, [createMode, whitelistModeUnsupported, taxedModeUnsupported, whitelistTaxedModeUnsupported]);
 
   const launchMetadata = useMemo(
     () =>
@@ -1533,42 +1520,45 @@ export function App() {
                     type="button"
                     className={createMode === "whitelist" ? "mode-tab active" : "mode-tab"}
                     onClick={() => setCreateMode("whitelist")}
-                    disabled={!factorySupportsWhitelistMode}
-                    title={
-                      factorySupportsWhitelistMode
-                        ? t("modeWhitelistTooltipLive")
-                        : t("modeWhitelistTooltipLocked")
-                    }
+                    disabled={whitelistModeUnsupported}
+                    title={whitelistModeUnsupported ? t("modeWhitelistTooltipLocked") : t("modeWhitelistTooltipLive")}
                   >
                     <span>b314</span>
-                    <small>{factorySupportsWhitelistMode ? t('modeWhitelist') : t('modeComingNext')}</small>
+                    <small>{t('modeWhitelist')}</small>
                   </button>
                   <button
                     type="button"
                     className={createMode === "taxed" ? "mode-tab active" : "mode-tab"}
                     onClick={() => setCreateMode("taxed")}
-                    disabled={!factorySupportsTaxedMode}
-                    title={factorySupportsTaxedMode ? t("modeTaxTooltipLive") : t("modeTaxTooltipLocked")}
+                    disabled={taxedModeUnsupported}
+                    title={taxedModeUnsupported ? t("modeTaxTooltipLocked") : t("modeTaxTooltipLive")}
                   >
                     <span>1314–9314</span>
-                    <small>{factorySupportsTaxedMode ? t('modeTaxed') : t('modeComingNext')}</small>
+                    <small>{t('modeTaxed')}</small>
                   </button>
                   <button
                     type="button"
                     className={createMode === "whitelistTaxed" ? "mode-tab active" : "mode-tab"}
                     onClick={() => setCreateMode("whitelistTaxed")}
-                    disabled={!factorySupportsWhitelistTaxedMode}
-                    title={
-                      factorySupportsWhitelistTaxedMode
-                        ? t("modeWhitelistTaxTooltipLive")
-                        : t("modeWhitelistTaxTooltipLocked")
-                    }
+                    disabled={whitelistTaxedModeUnsupported}
+                    title={whitelistTaxedModeUnsupported ? t("modeWhitelistTaxTooltipLocked") : t("modeWhitelistTaxTooltipLive")}
                   >
                     <span>f314</span>
-                    <small>{factorySupportsWhitelistTaxedMode ? t('modeWhitelistTax') : t('modeComingNext')}</small>
+                    <small>{t('modeWhitelistTax')}</small>
                   </button>
                 </div>
               </div>
+
+              {customFactorySelected && (
+                <div className={`callout compact-callout ${whitelistModeUnsupported || taxedModeUnsupported || whitelistTaxedModeUnsupported ? "warn" : "success"}`}>
+                  <strong>{t("customFactoryModeNoticeTitle")}</strong>
+                  <p>
+                    {whitelistModeUnsupported || taxedModeUnsupported || whitelistTaxedModeUnsupported
+                      ? t("customFactoryModeNoticeWarn")
+                      : t("customFactoryModeNoticeOk")}
+                  </p>
+                </div>
+              )}
 
               <section className="launch-family-strip" aria-label={t("launchFamiliesAria")}>
                 {visibleLaunchFamilies.map((family) => {
@@ -1576,7 +1566,7 @@ export function App() {
                   return (
                     <article
                       key={family.suffix}
-                      className={`launch-family-card ${isSelected ? "selected" : ""} ${family.status === "planned" ? "planned" : ""}`}
+                      className={`launch-family-card ${isSelected ? "selected" : ""}`}
                     >
                       <div className="launch-family-head">
                         <div>
@@ -1586,7 +1576,7 @@ export function App() {
                         <div className="launch-family-badges">
                           <span className="launch-family-suffix">{family.suffix}</span>
                           <span className={`family-state ${family.status}`}>
-                            {family.status === "live" ? t("modeLive") : family.status === "factory" ? t("modeFactory") : t("modePlanned")}
+                            {t("modeLive")}
                           </span>
                         </div>
                       </div>

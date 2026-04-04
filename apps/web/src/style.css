@@ -1034,9 +1034,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 
 /* ── Create Page ── */
 .create-hero-card {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
+  display: grid;
   gap: 20px;
   padding: 22px 24px;
   border-radius: var(--radius-lg);
@@ -1045,6 +1043,13 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   margin-bottom: 18px;
 }
 .create-hero-card h2 { margin: 8px 0 10px; }
+
+.create-hero-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 20px;
+}
 
 .create-layout {
   display: grid;
@@ -2144,7 +2149,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   .dex-metrics-strip { grid-template-columns: repeat(2, 1fr); }
   .detail-grid { grid-template-columns: 1fr; }
   .launch-hero { grid-template-columns: 1fr; }
-  .launch-hero-head, .page-heading { flex-direction: column; align-items: flex-start; }
+  .launch-hero-head, .page-heading, .create-hero-top { flex-direction: column; align-items: flex-start; }
   .launch-meta-strip { justify-content: flex-start; }
   .launch-hero-summary { grid-template-columns: 1fr 1fr; }
   .home-hero { flex-direction: column; align-items: stretch; }

@@ -1888,53 +1888,80 @@ export function App() {
           <section className="workspace-main">
             <article className="panel">
               <div className="create-hero-card">
-                <div>
-                  <span className="section-kicker">{t('createKicker')}</span>
-                  <h2>{t('createTitle')}</h2>
-                  <p className="topbar-copy">
-                    {t('createDesc')}
-                  </p>
+                <div className="create-hero-top">
+                  <div>
+                    <span className="section-kicker">{t('createKicker')}</span>
+                    <h2>{t('createTitle')}</h2>
+                    <p className="topbar-copy">
+                      {t('createDesc')}
+                    </p>
+                  </div>
+                  <div className="mode-toggle" role="tablist" aria-label={t("launchModeAria")}>
+                    <button
+                      type="button"
+                      className={createMode === "standard" ? "mode-tab active" : "mode-tab"}
+                      onClick={() => setCreateMode("standard")}
+                    >
+                      <span>0314</span>
+                      <small>{t('modeStandard')}</small>
+                    </button>
+                    <button
+                      type="button"
+                      className={createMode === "whitelist" ? "mode-tab active" : "mode-tab"}
+                      onClick={() => setCreateMode("whitelist")}
+                      disabled={whitelistModeUnsupported}
+                      title={whitelistModeUnsupported ? t("modeWhitelistTooltipLocked") : t("modeWhitelistTooltipLive")}
+                    >
+                      <span>b314</span>
+                      <small>{t('modeWhitelist')}</small>
+                    </button>
+                    <button
+                      type="button"
+                      className={createMode === "taxed" ? "mode-tab active" : "mode-tab"}
+                      onClick={() => setCreateMode("taxed")}
+                      disabled={taxedModeUnsupported}
+                      title={taxedModeUnsupported ? t("modeTaxTooltipLocked") : t("modeTaxTooltipLive")}
+                    >
+                      <span>1314–9314</span>
+                      <small>{t('modeTaxed')}</small>
+                    </button>
+                    <button
+                      type="button"
+                      className={createMode === "whitelistTaxed" ? "mode-tab active" : "mode-tab"}
+                      onClick={() => setCreateMode("whitelistTaxed")}
+                      disabled={whitelistTaxedModeUnsupported}
+                      title={whitelistTaxedModeUnsupported ? t("modeWhitelistTaxTooltipLocked") : t("modeWhitelistTaxTooltipLive")}
+                    >
+                      <span>f314</span>
+                      <small>{t('modeWhitelistTax')}</small>
+                    </button>
+                  </div>
                 </div>
-                <div className="mode-toggle" role="tablist" aria-label={t("launchModeAria")}>
-                  <button
-                    type="button"
-                    className={createMode === "standard" ? "mode-tab active" : "mode-tab"}
-                    onClick={() => setCreateMode("standard")}
+                <section className="launch-family-strip" aria-label={t("launchFamiliesAria")}>
+                  <article
+                    key={selectedLaunchFamily.suffix}
+                    className="launch-family-card selected"
                   >
-                    <span>0314</span>
-                    <small>{t('modeStandard')}</small>
-                  </button>
-                  <button
-                    type="button"
-                    className={createMode === "whitelist" ? "mode-tab active" : "mode-tab"}
-                    onClick={() => setCreateMode("whitelist")}
-                    disabled={whitelistModeUnsupported}
-                    title={whitelistModeUnsupported ? t("modeWhitelistTooltipLocked") : t("modeWhitelistTooltipLive")}
-                  >
-                    <span>b314</span>
-                    <small>{t('modeWhitelist')}</small>
-                  </button>
-                  <button
-                    type="button"
-                    className={createMode === "taxed" ? "mode-tab active" : "mode-tab"}
-                    onClick={() => setCreateMode("taxed")}
-                    disabled={taxedModeUnsupported}
-                    title={taxedModeUnsupported ? t("modeTaxTooltipLocked") : t("modeTaxTooltipLive")}
-                  >
-                    <span>1314–9314</span>
-                    <small>{t('modeTaxed')}</small>
-                  </button>
-                  <button
-                    type="button"
-                    className={createMode === "whitelistTaxed" ? "mode-tab active" : "mode-tab"}
-                    onClick={() => setCreateMode("whitelistTaxed")}
-                    disabled={whitelistTaxedModeUnsupported}
-                    title={whitelistTaxedModeUnsupported ? t("modeWhitelistTaxTooltipLocked") : t("modeWhitelistTaxTooltipLive")}
-                  >
-                    <span>f314</span>
-                    <small>{t('modeWhitelistTax')}</small>
-                  </button>
-                </div>
+                    <div className="launch-family-head">
+                      <div>
+                        <span className="section-kicker">{selectedLaunchFamily.eyebrow}</span>
+                        <h3>{selectedLaunchFamily.title}</h3>
+                      </div>
+                      <div className="launch-family-badges">
+                        <span className="launch-family-suffix">{selectedLaunchFamily.suffix}</span>
+                        <span className={`family-state ${selectedLaunchFamily.status}`}>
+                          {t("modeLive")}
+                        </span>
+                      </div>
+                    </div>
+                    <p>{selectedLaunchFamily.description}</p>
+                    <ul className="launch-family-points">
+                      {selectedLaunchFamily.operations.map((point: string) => (
+                        <li key={`${selectedLaunchFamily.suffix}-${point}`}>{point}</li>
+                      ))}
+                    </ul>
+                  </article>
+                </section>
               </div>
 
               {customFactorySelected && (
@@ -1947,32 +1974,6 @@ export function App() {
                   </p>
                 </div>
               )}
-
-              <section className="launch-family-strip" aria-label={t("launchFamiliesAria")}>
-                <article
-                  key={selectedLaunchFamily.suffix}
-                  className="launch-family-card selected"
-                >
-                  <div className="launch-family-head">
-                    <div>
-                      <span className="section-kicker">{selectedLaunchFamily.eyebrow}</span>
-                      <h3>{selectedLaunchFamily.title}</h3>
-                    </div>
-                    <div className="launch-family-badges">
-                      <span className="launch-family-suffix">{selectedLaunchFamily.suffix}</span>
-                      <span className={`family-state ${selectedLaunchFamily.status}`}>
-                        {t("modeLive")}
-                      </span>
-                    </div>
-                  </div>
-                  <p>{selectedLaunchFamily.description}</p>
-                  <ul className="launch-family-points">
-                    {selectedLaunchFamily.operations.map((point: string) => (
-                      <li key={`${selectedLaunchFamily.suffix}-${point}`}>{point}</li>
-                    ))}
-                  </ul>
-                </article>
-              </section>
 
               <section className="create-steps-strip">
                 <article className="create-step-card">

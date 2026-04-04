@@ -114,11 +114,29 @@ a:hover { opacity: 0.8; }
 
 .topbar-compact { margin-bottom: 24px; }
 
+.brand-lockup {
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+}
+
+.brand-copy {
+  min-width: 0;
+}
+
 .brand-row {
   display: flex;
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+.brand-mark {
+  width: 64px;
+  height: 64px;
+  flex-shrink: 0;
+  border-radius: 18px;
+  box-shadow: 0 10px 32px rgba(56, 189, 248, 0.16);
 }
 
 .topbar h1 {
@@ -1642,6 +1660,19 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .app-footer a { color: var(--text-muted); }
 .app-footer a:hover { color: var(--text-accent); }
 
+.footer-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.footer-brand-mark {
+  height: 28px;
+  width: auto;
+  flex-shrink: 0;
+}
+
 /* ═══════════════ Responsive ═══════════════ */
 @media (max-width: 1200px) {
   .workspace-grid { grid-template-columns: 260px minmax(0, 1fr) 320px; }
@@ -1674,6 +1705,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   .launch-hero-head, .page-heading { flex-direction: column; align-items: flex-start; }
   .home-hero { flex-direction: column; align-items: stretch; }
   .topbar { flex-direction: column; gap: 16px; }
+  .brand-lockup { width: 100%; }
   .topbar-actions { flex-wrap: wrap; width: 100%; }
   .market-toolbar { width: 100%; flex-wrap: wrap; }
   .search-field { min-width: 100%; }
@@ -1682,6 +1714,8 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 @media (max-width: 640px) {
   .app-shell { padding: 14px 12px calc(64px + env(safe-area-inset-bottom)); }
   .topbar { margin-bottom: 20px; }
+  .brand-lockup { align-items: center; gap: 14px; }
+  .brand-mark { width: 52px; height: 52px; border-radius: 16px; }
   .topbar-copy { font-size: 0.9rem; line-height: 1.65; }
   .topbar-actions { display: grid; grid-template-columns: 1fr; gap: 10px; align-items: stretch; }
   .nav-pills { display: flex; flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; margin-right: -2px; scrollbar-width: none; }
@@ -1724,4 +1758,6 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   .creator-token-card { grid-template-columns: 1fr; align-items: start; }
   .creator-token-actions { width: 100%; display: grid; grid-template-columns: 1fr; }
   .app-footer { flex-direction: column; align-items: flex-start; padding-bottom: calc(18px + env(safe-area-inset-bottom)); }
+  .footer-brand { flex-direction: column; align-items: flex-start; }
+  .footer-brand-mark { height: 24px; }
 }

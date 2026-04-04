@@ -1,0 +1,30 @@
+<svg width="1100" height="320" viewBox="0 0 1100 320" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="stroke" x1="34" y1="34" x2="286" y2="286" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5EEAD4"/>
+      <stop offset="0.52" stop-color="#38BDF8"/>
+      <stop offset="1" stop-color="#8B5CF6"/>
+    </linearGradient>
+    <linearGradient id="bg" x1="44" y1="44" x2="276" y2="276" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#13263A"/>
+      <stop offset="1" stop-color="#08111B"/>
+    </linearGradient>
+    <linearGradient id="word" x1="350" y1="82" x2="908" y2="220" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F8FBFF"/>
+      <stop offset="0.55" stop-color="#E6FBF6"/>
+      <stop offset="1" stop-color="#BDEBFF"/>
+    </linearGradient>
+  </defs>
+  <rect x="24" y="24" width="262" height="262" rx="72" fill="url(#bg)" stroke="url(#stroke)" stroke-width="6"/>
+  <path d="M82 110C96 91 120 80 149 80C187 80 214 100 214 130C214 150 201 164 179 172C206 180 224 201 224 229C224 270 190 292 143 292C111 292 84 280 69 257" stroke="#F6FEFF" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M126 102H188" stroke="#F6FEFF" stroke-width="18" stroke-linecap="round"/>
+  <path d="M134 171H190" stroke="#F6FEFF" stroke-width="18" stroke-linecap="round"/>
+  <path d="M132 239H184" stroke="#F6FEFF" stroke-width="18" stroke-linecap="round"/>
+  <path d="M49 212H139" stroke="#F6FEFF" stroke-width="18" stroke-linecap="round"/>
+  <path d="M151 84V270" stroke="#F6FEFF" stroke-width="18" stroke-linecap="round"/>
+  <path d="M211 84V270" stroke="#F6FEFF" stroke-width="18" stroke-linecap="round"/>
+  <path d="M211 181H151" stroke="#F6FEFF" stroke-width="18" stroke-linecap="round"/>
+
+  <text x="338" y="145" fill="url(#word)" font-size="78" font-weight="800" font-family="Inter, Arial, sans-serif" letter-spacing="-2">AUTONOMOUS 314</text>
+  <text x="343" y="203" fill="#8FB4C9" font-size="27" font-weight="600" font-family="Inter, Arial, sans-serif" letter-spacing="4">OPEN MEME LAUNCH PROTOCOL</text>
+</svg>

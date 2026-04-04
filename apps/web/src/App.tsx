@@ -33,6 +33,7 @@ import {
   readWhitelistAccountState,
   switchWalletToExpectedChain,
   sweepAbandonedCreatorFees,
+  uploadReferenceMetadata,
   verifyOfficialLaunch
 } from "./protocol";
 import type { ActivityFeedItem, CandlePoint, FactorySnapshot, LaunchMetadata, ProtocolVerification, TokenSnapshot } from "./types";
@@ -147,6 +148,18 @@ function resolveExternalHref(value?: string) {
     return value;
   }
   return "";
+}
+
+const HIDDEN_UNICODE_RE = /[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF]/g;
+
+function sanitizeUnicodeLabel(value: string, mode: "name" | "symbol" = "name") {
+  let next = (value || "").normalize("NFC").replace(HIDDEN_UNICODE_RE, "");
+  if (mode === "symbol") {
+    next = next.replace(/\s+/g, "");
+  } else {
+    next = next.replace(/\s+/g, " ").trimStart();
+  }
+  return next;
 }
 
 function launchMetadataLinks(metadata: LaunchMetadata | null) {
@@ -443,6 +456,8 @@ export function App() {
     return launchFamilies[0];
   }, [createMode, createTaxBps, factorySupportsTaxedMode, factorySupportsWhitelistTaxedMode]);
   const visibleLaunchFamilies = launchFamilies;
+  const sanitizedCreateName = useMemo(() => sanitizeUnicodeLabel(createName, "name").trim(), [createName]);
+  const sanitizedCreateSymbol = useMemo(() => sanitizeUnicodeLabel(createSymbol, "symbol").trim(), [createSymbol]);
 
   useEffect(() => {
     if (createMode === "whitelist" && whitelistModeUnsupported) {
@@ -459,8 +474,8 @@ export function App() {
   const launchMetadata = useMemo(
     () =>
       buildLaunchMetadata({
-        name: createName,
-        symbol: createSymbol,
+        name: sanitizedCreateName,
+        symbol: sanitizedCreateSymbol,
         description: createDescription,
         image: createImageUrl.trim() || createImagePreview || undefined,
         website: createWebsite,
@@ -473,8 +488,8 @@ export function App() {
       createDiscord,
       createImagePreview,
       createImageUrl,
-      createName,
-      createSymbol,
+      sanitizedCreateName,
+      sanitizedCreateSymbol,
       createTelegram,
       createTwitter,
       createWebsite
@@ -869,6 +884,20 @@ export function App() {
     setStatus(t("statusMetadataDownloaded"));
   }
 
+  async function handleUploadReferenceMetadata() {
+    try {
+      setLoading(true);
+      const metadataUrl = await uploadReferenceMetadata(launchMetadata);
+      setCreateMetadataUri(metadataUrl);
+      setStatus(t("statusMetadataUploaded"));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t("statusMetadataUploadFailed");
+      setStatus(message === "Reference metadata service is not configured." ? t("statusMetadataUploadUnavailable") : message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   function handleOpenCreateConfirm() {
     setShowCreateConfirm(true);
   }
@@ -904,7 +933,12 @@ export function App() {
       const snapshot = await readFactory(factoryAddress);
       setFactorySnapshot(snapshot);
       const modeFee = requiresWhitelistCommit ? snapshot.whitelistCreateFee : snapshot.standardCreateFee;
+      const sanitizedName = sanitizeUnicodeLabel(createName, "name").trim();
+      const sanitizedSymbol = sanitizeUnicodeLabel(createSymbol, "symbol").trim();
       const finalMetadataUri = createMetadataUri.trim() || generatedInlineMetadataUri;
+      if (!sanitizedName || !sanitizedSymbol) {
+        throw new Error(t("errorTokenIdentityRequired"));
+      }
       if (!finalMetadataUri) {
         throw new Error(
           usingUploadedImage
@@ -1530,8 +1564,20 @@ export function App() {
                 <span>{t('factoryAddress')}</span>
                 <input value={factoryAddress} onChange={(e) => setFactoryAddress(e.target.value)} placeholder="0x..." />
               </label>
+              <div className="callout compact-callout">
+                <strong>{usingOfficialFactory ? t("useOfficialFactory") : t("factoryAddress")}</strong>
+                <p>{t("factoryAddressNote")}</p>
+              </div>
               <div className="button-row">
                 <button onClick={handleLoadFactory}>{t('loadFactoryBtn')}</button>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => setFactoryAddress(import.meta.env.VITE_FACTORY_ADDRESS ?? "")}
+                  disabled={usingOfficialFactory}
+                >
+                  {t("useOfficialFactory")}
+                </button>
                 <button
                   className="secondary-button"
                   onClick={handleClaimFactoryFees}
@@ -1703,11 +1749,13 @@ export function App() {
                     <div className="metadata-two-column identity-grid">
                       <label className="field prominent-field">
                         <span>{t("tokenName")}</span>
-                        <input value={createName} onChange={(e) => setCreateName(e.target.value)} placeholder={t("tokenNamePlaceholder")} />
+                        <input value={createName} onChange={(e) => setCreateName(sanitizeUnicodeLabel(e.target.value, "name"))} placeholder={t("tokenNamePlaceholder")} />
+                        <small className="field-note">{t("tokenNameNote")}</small>
                       </label>
                       <label className="field prominent-field">
                         <span>{t("tokenSymbol")}</span>
-                        <input value={createSymbol} onChange={(e) => setCreateSymbol(e.target.value)} placeholder={t("tokenSymbolPlaceholder")} />
+                        <input value={createSymbol} onChange={(e) => setCreateSymbol(sanitizeUnicodeLabel(e.target.value, "symbol"))} placeholder={t("tokenSymbolPlaceholder")} />
+                        <small className="field-note">{t("tokenSymbolNote")}</small>
                       </label>
                     </div>
                     <label className="field">
@@ -1791,6 +1839,7 @@ export function App() {
                       <p>
                         {t("localUploadExplain")}
                       </p>
+                      <p>{t("referenceMetadataNote")}</p>
                       {createImageFileName && <p>{t("selectedFile")} {createImageFileName}</p>}
                     </div>
                     <label className="field">
@@ -1802,6 +1851,9 @@ export function App() {
                       />
                     </label>
                     <div className="button-row">
+                      <button className="secondary-button" onClick={() => void handleUploadReferenceMetadata()} type="button">
+                        {t("uploadReferenceMetadata")}
+                      </button>
                       <button className="secondary-button" onClick={handleUseGeneratedMetadataUri} type="button">
                         {t("useInlineMetadata")}
                       </button>

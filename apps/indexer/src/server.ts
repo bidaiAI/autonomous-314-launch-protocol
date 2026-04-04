@@ -49,6 +49,15 @@ function sendJson(res: ServerResponse, status: number, body: unknown) {
   res.end(JSON.stringify(body, null, 2));
 }
 
+function detectPublicOrigin(req: IncomingMessage) {
+  const host = req.headers.host ?? `127.0.0.1:${port}`;
+  const forwardedProto = typeof req.headers["x-forwarded-proto"] === "string"
+    ? req.headers["x-forwarded-proto"].split(",")[0]?.trim()
+    : undefined;
+  const protocol = forwardedProto || (/^(127\.0\.0\.1|localhost)(:|$)/.test(host) ? "http" : "https");
+  return `${protocol}://${host}`;
+}
+
 function parseLimit(value: string | null, fallback: number, max: number) {
   const parsed = Number(value ?? fallback);
   if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
@@ -95,7 +104,7 @@ const server = createServer(async (req, res) => {
         const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         const filename = `${id}.json`;
         writeFileSync(join(METADATA_DIR, filename), JSON.stringify(metadata, null, 2));
-        const metadataUrl = `http://${req.headers.host ?? `127.0.0.1:${port}`}/api/metadata/${id}`;
+        const metadataUrl = `${detectPublicOrigin(req)}/api/metadata/${id}`;
         sendJson(res, 201, { ok: true, id, url: metadataUrl });
       } catch {
         sendJson(res, 400, { error: "Invalid JSON body" });

@@ -163,6 +163,37 @@ export function downloadLaunchMetadata(metadata: LaunchMetadata, filename = "met
   URL.revokeObjectURL(url);
 }
 
+export async function uploadReferenceMetadata(metadata: LaunchMetadata) {
+  if (!indexerApiBase) {
+    throw new Error("Reference metadata service is not configured.");
+  }
+
+  const response = await fetch(`${indexerApiBase}/api/metadata`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify(metadata)
+  });
+
+  if (!response.ok) {
+    let detail = "";
+    try {
+      const data = await response.json();
+      detail = typeof data?.error === "string" ? data.error : "";
+    } catch {
+      // noop
+    }
+    throw new Error(detail || `Reference metadata upload failed with ${response.status}.`);
+  }
+
+  const data = (await response.json()) as { url?: string };
+  if (!data?.url) {
+    throw new Error("Reference metadata service did not return a metadata URL.");
+  }
+  return data.url;
+}
+
 type SnapshotActivityJson =
   | {
       kind: "trade";

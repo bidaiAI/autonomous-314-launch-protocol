@@ -46,7 +46,13 @@ function sendJson(res: ServerResponse, status: number, body: unknown) {
   res.setHeader("access-control-allow-methods", "GET, OPTIONS");
   res.setHeader("access-control-allow-headers", "Content-Type");
   res.setHeader("content-type", "application/json; charset=utf-8");
-  res.end(JSON.stringify(body, null, 2));
+  res.end(
+    JSON.stringify(
+      body,
+      (_key, value) => (typeof value === "bigint" ? value.toString() : value),
+      2
+    )
+  );
 }
 
 function detectPublicOrigin(req: IncomingMessage) {

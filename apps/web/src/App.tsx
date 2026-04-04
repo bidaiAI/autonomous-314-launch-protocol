@@ -1889,14 +1889,15 @@ export function App() {
             <article className="panel">
               <div className="create-hero-card">
                 <div className="create-hero-top">
-                  <div>
+                  <div className="create-hero-intro">
                     <span className="section-kicker">{t('createKicker')}</span>
                     <h2>{t('createTitle')}</h2>
                     <p className="topbar-copy">
                       {t('createDesc')}
                     </p>
                   </div>
-                  <div className="mode-toggle" role="tablist" aria-label={t("launchModeAria")}>
+                  <div className="create-hero-control">
+                    <div className="mode-toggle" role="tablist" aria-label={t("launchModeAria")}>
                     <button
                       type="button"
                       className={createMode === "standard" ? "mode-tab active" : "mode-tab"}
@@ -1935,6 +1936,7 @@ export function App() {
                       <span>f314</span>
                       <small>{t('modeWhitelistTax')}</small>
                     </button>
+                    </div>
                   </div>
                 </div>
                 <section className="launch-family-strip" aria-label={t("launchFamiliesAria")}>

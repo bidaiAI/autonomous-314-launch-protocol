@@ -126,12 +126,18 @@ function compactNumber(value: number) {
 
 function formatUsdCompact(value: number | null) {
   if (value === null || !Number.isFinite(value) || value <= 0) return "—";
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: "USD",
-    notation: "compact",
-    maximumFractionDigits: value >= 100 ? 0 : 1
-  }).format(value);
+  if (value < 1) {
+    return `$${value.toFixed(value >= 0.01 ? 2 : value >= 0.0001 ? 4 : 6).replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1")}`;
+  }
+  return `$${compactNumber(value)}`;
+}
+
+function launchCardFallbackDescription(state: string) {
+  if (state === "WhitelistCommit") return t("launchCardWhitelistFallback");
+  if (state === "Bonding314") return t("launchCardBondingFallback");
+  if (state === "Migrating") return t("launchCardMigratingFallback");
+  if (state === "DEXOnly") return t("launchCardDexFallback");
+  return t("launchCardDefaultFallback");
 }
 
 function formatUsdUnitPrice(value: number | null) {
@@ -1716,11 +1722,13 @@ export function App() {
                       : null;
                   const launchPriceUsd =
                     nativeUsdPrice ? (Number(launch.currentPriceQuotePerToken) / 1e18) * nativeUsdPrice : null;
-                  const whitelistCountdownLabel =
+                  const whitelistCountdownPending =
                     launch.state === "WhitelistCommit" && launch.whitelistSnapshot
                       ? nowMs < Number(launch.whitelistSnapshot.opensAt) * 1000
-                        ? `${t("opensInShort")} ${formatCountdownLabel(Number(launch.whitelistSnapshot.opensAt) * 1000, nowMs)}`
-                        : `${t("endsInShort")} ${formatCountdownLabel(Number(launch.whitelistSnapshot.deadline) * 1000, nowMs)}`
+                      : false;
+                  const whitelistCountdownLabel =
+                    launch.state === "WhitelistCommit" && launch.whitelistSnapshot
+                      ? `${whitelistCountdownPending ? t("whitelistOpensLabel") : t("whitelistEndsLabel")} ${formatCountdownLabel(whitelistCountdownPending ? Number(launch.whitelistSnapshot.opensAt) * 1000 : Number(launch.whitelistSnapshot.deadline) * 1000, nowMs)}`
                       : "";
                   const cardSecondaryMetric =
                     launch.state === "WhitelistCommit" && whitelistCountdownLabel
@@ -1752,8 +1760,7 @@ export function App() {
                             <div className="launch-card-price">{launchMarketCapUsd ? formatUsdCompact(launchMarketCapUsd) : t("marketCapUnavailable")}</div>
                           </div>
                         <p className="launch-card-description">
-                          {metadata?.description ||
-                            t("metadataPendingDesc")}
+                          {metadata?.description || launchCardFallbackDescription(launch.state)}
                         </p>
                         <div className="launch-card-stats">
                           <div>
@@ -1761,7 +1768,7 @@ export function App() {
                             <strong>{formatPercentFromBps(launch.graduationProgressBps)}</strong>
                           </div>
                           <div>
-                            <span className="metric-label">{launch.state === "WhitelistCommit" ? t("countdownLabel") : t("price")}</span>
+                            <span className="metric-label">{launch.state === "WhitelistCommit" ? (whitelistCountdownPending ? t("whitelistOpensLabelShort") : t("whitelistEndsLabelShort")) : t("price")}</span>
                             <strong>{cardSecondaryMetric}</strong>
                           </div>
                         </div>

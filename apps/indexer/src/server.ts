@@ -10,18 +10,14 @@ const METADATA_DIR = join(__metadir, "..", "metadata");
 
 const port = Number(process.env.PORT ?? process.env.INDEXER_PORT ?? 8787);
 const cacheTtlMs = Number(process.env.INDEXER_CACHE_TTL_MS ?? 15_000);
+const prewarmIntervalMs = Number(process.env.INDEXER_PREWARM_INTERVAL_MS ?? 0);
 const corsOrigin = process.env.INDEXER_CORS_ORIGIN ?? "*";
 
 let cache: { expiresAt: number; snapshot: IndexerSnapshot } | null = null;
 let inflight: Promise<IndexerSnapshot> | null = null;
 
-async function getSnapshot(forceRefresh = false) {
-  const now = Date.now();
-  if (!forceRefresh && cache && cache.expiresAt > now) {
-    return cache.snapshot;
-  }
-
-  if (!forceRefresh && inflight) {
+function refreshSnapshot() {
+  if (inflight) {
     return inflight;
   }
 
@@ -38,6 +34,26 @@ async function getSnapshot(forceRefresh = false) {
     });
 
   return inflight;
+}
+
+async function getSnapshot(forceRefresh = false) {
+  const now = Date.now();
+  if (forceRefresh) {
+    return refreshSnapshot();
+  }
+
+  if (cache && cache.expiresAt > now) {
+    return cache.snapshot;
+  }
+
+  if (cache) {
+    void refreshSnapshot().catch((error) => {
+      console.error("[indexer-api] background refresh failed", error);
+    });
+    return cache.snapshot;
+  }
+
+  return refreshSnapshot();
 }
 
 function sendJson(res: ServerResponse, status: number, body: unknown) {
@@ -143,7 +159,13 @@ const server = createServer(async (req, res) => {
     const forceRefresh = url.searchParams.get("refresh") === "1";
 
     if (url.pathname === "/health") {
-      sendJson(res, 200, { ok: true, cacheTtlMs });
+      sendJson(res, 200, {
+        ok: true,
+        cacheTtlMs,
+        prewarmIntervalMs,
+        hasCache: Boolean(cache),
+        refreshInFlight: Boolean(inflight)
+      });
       return;
     }
 
@@ -296,4 +318,15 @@ const server = createServer(async (req, res) => {
 server.listen(port, () => {
   console.log(`[indexer-api] listening on http://127.0.0.1:${port}`);
   console.log(`[indexer-api] cache ttl: ${cacheTtlMs}ms`);
+  if (prewarmIntervalMs > 0) {
+    console.log(`[indexer-api] prewarm interval: ${prewarmIntervalMs}ms`);
+    void refreshSnapshot().catch((error) => {
+      console.error("[indexer-api] initial prewarm failed", error);
+    });
+    setInterval(() => {
+      void refreshSnapshot().catch((error) => {
+        console.error("[indexer-api] scheduled prewarm failed", error);
+      });
+    }, prewarmIntervalMs).unref();
+  }
 });

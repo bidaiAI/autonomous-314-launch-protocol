@@ -193,11 +193,12 @@ const strings = {
 
     modeB314Title: "Whitelist Seats",
     modeB314Eyebrow: "Whitelist · No tax",
-    modeB314Desc: "Fixed-seat whitelist with a 24-hour commitment window. If the threshold isn't met, it falls back to normal 314 bonding.",
+    modeB314Desc: "Fixed-seat whitelist with a 24-hour commitment window. Once the threshold is met, every filled seat receives the same token allocation. If it fails, the launch falls back to normal 314 bonding.",
     modeB314Points: [
       "Creator uses create + atomic seat commit instead of an immediate token buy.",
       "Thresholds: 4 / 6 / 8 BNB. Seat sizes: 0.1 / 0.2 / 0.5 / 1 BNB.",
       "Whitelist addresses are written at creation and cannot be changed.",
+      "This is seat-based, not proportional: once the threshold is met, every filled seat gets the same token amount.",
       "If no seat threshold is reached within 24h, committed funds are refundable and the launch falls back to normal 314."
     ],
 
@@ -213,10 +214,11 @@ const strings = {
 
     modeF314Title: "Whitelist + Tax",
     modeF314Eyebrow: "Full feature set",
-    modeF314Desc: "Whitelist fixed-seat launch that transitions into a taxed post-graduation token. Suffix is always f314; actual tax rate is read from chain.",
+    modeF314Desc: "Whitelist fixed-seat launch that transitions into a taxed post-graduation token. Once the threshold is met, every filled seat receives the same token allocation. Suffix is always f314; actual tax rate is read from chain.",
     modeF314Points: [
       "Creator uses create + atomic seat commit to reserve a whitelisted seat.",
       "Whitelist lifecycle matches b314: commit → finalize/refund → 314 fallback.",
+      "Seat-based distribution means filled whitelist seats all receive the same token amount after threshold finalize.",
       "Post-graduation tax rate is read from on-chain config, not guessed from suffix.",
       "Ideal for curated launches that want treasury or burn tokenomics after graduation."
     ],
@@ -296,7 +298,7 @@ const strings = {
     wlAddressesPlaceholder: "One address per line or comma-separated",
     wlCoverageValid: "Seat coverage looks valid.",
     wlCoverageNeed: "More whitelist addresses needed.",
-    wlExplain: "Each approved address sends the exact seat size once. When all seats are filled or the threshold is reached, the whitelist finalizes automatically.",
+    wlExplain: "Each approved address sends the exact seat size once. This is seat-based, not proportional: when the threshold is reached, the whitelist finalizes and every filled seat receives the same token allocation.",
     wlEstPerSeat: "Est. tokens per seat",
     wlStartTimeImmediateTitle: "Whitelist starts immediately unless you schedule it.",
     wlStartTimeImmediateDesc: "Leave the opening time empty to keep creator atomic seat commit. If you schedule a launch, use the browser-local time picker above; the UTC preview is shown under the field.",
@@ -578,7 +580,7 @@ const strings = {
     wlRemainingShort: "Remaining",
     wlApproved: "Wallet is approved.",
     wlNotApproved: "Wallet not in whitelist.",
-    wlCommitExplain: "Commit mode uses fixed seats. Send the exact seat size; when the cap is reached, allocations become claimable.",
+    wlCommitExplain: "Commit mode uses fixed seats. Send the exact seat size; once the threshold is reached, every filled seat gets the same token allocation and allocations become claimable.",
     commitSeat: "Commit Whitelist Seat",
     claimAllocation: "Claim Whitelist Allocation",
     claimRefund: "Claim Whitelist Refund",
@@ -783,11 +785,12 @@ const strings = {
 
     modeB314Title: "白名单席位",
     modeB314Eyebrow: "白名单 · 无税",
-    modeB314Desc: "固定席位白名单，24 小时承诺窗口。未达门槛自动退款并回退到普通 314 联合曲线。",
+    modeB314Desc: "固定席位白名单，24 小时承诺窗口。达到门槛后，每个已填充席位获得完全相同的代币额度；未达门槛则自动退款并回退到普通 314 联合曲线。",
     modeB314Points: [
       "创建时执行原子席位承诺而非直接买入代币。",
       "门槛可选 4 / 6 / 8 BNB，每席可选 0.1 / 0.2 / 0.5 / 1 BNB。",
       "白名单地址在创建时写入，之后不可修改。",
+      "这不是按投入比例分配；一旦达到门槛，每个已填充席位拿到相同数量的代币。",
       "24 小时内未达到门槛，已承诺的资金可退款，发射回退为普通 314 模式。"
     ],
 
@@ -803,10 +806,11 @@ const strings = {
 
     modeF314Title: "白名单 + 税",
     modeF314Eyebrow: "全功能版",
-    modeF314Desc: "先走白名单承诺流程，毕业后自动带税。后缀固定为 f314，实际税率从链上读取。",
+    modeF314Desc: "先走白名单承诺流程，达到门槛后每个已填充席位获得相同额度的代币，毕业后自动带税。后缀固定为 f314，实际税率从链上读取。",
     modeF314Points: [
       "创建时执行原子席位承诺。",
       "白名单流程与 b314 一致：承诺 → 确认/退款 → 回退到 314。",
+      "席位型分配意味着白名单成功后，每个已填充席位领取到同样数量的代币。",
       "毕业后税率从链上配置读取，而非从地址后缀猜测。",
       "适合精选发射、希望毕业后拥有金库或燃烧经济模型的项目。"
     ],
@@ -886,7 +890,7 @@ const strings = {
     wlAddressesPlaceholder: "每行一个地址，或用逗号分隔",
     wlCoverageValid: "白名单地址数量满足要求。",
     wlCoverageNeed: "还需要更多白名单地址。",
-    wlExplain: "每个合格地址发送一次与席位金额完全相同的 BNB 即可承诺。达到门槛后白名单自动确认并分配代币。",
+    wlExplain: "每个合格地址发送一次与席位金额完全相同的 BNB 即可承诺。这不是按投入比例分配；达到门槛后白名单自动确认，每个已填充席位分到相同数量的代币。",
     wlEstPerSeat: "预估每席代币数",
     wlStartTimeImmediateTitle: "白名单默认创建即开始，也可以改成定时开启。",
     wlStartTimeImmediateDesc: "留空时会立即开启白名单窗口，并允许创建者原子承诺席位。若要定时开启，请直接使用上方的本地时间选择器，下面会同步显示 UTC 对照时间。",
@@ -1170,7 +1174,7 @@ const strings = {
     wlRemainingShort: "剩余",
     wlApproved: "此钱包已在白名单中。",
     wlNotApproved: "此钱包不在白名单中。",
-    wlCommitExplain: "固定席位承诺模式。发送精确的席位金额；达到门槛后白名单自动确认，代币分配即可领取。",
+    wlCommitExplain: "固定席位承诺模式。发送精确的席位金额；达到门槛后白名单自动确认，每个已填充席位可领取相同数量的代币。",
     commitSeat: "承诺白名单席位",
     claimAllocation: "领取白名单分配",
     claimRefund: "领取白名单退款",

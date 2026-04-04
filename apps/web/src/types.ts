@@ -73,6 +73,7 @@ export type TokenSnapshot = {
   wrappedNative: `0x${string}`;
   metadataURI: string;
   graduationQuoteReserve: bigint;
+  totalSupply: bigint;
   currentPriceQuotePerToken: bigint;
   graduationProgressBps: bigint;
   remainingQuoteCapacity: bigint;

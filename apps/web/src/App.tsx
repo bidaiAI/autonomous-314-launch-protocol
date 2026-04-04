@@ -74,6 +74,23 @@ function formatPercentFromBps(value: bigint) {
   return `${(Number(value) / 100).toFixed(2)}%`;
 }
 
+function parsePercentToBps(value: string) {
+  const numeric = Number.parseFloat(value || "0");
+  if (!Number.isFinite(numeric) || numeric < 0) return 0;
+  return Math.max(0, Math.min(5000, Math.round(numeric * 100)));
+}
+
+function formatPercentInput(value: string) {
+  const numeric = Number.parseFloat(value || "0");
+  if (!Number.isFinite(numeric) || numeric < 0) return "0";
+  return `${numeric.toFixed(numeric >= 1 ? 2 : 3).replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1")}%`;
+}
+
+function quoteMarketCap(totalSupply: bigint, priceQuotePerToken: bigint) {
+  if (totalSupply <= 0n || priceQuotePerToken <= 0n) return 0n;
+  return (totalSupply * priceQuotePerToken) / 10n ** 18n;
+}
+
 function activityTone(activity: ActivityFeedItem) {
   if (activity.kind === "graduated") return "system";
   if (activity.source === "dex") return "dex";
@@ -193,7 +210,7 @@ export function App() {
   const [graduationTimestampMs, setGraduationTimestampMs] = useState<number | null>(null);
   const [buyInput, setBuyInput] = useState("1");
   const [sellInput, setSellInput] = useState("1");
-  const [slippageBps, setSlippageBps] = useState("300");
+  const [slippagePercent, setSlippagePercent] = useState("3");
   const [buyPreviewState, setBuyPreviewState] = useState<BuyPreview | null>(null);
   const [sellPreviewState, setSellPreviewState] = useState<SellPreview | null>(null);
   const [status, setStatus] = useState<string>(() => t("ready"));
@@ -217,6 +234,8 @@ export function App() {
     canClaimRefund: boolean;
   } | null>(null);
   const workspaceRequestRef = useRef(0);
+  const buyPreviewRequestRef = useRef(0);
+  const sellPreviewRequestRef = useRef(0);
 
   const isBonding = tokenSnapshot?.state === "Bonding314";
   const isMigrating = tokenSnapshot?.state === "Migrating";
@@ -243,6 +262,15 @@ export function App() {
     if (tokenSnapshot.pairGraduationCompatible) return "warn";
     return "danger";
   }, [tokenSnapshot]);
+  const heroMarketCap = tokenSnapshot ? quoteMarketCap(tokenSnapshot.totalSupply, tokenSnapshot.currentPriceQuotePerToken) : 0n;
+  const verificationLabel = tokenVerification
+    ? tokenVerification.status === "official"
+      ? t("verifiedOfficial")
+      : tokenVerification.status === "warning"
+        ? t("verifiedSuspicious")
+        : t("verifiedForeign")
+    : "";
+
   const verificationTone = useMemo(() => {
     if (!tokenVerification) return "neutral";
     if (tokenVerification.status === "official") return "success";
@@ -287,6 +315,7 @@ export function App() {
   const selectedLaunchMetadata = selectedLaunchMetadataState ?? null;
   const selectedLaunchMetadataLoading =
     Boolean(tokenSnapshot?.metadataURI) && selectedLaunchMetadataState === undefined;
+  const selectedLaunchHasImage = Boolean(resolvePreviewImage(selectedLaunchMetadata?.image ?? ""));
   const whitelistApproved = whitelistAccountState?.approved ?? false;
   const canCommitWhitelist = whitelistAccountState?.canCommit ?? false;
   const canClaimWhitelistAllocationForWallet = whitelistAccountState?.canClaimAllocation ?? false;
@@ -327,6 +356,7 @@ export function App() {
     return new Date(Number(createWhitelistOpensAtUnix) * 1000).toUTCString().replace('GMT', 'UTC');
   }, [createWhitelistOpensAtUnix, isDelayedWhitelistOpen]);
   const whitelistAddressCount = parsedWhitelistAddresses?.length ?? 0;
+  const slippageToleranceBps = useMemo(() => parsePercentToBps(slippagePercent), [slippagePercent]);
   const requiresAtomicBuy = createMode === "standard" || createMode === "taxed";
   const requiresWhitelistCommit = createMode === "whitelist" || createMode === "whitelistTaxed";
   const whitelistAddressCountValid =
@@ -731,6 +761,50 @@ export function App() {
     });
   }
 
+  useEffect(() => {
+    if (!tokenAddress || !isBonding) {
+      setBuyPreviewState(null);
+      return;
+    }
+    const trimmed = buyInput.trim();
+    if (!trimmed || Number(trimmed) <= 0) {
+      setBuyPreviewState(null);
+      return;
+    }
+    const requestId = ++buyPreviewRequestRef.current;
+    const timer = window.setTimeout(async () => {
+      try {
+        const preview = await previewBuy(tokenAddress, trimmed);
+        if (buyPreviewRequestRef.current === requestId) setBuyPreviewState(preview);
+      } catch {
+        if (buyPreviewRequestRef.current === requestId) setBuyPreviewState(null);
+      }
+    }, 220);
+    return () => window.clearTimeout(timer);
+  }, [buyInput, isBonding, tokenAddress]);
+
+  useEffect(() => {
+    if (!tokenAddress || !isBonding) {
+      setSellPreviewState(null);
+      return;
+    }
+    const trimmed = sellInput.trim();
+    if (!trimmed || Number(trimmed) <= 0) {
+      setSellPreviewState(null);
+      return;
+    }
+    const requestId = ++sellPreviewRequestRef.current;
+    const timer = window.setTimeout(async () => {
+      try {
+        const preview = await previewSell(tokenAddress, trimmed);
+        if (sellPreviewRequestRef.current === requestId) setSellPreviewState(preview);
+      } catch {
+        if (sellPreviewRequestRef.current === requestId) setSellPreviewState(null);
+      }
+    }, 220);
+    return () => window.clearTimeout(timer);
+  }, [sellInput, isBonding, tokenAddress]);
+
   async function handlePreviewBuy() {
     try {
       setLoading(true);
@@ -992,7 +1066,7 @@ export function App() {
       const preview = await previewBuy(tokenAddress, buyInput);
       setBuyPreviewState(preview);
 
-      const minTokenOut = applySlippageBps(preview.tokenOut, Number(slippageBps || "0"));
+      const minTokenOut = applySlippageBps(preview.tokenOut, slippageToleranceBps);
       const receipt = await executeBuy(tokenAddress, buyInput, minTokenOut);
 
       setStatus(tf("statusBuyConfirmed", { tx: receipt.transactionHash }));
@@ -1011,7 +1085,7 @@ export function App() {
       const preview = await previewSell(tokenAddress, sellInput);
       setSellPreviewState(preview);
 
-      const minQuoteOut = applySlippageBps(preview.netQuoteOut, Number(slippageBps || "0"));
+      const minQuoteOut = applySlippageBps(preview.netQuoteOut, slippageToleranceBps);
       const receipt = await executeSell(tokenAddress, sellInput, minQuoteOut);
 
       setStatus(tf("statusSellConfirmed", { tx: receipt.transactionHash }));
@@ -2039,20 +2113,20 @@ export function App() {
 
               {tokenSnapshot ? (
                 <>
-                  <div className="launch-hero">
-                    <div className="launch-hero-media">
-                      {resolvePreviewImage(selectedLaunchMetadata?.image ?? "") ? (
-                        <img src={resolvePreviewImage(selectedLaunchMetadata?.image ?? "")} alt={tf("launchCoverAlt", { name: selectedLaunchMetadata?.name || tokenSnapshot.name })} />
-                      ) : (
-                        <div className="launch-card-placeholder large">{tokenSnapshot.symbol.slice(0, 8)}</div>
-                      )}
-                    </div>
+                  <div className={`launch-hero ${selectedLaunchHasImage ? "with-image" : "without-image"}`}>
                     <div className="launch-hero-copy">
                       <div className="launch-hero-head">
-                        <div>
-                          <span className="section-kicker">{t("launchOverview")}</span>
-                          <h3>{selectedLaunchMetadata?.name || tokenSnapshot.name}</h3>
-                          <div className="launch-card-symbol">{selectedLaunchMetadata?.symbol || tokenSnapshot.symbol}</div>
+                        <div className="launch-hero-title-wrap">
+                          {selectedLaunchHasImage && (
+                            <div className="launch-mini-art">
+                              <img src={resolvePreviewImage(selectedLaunchMetadata?.image ?? "")!} alt={tf("launchCoverAlt", { name: selectedLaunchMetadata?.name || tokenSnapshot.name })} />
+                            </div>
+                          )}
+                          <div>
+                            <span className="section-kicker">{t("launchOverview")}</span>
+                            <h3>{selectedLaunchMetadata?.name || tokenSnapshot.name}</h3>
+                            <div className="launch-card-symbol">{selectedLaunchMetadata?.symbol || tokenSnapshot.symbol}</div>
+                          </div>
                         </div>
                       </div>
                       <p>
@@ -2081,16 +2155,16 @@ export function App() {
                       <strong>{formatNative(tokenSnapshot.currentPriceQuotePerToken)}</strong>
                     </div>
                     <div>
+                      <span className="metric-label">{t("marketCap")}</span>
+                      <strong>{formatNative(heroMarketCap)}</strong>
+                    </div>
+                    <div>
                       <span className="metric-label">Graduation progress</span>
                       <strong>{formatPercentFromBps(tokenSnapshot.graduationProgressBps)}</strong>
                     </div>
                     <div>
                       <span className="metric-label">Remaining capacity</span>
                       <strong>{formatNative(tokenSnapshot.remainingQuoteCapacity)}</strong>
-                    </div>
-                    <div>
-                      <span className="metric-label">Creator</span>
-                      <strong>{shortAddress(tokenSnapshot.creator)}</strong>
                     </div>
                   </div>
 
@@ -2106,28 +2180,37 @@ export function App() {
                     <div className={`lifecycle-step ${isDexOnly ? "current" : ""}`}>{t("stateDexOnly")}</div>
                   </div>
 
+                  <article className="subpanel chart-hero-panel">
+                    <div className="subpanel-header">
+                      <h3>{t("priceTrajectory")}</h3>
+                      <span className="list-item-meta">{t("marketCap")}: {formatNative(heroMarketCap)}</span>
+                    </div>
+                    {bondingCandles.length > 0 || dexCandles.length > 0 ? (
+                      <SegmentedPhaseChart bondingCandles={bondingCandles} dexCandles={dexCandles} graduationTimestampMs={graduationTimestampMs} />
+                    ) : (
+                      <div className="empty-state">{t("noChartData")}</div>
+                    )}
+                  </article>
+
                   {tokenVerification && (
-                    <div className={`callout ${verificationTone}`}>
-                      <strong>
-                        {tokenVerification.status === "official"
-                          ? t("verifiedOfficial")
-                          : tokenVerification.status === "warning"
-                            ? t("verifiedSuspicious")
-                            : t("verifiedForeign")}
-                      </strong>
+                    <div className={`callout compact-callout ${verificationTone}`}>
+                      <strong>{verificationLabel}</strong>
                       <p>{tokenVerification.summary}</p>
-                      <dl className="data-list compact">
-                        <div><dt>{t("factoryMatch")}</dt><dd>{String(tokenVerification.checks.factoryMatches)}</dd></div>
-                        <div><dt>{t("factoryRegistry")}</dt><dd>{String(tokenVerification.checks.factoryRegistryRecognizesToken)}</dd></div>
-                        <div><dt>{t("modeMatch")}</dt><dd>{String(tokenVerification.checks.tokenModeMatchesFactory)}</dd></div>
-                        <div><dt>{t("launchEventFound")}</dt><dd>{String(tokenVerification.checks.launchEventFound)}</dd></div>
-                        <div><dt>{t("eventMetadata")}</dt><dd>{String(tokenVerification.checks.eventMetadataMatchesToken)}</dd></div>
-                        <div><dt>{t("protocolRecipientMatch")}</dt><dd>{String(tokenVerification.checks.protocolRecipientMatches)}</dd></div>
-                        <div><dt>{t("routerMatch")}</dt><dd>{String(tokenVerification.checks.routerMatches)}</dd></div>
-                        <div><dt>{t("gradTargetMatch")}</dt><dd>{String(tokenVerification.checks.graduationTargetMatches)}</dd></div>
-                        <div><dt>{t("pairMatch")}</dt><dd>{String(tokenVerification.checks.pairMatchesDex)}</dd></div>
-                        <div><dt>{t("suffixMode")}</dt><dd>{String(tokenVerification.checks.suffixMatchesMode)}</dd></div>
-                      </dl>
+                      <details className="verification-details">
+                        <summary>{t("verificationDetails")}</summary>
+                        <dl className="data-list compact">
+                          <div><dt>{t("factoryMatch")}</dt><dd>{String(tokenVerification.checks.factoryMatches)}</dd></div>
+                          <div><dt>{t("factoryRegistry")}</dt><dd>{String(tokenVerification.checks.factoryRegistryRecognizesToken)}</dd></div>
+                          <div><dt>{t("modeMatch")}</dt><dd>{String(tokenVerification.checks.tokenModeMatchesFactory)}</dd></div>
+                          <div><dt>{t("launchEventFound")}</dt><dd>{String(tokenVerification.checks.launchEventFound)}</dd></div>
+                          <div><dt>{t("eventMetadata")}</dt><dd>{String(tokenVerification.checks.eventMetadataMatchesToken)}</dd></div>
+                          <div><dt>{t("protocolRecipientMatch")}</dt><dd>{String(tokenVerification.checks.protocolRecipientMatches)}</dd></div>
+                          <div><dt>{t("routerMatch")}</dt><dd>{String(tokenVerification.checks.routerMatches)}</dd></div>
+                          <div><dt>{t("gradTargetMatch")}</dt><dd>{String(tokenVerification.checks.graduationTargetMatches)}</dd></div>
+                          <div><dt>{t("pairMatch")}</dt><dd>{String(tokenVerification.checks.pairMatchesDex)}</dd></div>
+                          <div><dt>{t("suffixMode")}</dt><dd>{String(tokenVerification.checks.suffixMatchesMode)}</dd></div>
+                        </dl>
+                      </details>
                     </div>
                   )}
 
@@ -2193,21 +2276,7 @@ export function App() {
                     </div>
                   )}
 
-                  <div className="history-grid">
-                    <article className="subpanel">
-                      <div className="subpanel-header">
-                        <h3>{t("priceTrajectory")}</h3>
-                        <span className="list-item-meta">
-                          {dexCandles.length > 0 ? t("segmentedChart") : isBonding ? t("protocolCandles") : t("dexHandoff")}
-                        </span>
-                      </div>
-                      {bondingCandles.length > 0 || dexCandles.length > 0 ? (
-                        <SegmentedPhaseChart bondingCandles={bondingCandles} dexCandles={dexCandles} graduationTimestampMs={graduationTimestampMs} />
-                      ) : (
-                        <div className="empty-state">{t("noChartData")}</div>
-                      )}
-                    </article>
-
+                  <div className="history-grid single-column-activity">
                     <article className="subpanel">
                       <div className="subpanel-header">
                         <h3>{t("recentActivity")}</h3>
@@ -2308,7 +2377,8 @@ export function App() {
                   <h2>{t("bondingActions")}</h2>
                   <label className="field">
                     <span>{`${t("buyAmount")} (${activeProtocolProfile.nativeSymbol})`}</span>
-                    <input value={buyInput} onChange={(e) => setBuyInput(e.target.value)} />
+                    <input value={buyInput} inputMode="decimal" onChange={(e) => setBuyInput(e.target.value)} />
+                    {buyPreviewState && <small className="field-note">{tf("estimatedTokenOut", { amount: formatToken(buyPreviewState.tokenOut) })}</small>}
                   </label>
                   <label className="field">
                     <span>{t("sellAmount")}</span>
@@ -2316,7 +2386,8 @@ export function App() {
                   </label>
                   <label className="field">
                     <span>{t("slippage")}</span>
-                    <input value={slippageBps} onChange={(e) => setSlippageBps(e.target.value)} />
+                    <input value={slippagePercent} inputMode="decimal" onChange={(e) => setSlippagePercent(e.target.value)} />
+                    <small className="field-note">{tf("slippageHint", { percent: formatPercentInput(slippagePercent), bps: slippageToleranceBps.toString() })}</small>
                   </label>
                   <div className="button-row stacked">
                     <button className="secondary-button" onClick={handlePreviewBuy} disabled={!tokenAddress || !isBonding || !canWriteVerifiedLaunch}>{t("previewBuy")}</button>
@@ -2330,7 +2401,7 @@ export function App() {
                       <div><dt>{t("buyTokenOut")}</dt><dd>{formatToken(buyPreviewState.tokenOut)}</dd></div>
                       <div><dt>{t("buyFee")}</dt><dd>{formatNative(buyPreviewState.feeAmount)}</dd></div>
                       <div><dt>{t("buyRefund")}</dt><dd>{formatNative(buyPreviewState.refundAmount)}</dd></div>
-                      <div><dt>{t("buyMinOut")}</dt><dd>{formatToken(applySlippageBps(buyPreviewState.tokenOut, Number(slippageBps || "0")))}</dd></div>
+                      <div><dt>{t("buyMinOut")}</dt><dd>{formatToken(applySlippageBps(buyPreviewState.tokenOut, slippageToleranceBps))}</dd></div>
                     </dl>
                   )}
 
@@ -2339,7 +2410,7 @@ export function App() {
                       <div><dt>{t("sellGrossOut")}</dt><dd>{formatNative(sellPreviewState.grossQuoteOut)}</dd></div>
                       <div><dt>{t("sellNetOut")}</dt><dd>{formatNative(sellPreviewState.netQuoteOut)}</dd></div>
                       <div><dt>{t("sellFee")}</dt><dd>{formatNative(sellPreviewState.totalFee)}</dd></div>
-                      <div><dt>{t("sellMinOut")}</dt><dd>{formatNative(applySlippageBps(sellPreviewState.netQuoteOut, Number(slippageBps || "0")))}</dd></div>
+                      <div><dt>{t("sellMinOut")}</dt><dd>{formatNative(applySlippageBps(sellPreviewState.netQuoteOut, slippageToleranceBps))}</dd></div>
                     </dl>
                   )}
                 </>

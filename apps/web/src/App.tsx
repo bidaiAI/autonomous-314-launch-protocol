@@ -1757,12 +1757,15 @@ export function App() {
                                 {metadata?.symbol || launch.symbol} · {launch.launchSuffix || t("launchSuffixFallback")}
                               </div>
                             </div>
-                            <div className="launch-card-price">{launchMarketCapUsd ? formatUsdCompact(launchMarketCapUsd) : t("marketCapUnavailable")}</div>
                           </div>
                         <p className="launch-card-description">
                           {metadata?.description || launchCardFallbackDescription(launch.state)}
                         </p>
-                        <div className="launch-card-stats">
+                        <div className="launch-card-stats launch-card-stats-triple">
+                          <div>
+                            <span className="metric-label">{t("marketCapShort")}</span>
+                            <strong>{launchMarketCapUsd ? formatUsdCompact(launchMarketCapUsd) : t("marketCapUnavailable")}</strong>
+                          </div>
                           <div>
                             <span className="metric-label">{t("progress")}</span>
                             <strong>{formatPercentFromBps(launch.graduationProgressBps)}</strong>

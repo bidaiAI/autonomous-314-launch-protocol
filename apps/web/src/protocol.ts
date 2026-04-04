@@ -990,22 +990,25 @@ export async function readFactory(address: string): Promise<FactorySnapshot> {
   let taxedDeployer = zeroAddress;
   let whitelistTaxedDeployer = zeroAddress;
 
-  try {
-    [standardCreateFee, whitelistCreateFee, standardDeployer, whitelistDeployer, taxedDeployer, whitelistTaxedDeployer] = (await Promise.all([
-      client.readContract({ address: factoryAddress, abi: launchFactoryAbi, functionName: "standardCreateFee" }),
-      client.readContract({ address: factoryAddress, abi: launchFactoryAbi, functionName: "whitelistCreateFee" }),
-      client.readContract({ address: factoryAddress, abi: launchFactoryAbi, functionName: "standardDeployer" }),
-      client.readContract({ address: factoryAddress, abi: launchFactoryAbi, functionName: "whitelistDeployer" }),
-      client.readContract({ address: factoryAddress, abi: launchFactoryAbi, functionName: "taxedDeployer" }),
-      client.readContract({ address: factoryAddress, abi: launchFactoryAbi, functionName: "whitelistTaxedDeployer" })
-    ])) as [bigint, bigint, `0x${string}`, `0x${string}`, `0x${string}`, `0x${string}`];
-    supportsWhitelistMode = true;
-    supportsTaxedMode = taxedDeployer !== zeroAddress;
-    supportsWhitelistTaxedMode = whitelistTaxedDeployer !== zeroAddress;
-  } catch {
-    standardCreateFee = createFee;
-    whitelistCreateFee = 0n;
-  }
+  const v2Reads = await Promise.allSettled([
+    client.readContract({ address: factoryAddress, abi: launchFactoryAbi, functionName: "standardCreateFee" }),
+    client.readContract({ address: factoryAddress, abi: launchFactoryAbi, functionName: "whitelistCreateFee" }),
+    client.readContract({ address: factoryAddress, abi: launchFactoryAbi, functionName: "standardDeployer" }),
+    client.readContract({ address: factoryAddress, abi: launchFactoryAbi, functionName: "whitelistDeployer" }),
+    client.readContract({ address: factoryAddress, abi: launchFactoryAbi, functionName: "taxedDeployer" }),
+    client.readContract({ address: factoryAddress, abi: launchFactoryAbi, functionName: "whitelistTaxedDeployer" })
+  ]);
+
+  if (v2Reads[0].status === "fulfilled") standardCreateFee = v2Reads[0].value as bigint;
+  if (v2Reads[1].status === "fulfilled") whitelistCreateFee = v2Reads[1].value as bigint;
+  if (v2Reads[2].status === "fulfilled") standardDeployer = v2Reads[2].value as `0x${string}`;
+  if (v2Reads[3].status === "fulfilled") whitelistDeployer = v2Reads[3].value as `0x${string}`;
+  if (v2Reads[4].status === "fulfilled") taxedDeployer = v2Reads[4].value as `0x${string}`;
+  if (v2Reads[5].status === "fulfilled") whitelistTaxedDeployer = v2Reads[5].value as `0x${string}`;
+
+  supportsWhitelistMode = whitelistDeployer !== zeroAddress;
+  supportsTaxedMode = taxedDeployer !== zeroAddress;
+  supportsWhitelistTaxedMode = whitelistTaxedDeployer !== zeroAddress;
 
   const recentLaunches: `0x${string}`[] = [];
   const recentCount = Number(totalLaunches > 5n ? 5n : totalLaunches);

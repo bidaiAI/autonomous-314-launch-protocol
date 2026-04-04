@@ -316,13 +316,15 @@ export function App() {
   const requiresWhitelistCommit = createMode === "whitelist" || createMode === "whitelistTaxed";
   const whitelistAddressCountValid =
     !requiresWhitelistCommit || (parsedWhitelistAddresses !== null && whitelistAddressCount >= whitelistSeatTarget && whitelistSeatTarget > 0);
-  const factorySupportsWhitelistMode = factorySnapshot?.supportsWhitelistMode ?? false;
-  const factorySupportsTaxedMode = factorySnapshot?.supportsTaxedMode ?? false;
-  const factorySupportsWhitelistTaxedMode = factorySnapshot?.supportsWhitelistTaxedMode ?? false;
+  const officialFactoryAddress = (import.meta.env.VITE_FACTORY_ADDRESS ?? "").trim().toLowerCase();
+  const usingOfficialFactory = Boolean(factoryAddress && officialFactoryAddress && factoryAddress.trim().toLowerCase() === officialFactoryAddress);
+  const factorySupportsWhitelistMode = factorySnapshot?.supportsWhitelistMode ?? usingOfficialFactory;
+  const factorySupportsTaxedMode = factorySnapshot?.supportsTaxedMode ?? usingOfficialFactory;
+  const factorySupportsWhitelistTaxedMode = factorySnapshot?.supportsWhitelistTaxedMode ?? usingOfficialFactory;
   const selectedCreateFee =
     isWhitelistFamily
-      ? factorySnapshot?.whitelistCreateFee ?? 0n
-      : factorySnapshot?.standardCreateFee ?? factorySnapshot?.createFee ?? 0n;
+      ? factorySnapshot?.whitelistCreateFee ?? (usingOfficialFactory ? parseEther('0.03') : 0n)
+      : factorySnapshot?.standardCreateFee ?? factorySnapshot?.createFee ?? (usingOfficialFactory ? parseEther('0.01') : 0n);
   const launchFamilies = useMemo(
     () => [
       {

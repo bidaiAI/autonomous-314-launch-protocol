@@ -1244,6 +1244,78 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .mode-explainer-head { display: grid; gap: 4px; }
 .mode-explainer p { color: var(--text-secondary); line-height: 1.6; font-size: 0.88rem; }
 
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(2, 6, 23, 0.72);
+  backdrop-filter: blur(16px);
+}
+
+.confirm-dialog {
+  width: min(720px, 100%);
+  max-height: min(88vh, 960px);
+  overflow: auto;
+  display: grid;
+  gap: 16px;
+  padding: 22px;
+}
+
+.confirm-dialog-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.confirm-dialog-copy {
+  color: var(--text-secondary);
+  line-height: 1.65;
+}
+
+.confirm-grid {
+  background: rgba(8, 16, 24, 0.5);
+}
+
+.confirm-section {
+  display: grid;
+  gap: 10px;
+  padding: 16px 18px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+  background: rgba(8, 16, 24, 0.44);
+}
+
+.confirm-token-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.confirm-token-grid > div {
+  display: grid;
+  gap: 4px;
+}
+
+.confirm-token-grid span {
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.confirm-span-two {
+  grid-column: 1 / -1;
+}
+
+.confirm-actions {
+  margin-bottom: 0;
+}
+
 /* ── Metadata Preview ── */
 .metadata-preview-card {
   border-radius: var(--radius-lg);
@@ -1623,6 +1695,9 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   .trade-row { grid-template-columns: 1fr; gap: 10px; }
   .subpanel { padding: 16px; }
   .copy-chip { width: 100%; justify-content: center; }
+  .confirm-dialog { padding: 18px 16px; }
+  .confirm-dialog-head { flex-direction: column; }
+  .confirm-token-grid { grid-template-columns: 1fr; }
   .creator-token-card { grid-template-columns: 1fr; align-items: start; }
   .creator-token-actions { width: 100%; display: grid; grid-template-columns: 1fr; }
   .app-footer { flex-direction: column; align-items: flex-start; padding-bottom: calc(18px + env(safe-area-inset-bottom)); }

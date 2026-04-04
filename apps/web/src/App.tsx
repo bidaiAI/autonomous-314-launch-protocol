@@ -197,6 +197,7 @@ export function App() {
   const [buyPreviewState, setBuyPreviewState] = useState<BuyPreview | null>(null);
   const [sellPreviewState, setSellPreviewState] = useState<SellPreview | null>(null);
   const [status, setStatus] = useState<string>(() => t("ready"));
+  const [showCreateConfirm, setShowCreateConfirm] = useState(false);
 
   async function handleCopyText(value: string, label: string) {
     try {
@@ -340,6 +341,18 @@ export function App() {
     isWhitelistFamily
       ? factorySnapshot?.whitelistCreateFee ?? (usingOfficialFactory ? parseEther('0.03') : 0n)
       : factorySnapshot?.standardCreateFee ?? factorySnapshot?.createFee ?? (usingOfficialFactory ? parseEther('0.01') : 0n);
+  const createTreasuryWalletResolved =
+    isTaxedFamily
+      ? treasurySharePercent === 0
+        ? getAddress("0x0000000000000000000000000000000000000000")
+        : (() => {
+            try {
+              return getAddress(createTaxTreasuryWallet || factorySnapshot?.protocolFeeRecipient || "");
+            } catch {
+              return "";
+            }
+          })()
+      : "";
   const launchFamilies = useMemo(
     () => [
       {
@@ -793,6 +806,15 @@ export function App() {
       `${(createSymbol || createName || "launch").trim().toLowerCase().replace(/[^a-z0-9-_]+/g, "-") || "launch"}-metadata.json`
     );
     setStatus(t("statusMetadataDownloaded"));
+  }
+
+  function handleOpenCreateConfirm() {
+    setShowCreateConfirm(true);
+  }
+
+  async function handleConfirmCreateLaunch() {
+    setShowCreateConfirm(false);
+    await handleCreateLaunch();
   }
 
   async function reloadLoadedViews() {
@@ -1942,14 +1964,14 @@ export function App() {
                   <div className="status-hint">
                     {t("standardAndTaxedFlow")}
                   </div>
-                  <button onClick={handleCreateLaunch} disabled={walletWrongNetwork || (requiresWhitelistCommit && !whitelistAddressCountValid)}>
+                  <button onClick={handleOpenCreateConfirm} disabled={walletWrongNetwork || (requiresWhitelistCommit && !whitelistAddressCountValid)}>
                     {createMode === "standard"
-                      ? t("createBtn0314")
+                      ? t("createReviewBtn0314")
                       : createMode === "whitelist"
-                        ? t("createBtnB314")
+                        ? t("createReviewBtnB314")
                         : createMode === "taxed"
-                          ? t("createBtnTax")
-                          : t("createBtnF314")}
+                          ? t("createReviewBtnTax")
+                          : t("createReviewBtnF314")}
                   </button>
                 </aside>
               </div>
@@ -2462,6 +2484,92 @@ export function App() {
           <button className="lang-toggle" onClick={toggleLocale}>{locale === "en" ? t("footerLangZh") : t("footerLangEn")}</button>
         </div>
       </footer>
+
+      {showCreateConfirm && (
+        <div className="modal-overlay" onClick={() => setShowCreateConfirm(false)}>
+          <div className="confirm-dialog panel" onClick={(event) => event.stopPropagation()}>
+            <div className="confirm-dialog-head">
+              <div>
+                <span className="section-kicker">{t("createConfirmKicker")}</span>
+                <h3>{t("createConfirmTitle")}</h3>
+              </div>
+              <span className="status-pill warn">{selectedLaunchFamily.suffix}</span>
+            </div>
+            <p className="confirm-dialog-copy">{t("createConfirmDesc")}</p>
+
+            <div className="create-summary-grid confirm-grid">
+              <div><span>{t("summaryMode")}</span><strong>{selectedLaunchFamily.title}</strong></div>
+              <div><span>{t("summaryVanity")}</span><strong>{selectedLaunchFamily.suffix}</strong></div>
+              <div><span>{t("summaryFee")}</span><strong>{selectedCreateFee > 0n ? formatNative(selectedCreateFee) : t("loadFactory")}</strong></div>
+              <div><span>{t("summaryCreatorFlow")}</span><strong>{requiresAtomicBuy ? t("summaryAtomicBuy") : isDelayedWhitelistOpen ? t("summaryScheduledSeat") : t("summaryAtomicSeat")}</strong></div>
+              <div><span>{t("createConfirmCreator")}</span><strong>{wallet ? shortAddress(wallet) : t("connectWallet")}</strong></div>
+              <div><span>{t("summaryGraduation")}</span><strong>{factorySnapshot ? formatNative(factorySnapshot.graduationQuoteReserve) : `12 ${activeProtocolProfile.nativeSymbol}`}</strong></div>
+            </div>
+
+            <div className="confirm-section">
+              <span className="section-kicker">{t("createConfirmTokenKicker")}</span>
+              <div className="confirm-token-grid">
+                <div><span>{t("tokenName")}</span><strong>{createName || "—"}</strong></div>
+                <div><span>{t("tokenSymbol")}</span><strong>{createSymbol || "—"}</strong></div>
+                <div className="confirm-span-two"><span>{t("metadataUri")}</span><strong className="mono-address">{createMetadataUri.trim() || generatedInlineMetadataUri || "—"}</strong></div>
+              </div>
+            </div>
+
+            {requiresAtomicBuy && (
+              <div className="confirm-section">
+                <span className="section-kicker">{t("createConfirmCreatorActionKicker")}</span>
+                <div className="confirm-token-grid">
+                  <div><span>{t("atomicBuyAmount")}</span><strong>{createAtomicBuyAmount || "0"} {activeProtocolProfile.nativeSymbol}</strong></div>
+                  <div><span>{t("creatorFlowLabel")}</span><strong>{t("creatorFlowAtomicBuy")}</strong></div>
+                </div>
+              </div>
+            )}
+
+            {requiresWhitelistCommit && (
+              <div className="confirm-section">
+                <span className="section-kicker">{t("wlKicker")}</span>
+                <div className="confirm-token-grid">
+                  <div><span>{t("wlThreshold")}</span><strong>{createWhitelistThreshold} {activeProtocolProfile.nativeSymbol}</strong></div>
+                  <div><span>{t("wlSlotSize")}</span><strong>{createWhitelistSlotSize} {activeProtocolProfile.nativeSymbol}</strong></div>
+                  <div><span>{t("wlSeatTarget")}</span><strong>{whitelistSeatTarget || "—"}</strong></div>
+                  <div><span>{t("wlAddressCount")}</span><strong>{whitelistAddressCount}</strong></div>
+                  <div><span>{t("wlOpenTime")}</span><strong>{isDelayedWhitelistOpen ? createWhitelistOpensAt : t("wlStartsImmediately")}</strong></div>
+                  <div><span>{t("wlTimezoneLabel")}</span><strong>{isDelayedWhitelistOpen ? whitelistLocalTimezone : t("wlImmediateLabel")}</strong></div>
+                  {isDelayedWhitelistOpen ? (
+                    <div className="confirm-span-two"><span>{t("wlUtcPreviewLabel")}</span><strong>{whitelistOpensAtUtcText}</strong></div>
+                  ) : null}
+                </div>
+              </div>
+            )}
+
+            {isTaxedFamily && (
+              <div className="confirm-section">
+                <span className="section-kicker">{t("taxKicker")}</span>
+                <div className="confirm-token-grid">
+                  <div><span>{t("taxRate")}</span><strong>{taxRatePercent}%</strong></div>
+                  <div><span>{t("burnShare")}</span><strong>{burnSharePercent}%</strong></div>
+                  <div><span>{t("treasuryShare")}</span><strong>{treasurySharePercent}%</strong></div>
+                  <div className="confirm-span-two"><span>{t("treasuryWalletLabel")}</span><strong className="mono-address">{createTreasuryWalletResolved || "—"}</strong></div>
+                </div>
+              </div>
+            )}
+
+            <div className="callout warn compact-callout">
+              <strong>{t("createConfirmNoteTitle")}</strong>
+              <p>{t("createConfirmNoteDesc")}</p>
+            </div>
+
+            <div className="button-row confirm-actions">
+              <button type="button" className="secondary-button" onClick={() => setShowCreateConfirm(false)}>
+                {t("cancel")}
+              </button>
+              <button type="button" onClick={() => void handleConfirmCreateLaunch()} disabled={loading}>
+                {loading ? t("loading") : t("createConfirmProceed")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

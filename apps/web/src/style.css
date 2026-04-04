@@ -999,6 +999,24 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   align-items: start;
 }
 
+.workspace-grid-launch {
+  grid-template-columns: minmax(0, 1fr) 360px;
+}
+
+.workspace-grid-launch .workspace-main {
+  order: 1;
+}
+
+.workspace-grid-launch .actions-rail {
+  order: 2;
+}
+
+.workspace-grid-launch .rail {
+  order: 3;
+  grid-column: 1 / -1;
+  position: static;
+}
+
 .rail, .workspace-main, .actions-rail {
   display: grid;
   gap: 18px;
@@ -1439,6 +1457,40 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 
 /* ── Launch Detail / Stage Panel ── */
 .stage-panel { min-height: 500px; }
+.launch-support-panel {
+  gap: 14px;
+}
+
+.workspace-tools {
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: rgba(8, 16, 24, 0.3);
+  overflow: hidden;
+}
+
+.workspace-tools summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 14px 16px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.workspace-tools summary::-webkit-details-marker {
+  display: none;
+}
+
+.workspace-tools[open] summary {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.workspace-tools-body {
+  display: grid;
+  gap: 14px;
+  padding: 14px 16px 16px;
+}
+
 .stage-header {
   display: flex;
   justify-content: space-between;
@@ -1459,6 +1511,12 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .launch-hero-head { display: flex; justify-content: space-between; align-items: start; gap: 14px; }
 .launch-hero-head h3 { font-size: 1.15rem; }
 .launch-hero-title-wrap { display: flex; align-items: center; gap: 14px; }
+.launch-meta-strip {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
 .launch-mini-art {
   width: 56px;
   height: 56px;
@@ -1766,6 +1824,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   .detail-grid { grid-template-columns: 1fr; }
   .launch-hero { grid-template-columns: 1fr; }
   .launch-hero-head, .page-heading { flex-direction: column; align-items: flex-start; }
+  .launch-meta-strip { justify-content: flex-start; }
   .home-hero { flex-direction: column; align-items: stretch; }
   .topbar { flex-direction: column; gap: 16px; }
   .brand-lockup { width: 100%; }

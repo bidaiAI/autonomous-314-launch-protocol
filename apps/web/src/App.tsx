@@ -2294,9 +2294,9 @@ export function App() {
       )}
 
       {route.page === "launch" && (
-        <section className="workspace-grid">
+        <section className="workspace-grid workspace-grid-launch">
           <aside className="rail">
-            <article className="panel">
+            <article className="panel launch-support-panel">
               <div className="page-heading compact-heading">
                 <div>
                   <span className="section-kicker">{t("launchKicker")}</span>
@@ -2304,27 +2304,32 @@ export function App() {
                 </div>
                 <button className="secondary-button" onClick={() => navigate({ page: "create" })}>{t("newLaunch")}</button>
               </div>
-              <label className="field">
-                <span>{t("factoryAddress")}</span>
-                <input value={factoryAddress} onChange={(e) => setFactoryAddress(e.target.value)} placeholder="0x..." />
-              </label>
-              <label className="field">
-                <span>{t("tokenAddress")}</span>
-                <input value={tokenAddress} onChange={(e) => setTokenAddress(e.target.value)} placeholder="0x..." />
-              </label>
-              <div className="button-row">
-                <button onClick={handleLoadFactory}>{t("loadFactoryBtn")}</button>
-                <button className="secondary-button" onClick={handleLoadToken}>{t("verifyLoadBtn")}</button>
-              </div>
-              {factorySnapshot && (
-                <dl className="data-list compact">
-                  <div><dt>{t("createFeeStandard")}</dt><dd>{formatNative(factorySnapshot.standardCreateFee)}</dd></div>
-                  <div><dt>{t("createFeeWhitelist")}</dt><dd>{formatNative(factorySnapshot.whitelistCreateFee)}</dd></div>
-                  <div><dt>{t("graduationTarget")}</dt><dd>{formatNative(factorySnapshot.graduationQuoteReserve)}</dd></div>
-                  <div><dt>{t("totalLaunches")}</dt><dd>{factorySnapshot.totalLaunches.toString()}</dd></div>
-                  <div><dt>{t("protocolRecipient")}</dt><dd>{shortAddress(factorySnapshot.protocolFeeRecipient)}</dd></div>
-                </dl>
-              )}
+              <details className="workspace-tools">
+                <summary>{t("workspaceTools")}</summary>
+                <div className="workspace-tools-body">
+                  <label className="field">
+                    <span>{t("factoryAddress")}</span>
+                    <input value={factoryAddress} onChange={(e) => setFactoryAddress(e.target.value)} placeholder="0x..." />
+                  </label>
+                  <label className="field">
+                    <span>{t("tokenAddress")}</span>
+                    <input value={tokenAddress} onChange={(e) => setTokenAddress(e.target.value)} placeholder="0x..." />
+                  </label>
+                  <div className="button-row">
+                    <button onClick={handleLoadFactory}>{t("loadFactoryBtn")}</button>
+                    <button className="secondary-button" onClick={handleLoadToken}>{t("verifyLoadBtn")}</button>
+                  </div>
+                  {factorySnapshot && (
+                    <dl className="data-list compact">
+                      <div><dt>{t("createFeeStandard")}</dt><dd>{formatNative(factorySnapshot.standardCreateFee)}</dd></div>
+                      <div><dt>{t("createFeeWhitelist")}</dt><dd>{formatNative(factorySnapshot.whitelistCreateFee)}</dd></div>
+                      <div><dt>{t("graduationTarget")}</dt><dd>{formatNative(factorySnapshot.graduationQuoteReserve)}</dd></div>
+                      <div><dt>{t("totalLaunches")}</dt><dd>{factorySnapshot.totalLaunches.toString()}</dd></div>
+                      <div><dt>{t("protocolRecipient")}</dt><dd>{shortAddress(factorySnapshot.protocolFeeRecipient)}</dd></div>
+                    </dl>
+                  )}
+                </div>
+              </details>
               <div className="mini-list">
                 <div className="mini-list-title">{t("recentLaunches")}</div>
                 {recentLaunchSnapshots.length === 0 ? (
@@ -2376,6 +2381,11 @@ export function App() {
                             <h3>{selectedLaunchMetadata?.name || tokenSnapshot.name}</h3>
                             <div className="launch-card-symbol">{selectedLaunchMetadata?.symbol || tokenSnapshot.symbol}</div>
                           </div>
+                        </div>
+                        <div className="launch-meta-strip">
+                          <span className="status-pill">{tokenSnapshot.launchSuffix}</span>
+                          <span className="status-pill">{tokenSnapshot.launchMode}</span>
+                          <span className="status-pill">{shortAddress(tokenSnapshot.creator)}</span>
                         </div>
                       </div>
                       <p>

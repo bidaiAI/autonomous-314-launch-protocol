@@ -1,22 +1,18 @@
 <svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="panel" x1="64" y1="64" x2="448" y2="448" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#122131"/>
-      <stop offset="1" stop-color="#09121C"/>
+    <linearGradient id="bg" x1="74" y1="58" x2="430" y2="454" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#132131"/>
+      <stop offset="1" stop-color="#09111B"/>
     </linearGradient>
-    <linearGradient id="beam" x1="126" y1="100" x2="374" y2="392" gradientUnits="userSpaceOnUse">
+    <linearGradient id="accent" x1="142" y1="124" x2="336" y2="360" gradientUnits="userSpaceOnUse">
       <stop stop-color="#5EEAD4"/>
-      <stop offset="0.55" stop-color="#38BDF8"/>
+      <stop offset="0.52" stop-color="#38BDF8"/>
       <stop offset="1" stop-color="#8B5CF6"/>
     </linearGradient>
   </defs>
-
-  <rect x="52" y="52" width="408" height="408" rx="112" fill="#060D14"/>
-  <rect x="64" y="64" width="384" height="384" rx="100" fill="url(#panel)" stroke="rgba(94,234,212,0.24)" stroke-width="4"/>
-
-  <path d="M146 122H202L366 390H310L146 122Z" fill="url(#beam)"/>
-  <path d="M146 122H202L248 202H192L146 122Z" fill="#9CF7E7"/>
-
-  <text x="176" y="315" fill="#F8FBFF" font-size="138" font-weight="800" font-family="Inter, Arial, sans-serif" letter-spacing="-8">314</text>
-  <text x="178" y="364" fill="#8EA8BB" font-size="28" font-weight="700" font-family="Inter, Arial, sans-serif" letter-spacing="8">AUTO</text>
+  <rect x="48" y="48" width="416" height="416" rx="120" fill="#050B12"/>
+  <rect x="62" y="62" width="388" height="388" rx="108" fill="url(#bg)" stroke="#1F384B" stroke-width="4"/>
+  <path d="M138 136H220L322 360H242L138 136Z" fill="url(#accent)"/>
+  <path d="M172 226H280L256 282H198L172 226Z" fill="#D5FFF8"/>
+  <text x="176" y="352" fill="#F8FBFF" font-size="138" font-weight="900" font-family="Inter, Arial, sans-serif" letter-spacing="-8">314</text>
 </svg>

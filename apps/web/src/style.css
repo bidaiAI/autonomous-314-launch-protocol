@@ -1048,8 +1048,8 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .create-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) 340px;
-  gap: 20px;
+  grid-template-columns: minmax(0, 1.9fr) minmax(300px, 0.95fr);
+  gap: 24px;
   align-items: start;
 }
 
@@ -1116,7 +1116,15 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   margin-bottom: 16px;
 }
 
-.create-summary-panel { display: grid; gap: 16px; position: sticky; top: 24px; }
+.create-summary-panel {
+  display: grid;
+  gap: 16px;
+  position: sticky;
+  top: 24px;
+  max-width: 380px;
+  width: 100%;
+  justify-self: end;
+}
 
 .create-summary-grid {
   display: grid;

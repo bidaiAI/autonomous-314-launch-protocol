@@ -1,17 +1,18 @@
 <svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="panel" x1="32" y1="32" x2="224" y2="224" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#122131"/>
-      <stop offset="1" stop-color="#09121C"/>
+    <linearGradient id="bg" x1="36" y1="28" x2="214" y2="228" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#132131"/>
+      <stop offset="1" stop-color="#09111B"/>
     </linearGradient>
-    <linearGradient id="beam" x1="58" y1="48" x2="182" y2="194" gradientUnits="userSpaceOnUse">
+    <linearGradient id="accent" x1="74" y1="72" x2="168" y2="186" gradientUnits="userSpaceOnUse">
       <stop stop-color="#5EEAD4"/>
-      <stop offset="0.55" stop-color="#38BDF8"/>
+      <stop offset="0.52" stop-color="#38BDF8"/>
       <stop offset="1" stop-color="#8B5CF6"/>
     </linearGradient>
   </defs>
-  <rect x="20" y="20" width="216" height="216" rx="56" fill="#060D14"/>
-  <rect x="28" y="28" width="200" height="200" rx="50" fill="url(#panel)" stroke="rgba(94,234,212,0.24)" stroke-width="3"/>
-  <path d="M64 56H92L170 196H142L64 56Z" fill="url(#beam)"/>
-  <text x="78" y="154" fill="#F8FBFF" font-size="70" font-weight="800" font-family="Inter, Arial, sans-serif" letter-spacing="-5">314</text>
+  <rect x="18" y="18" width="220" height="220" rx="60" fill="#050B12"/>
+  <rect x="28" y="28" width="200" height="200" rx="52" fill="url(#bg)" stroke="#1F384B" stroke-width="3"/>
+  <path d="M70 72H112L164 184H124L70 72Z" fill="url(#accent)"/>
+  <path d="M88 118H142L130 146H102L88 118Z" fill="#D5FFF8"/>
+  <text x="92" y="178" fill="#F8FBFF" font-size="66" font-weight="900" font-family="Inter, Arial, sans-serif" letter-spacing="-5">314</text>
 </svg>

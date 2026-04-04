@@ -134,6 +134,21 @@ function formatUsdCompact(value: number | null) {
   }).format(value);
 }
 
+function formatUsdUnitPrice(value: number | null) {
+  if (value === null || !Number.isFinite(value) || value <= 0) return "—";
+  const maximumFractionDigits =
+    value >= 100 ? 2 :
+    value >= 1 ? 4 :
+    value >= 0.01 ? 4 :
+    value >= 0.0001 ? 6 : 8;
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 0,
+    maximumFractionDigits
+  }).format(value);
+}
+
 function parseApiNumber(value: unknown) {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string") {
@@ -360,7 +375,10 @@ export function App() {
     ? (Number(heroMarketCap) / 1e18) * nativeUsdPrice
     : null;
   const displayedMarketCapUsd = dexPairEnrichment?.marketCapUsd ?? heroMarketCapUsd;
-  const displayedPriceUsd = dexPairEnrichment?.priceUsd ?? null;
+  const bondingPriceUsd = tokenSnapshot && nativeUsdPrice
+    ? (Number(tokenSnapshot.currentPriceQuotePerToken) / 1e18) * nativeUsdPrice
+    : null;
+  const displayedPriceUsd = dexPairEnrichment?.priceUsd ?? bondingPriceUsd;
   const verificationLabel = tokenVerification
     ? tokenVerification.status === "official"
       ? t("verifiedOfficial")
@@ -2494,8 +2512,8 @@ export function App() {
                   <div className="headline-metrics">
                     <div>
                       <span className="metric-label">{t("currentPrice")}</span>
-                      <strong>{formatQuotePrice(tokenSnapshot.currentPriceQuotePerToken)}</strong>
-                      <div className="metric-subtle">{displayedPriceUsd ? formatUsdCompact(displayedPriceUsd) : t("usdUnavailable")}</div>
+                      <strong>{displayedPriceUsd ? formatUsdUnitPrice(displayedPriceUsd) : t("usdUnavailable")}</strong>
+                      <div className="metric-subtle">{tf("nativeQuoteLabel", { value: formatQuotePrice(tokenSnapshot.currentPriceQuotePerToken), symbol: activeProtocolProfile.nativeSymbol })}</div>
                     </div>
                     <div>
                       <span className="metric-label">{t("marketCapShort")}</span>

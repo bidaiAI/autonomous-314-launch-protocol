@@ -45,6 +45,7 @@ const REPO_URL = "https://github.com/bidaiAI/autonomous-314-launch-protocol";
 const BRAND_MARK_URL = "/brand/logo-mark.svg";
 const BRAND_FULL_URL = "/brand/logo-full.svg";
 const OFFICIAL_FACTORY_ADDRESS = (import.meta.env.VITE_FACTORY_ADDRESS ?? "").trim();
+const DEX_SCREENER_CHAIN_ID = "bsc";
 
 function useLocale(): Locale {
   return useSyncExternalStore(onLocaleChange, getLocale, getLocale);
@@ -53,6 +54,16 @@ function useLocale(): Locale {
 type BuyPreview = Awaited<ReturnType<typeof previewBuy>>;
 type SellPreview = Awaited<ReturnType<typeof previewSell>>;
 type AppRoute = { page: "home" } | { page: "create" } | { page: "launch"; token: string } | { page: "creator" };
+type DexPairEnrichment = {
+  url: string | null;
+  priceUsd: number | null;
+  marketCapUsd: number | null;
+  fdvUsd: number | null;
+  liquidityUsd: number | null;
+  volume24hUsd: number | null;
+  buys24h: number | null;
+  sells24h: number | null;
+};
 
 function parseRoute(pathname: string): AppRoute {
   if (pathname === "/create") return { page: "create" };
@@ -111,6 +122,15 @@ function formatUsdCompact(value: number | null) {
     notation: "compact",
     maximumFractionDigits: value >= 100 ? 0 : 1
   }).format(value);
+}
+
+function parseApiNumber(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number.parseFloat(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
 }
 
 function formatNativeCompact(value: bigint) {
@@ -256,6 +276,7 @@ export function App() {
   const [recentLaunchSnapshots, setRecentLaunchSnapshots] = useState<TokenSnapshot[]>([]);
   const [tokenSnapshot, setTokenSnapshot] = useState<TokenSnapshot | null>(null);
   const [tokenVerification, setTokenVerification] = useState<ProtocolVerification | null>(null);
+  const [dexPairEnrichment, setDexPairEnrichment] = useState<DexPairEnrichment | null>(null);
   const [launchMetadataByToken, setLaunchMetadataByToken] = useState<Partial<Record<string, LaunchMetadata | null>>>({});
   const [marketQuery, setMarketQuery] = useState("");
   const [contractSearchInput, setContractSearchInput] = useState("");
@@ -326,6 +347,8 @@ export function App() {
   const heroMarketCapUsd = heroMarketCap > 0n && nativeUsdPrice
     ? (Number(heroMarketCap) / 1e18) * nativeUsdPrice
     : null;
+  const displayedMarketCapUsd = dexPairEnrichment?.marketCapUsd ?? heroMarketCapUsd;
+  const displayedPriceUsd = dexPairEnrichment?.priceUsd ?? null;
   const verificationLabel = tokenVerification
     ? tokenVerification.status === "official"
       ? t("verifiedOfficial")
@@ -699,6 +722,54 @@ export function App() {
       cancelled = true;
     };
   }, [tokenSnapshot, wallet]);
+
+  useEffect(() => {
+    if (!tokenSnapshot?.pair || tokenSnapshot.pair === "0x0000000000000000000000000000000000000000" || tokenSnapshot.state !== "DEXOnly") {
+      setDexPairEnrichment(null);
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await fetch(`https://api.dexscreener.com/latest/dex/pairs/${DEX_SCREENER_CHAIN_ID}/${tokenSnapshot.pair}`);
+        if (!response.ok) throw new Error(`Dex pair lookup failed with ${response.status}`);
+        const json = (await response.json()) as {
+          pairs?: Array<{
+            url?: string;
+            priceUsd?: string;
+            marketCap?: number | string;
+            fdv?: number | string;
+            liquidity?: { usd?: number | string };
+            volume?: { h24?: number | string };
+            txns?: { h24?: { buys?: number; sells?: number } };
+          }>;
+        };
+        const pair = json.pairs?.[0];
+        if (cancelled) return;
+        setDexPairEnrichment(
+          pair
+            ? {
+                url: typeof pair.url === "string" ? pair.url : null,
+                priceUsd: parseApiNumber(pair.priceUsd),
+                marketCapUsd: parseApiNumber(pair.marketCap),
+                fdvUsd: parseApiNumber(pair.fdv),
+                liquidityUsd: parseApiNumber(pair.liquidity?.usd),
+                volume24hUsd: parseApiNumber(pair.volume?.h24),
+                buys24h: typeof pair.txns?.h24?.buys === "number" ? pair.txns.h24.buys : null,
+                sells24h: typeof pair.txns?.h24?.sells === "number" ? pair.txns.h24.sells : null
+              }
+            : null
+        );
+      } catch {
+        if (!cancelled) setDexPairEnrichment(null);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tokenSnapshot?.pair, tokenSnapshot?.state]);
 
   async function refreshWalletNetworkStatus() {
     const chainId = await getWalletChainId();
@@ -2331,7 +2402,7 @@ export function App() {
                     <div className="subpanel-header">
                       <h3>{t("priceTrajectory")}</h3>
                       <span className="list-item-meta">
-                        {t("marketCap")}: {heroMarketCapUsd ? formatUsdCompact(heroMarketCapUsd) : formatNativeCompact(heroMarketCap)}
+                        {t("marketCap")}: {displayedMarketCapUsd ? formatUsdCompact(displayedMarketCapUsd) : formatNativeCompact(heroMarketCap)}
                       </span>
                     </div>
                     {bondingCandles.length > 0 || dexCandles.length > 0 ? (
@@ -2345,10 +2416,11 @@ export function App() {
                     <div>
                       <span className="metric-label">{t("currentPrice")}</span>
                       <strong>{formatQuotePrice(tokenSnapshot.currentPriceQuotePerToken)}</strong>
+                      <div className="metric-subtle">{displayedPriceUsd ? formatUsdCompact(displayedPriceUsd) : t("usdUnavailable")}</div>
                     </div>
                     <div>
                       <span className="metric-label">{t("marketCapShort")}</span>
-                      <strong>{heroMarketCapUsd ? formatUsdCompact(heroMarketCapUsd) : formatNativeCompact(heroMarketCap)}</strong>
+                      <strong>{displayedMarketCapUsd ? formatUsdCompact(displayedMarketCapUsd) : formatNativeCompact(heroMarketCap)}</strong>
                       <div className="metric-subtle">{tf("marketCapApproxNative", { value: formatNativeCompact(heroMarketCap) })}</div>
                     </div>
                     <div>
@@ -2361,6 +2433,37 @@ export function App() {
                       <strong>{formatPercentFromBps(tokenSnapshot.graduationProgressBps)}</strong>
                     </div>
                   </div>
+
+                  {dexPairEnrichment && (
+                    <div className="dex-metrics-strip">
+                      <div className="dex-metric-card">
+                        <span className="metric-label">{t("liquidity")}</span>
+                        <strong>{formatUsdCompact(dexPairEnrichment.liquidityUsd)}</strong>
+                      </div>
+                      <div className="dex-metric-card">
+                        <span className="metric-label">{t("volume24h")}</span>
+                        <strong>{formatUsdCompact(dexPairEnrichment.volume24hUsd)}</strong>
+                      </div>
+                      <div className="dex-metric-card">
+                        <span className="metric-label">{t("txns24h")}</span>
+                        <strong>
+                          {dexPairEnrichment.buys24h !== null || dexPairEnrichment.sells24h !== null
+                            ? `${dexPairEnrichment.buys24h ?? 0}/${dexPairEnrichment.sells24h ?? 0}`
+                            : "—"}
+                        </strong>
+                        <div className="metric-subtle">{t("buysSellsShort")}</div>
+                      </div>
+                      <div className="dex-metric-card">
+                        <span className="metric-label">{t("fdv")}</span>
+                        <strong>{formatUsdCompact(dexPairEnrichment.fdvUsd)}</strong>
+                        {dexPairEnrichment.url ? (
+                          <a className="inline-link" href={dexPairEnrichment.url} target="_blank" rel="noreferrer">
+                            {t("viewOnDex")}
+                          </a>
+                        ) : null}
+                      </div>
+                    </div>
+                  )}
 
                   <div className="progress-shell" aria-hidden="true">
                     <div className="progress-fill" style={{ width: `${Math.min(100, Number(tokenSnapshot.graduationProgressBps) / 100)}%` }} />

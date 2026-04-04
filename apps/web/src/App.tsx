@@ -197,6 +197,15 @@ export function App() {
   const [buyPreviewState, setBuyPreviewState] = useState<BuyPreview | null>(null);
   const [sellPreviewState, setSellPreviewState] = useState<SellPreview | null>(null);
   const [status, setStatus] = useState<string>(() => t("ready"));
+
+  async function handleCopyText(value: string, label: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      setStatus(tf("statusCopiedAddress", { label }));
+    } catch {
+      setStatus(tf("statusCopyFailed", { label }));
+    }
+  }
   const [loading, setLoading] = useState(false);
   const [walletChainId, setWalletChainId] = useState<number | null>(null);
   const [walletOnExpectedChain, setWalletOnExpectedChain] = useState(true);
@@ -2146,7 +2155,7 @@ export function App() {
                           <div><dt>{t("configuredTax")}</dt><dd>{formatPercentFromBps(tokenSnapshot.taxConfig.configuredTaxBps)}</dd></div>
                           <div><dt>{t("burnShareLabel")}</dt><dd>{formatPercentFromBps(tokenSnapshot.taxConfig.burnBps)}</dd></div>
                           <div><dt>{t("treasuryShareLabel")}</dt><dd>{formatPercentFromBps(tokenSnapshot.taxConfig.treasuryBps)}</dd></div>
-                          <div><dt>{t("treasuryWalletLabel")}</dt><dd>{shortAddress(tokenSnapshot.taxConfig.wallet)}</dd></div>
+                          <div><dt>{t("treasuryWalletLabel")}</dt><dd className="address-value"><span className="mono-address">{tokenSnapshot.taxConfig.wallet}</span><button type="button" className="copy-chip" onClick={() => void handleCopyText(tokenSnapshot.taxConfig!.wallet, t("treasuryWalletLabel"))}>{t("copyAddress")}</button></dd></div>
                         </>
                       )}
                     </dl>
@@ -2154,7 +2163,7 @@ export function App() {
                     <dl className="data-list">
                       <div><dt>{t("protocolClaimable")}</dt><dd>{formatNative(tokenSnapshot.protocolClaimable)}</dd></div>
                       <div><dt>{t("creatorClaimable")}</dt><dd>{formatNative(tokenSnapshot.creatorClaimable)}</dd></div>
-                      <div><dt>{t("tokenProtocolRecipient")}</dt><dd>{shortAddress(tokenSnapshot.protocolFeeRecipient)}</dd></div>
+                      <div><dt>{t("tokenProtocolRecipient")}</dt><dd className="address-value"><span className="mono-address">{tokenSnapshot.protocolFeeRecipient}</span><button type="button" className="copy-chip" onClick={() => void handleCopyText(tokenSnapshot.protocolFeeRecipient, t("tokenProtocolRecipient"))}>{t("copyAddress")}</button></dd></div>
                       <div><dt>{t("creatorFeeSweepReady")}</dt><dd>{creatorFeeSweepReady ? t("yes") : t("no")}</dd></div>
                       <div><dt>{t("createdAt")}</dt><dd>{formatUnixTimestamp(tokenSnapshot.createdAt)}</dd></div>
                       <div><dt>{t("lastTradeAt")}</dt><dd>{formatUnixTimestamp(tokenSnapshot.lastTradeAt)}</dd></div>

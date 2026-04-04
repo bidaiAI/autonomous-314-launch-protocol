@@ -149,6 +149,17 @@ function formatUsdUnitPrice(value: number | null) {
   }).format(value);
 }
 
+function formatCountdownLabel(targetMs: number, nowMs: number) {
+  const diffMs = Math.max(0, targetMs - nowMs);
+  const totalMinutes = Math.ceil(diffMs / 60000);
+  const days = Math.floor(totalMinutes / (60 * 24));
+  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+  const minutes = totalMinutes % 60;
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
 function parseApiNumber(value: unknown) {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string") {
@@ -290,6 +301,7 @@ export function App() {
   const [createAtomicBuyAmount, setCreateAtomicBuyAmount] = useState("1");
   const [createWhitelistThreshold, setCreateWhitelistThreshold] = useState("4");
   const [createWhitelistSlotSize, setCreateWhitelistSlotSize] = useState("0.2");
+  const [createWhitelistScheduleEnabled, setCreateWhitelistScheduleEnabled] = useState(false);
   const [createWhitelistOpensAt, setCreateWhitelistOpensAt] = useState("");
   const [createWhitelistAddresses, setCreateWhitelistAddresses] = useState("");
   const [createTaxBps, setCreateTaxBps] = useState("1");
@@ -297,6 +309,7 @@ export function App() {
   const [createTaxTreasuryShareBps, setCreateTaxTreasuryShareBps] = useState("5000");
   const [createTaxTreasuryWallet, setCreateTaxTreasuryWallet] = useState(import.meta.env.VITE_DEFAULT_TREASURY ?? "");
   const [nativeUsdPrice, setNativeUsdPrice] = useState<number | null>(null);
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const [factorySnapshot, setFactorySnapshot] = useState<FactorySnapshot | null>(null);
   const [recentLaunchSnapshots, setRecentLaunchSnapshots] = useState<TokenSnapshot[]>([]);
   const [tokenSnapshot, setTokenSnapshot] = useState<TokenSnapshot | null>(null);
@@ -393,6 +406,7 @@ export function App() {
     if (tokenVerification.status === "warning") return "warn";
     return "danger";
   }, [tokenVerification]);
+  const defaultTotalSupply = 1_000_000_000n * 10n ** 18n;
   const trimmedMarketQuery = marketQuery.trim();
   const searchLooksLikeAddress = /^0x[a-fA-F0-9]{40}$/.test(trimmedMarketQuery);
   const filteredLaunchSnapshots = useMemo(() => {
@@ -460,11 +474,11 @@ export function App() {
       ? Math.round(whitelistThresholdValue / whitelistSlotValue)
       : 0;
   const createWhitelistOpensAtUnix = useMemo(() => {
-    if (!createWhitelistOpensAt.trim()) return 0n;
+    if (!createWhitelistScheduleEnabled || !createWhitelistOpensAt.trim()) return 0n;
     const ms = new Date(createWhitelistOpensAt).getTime();
     if (!Number.isFinite(ms) || ms <= 0) return 0n;
     return BigInt(Math.floor(ms / 1000));
-  }, [createWhitelistOpensAt]);
+  }, [createWhitelistOpensAt, createWhitelistScheduleEnabled]);
   const isDelayedWhitelistOpen = createWhitelistOpensAtUnix > 0n;
   const whitelistLocalTimezone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone || t('wlLocalTimeFallback'), [locale]);
   const whitelistOpensAtUtcText = useMemo(() => {
@@ -579,6 +593,11 @@ export function App() {
       setCustomFactoryInput(factoryAddress.trim());
     }
   }, [factoryAddress, usingOfficialFactory]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMs(Date.now()), 30000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const launchMetadata = useMemo(
     () =>
@@ -1687,6 +1706,28 @@ export function App() {
                   const image = resolvePreviewImage(metadata?.image ?? "");
                   const links = launchMetadataLinks(metadata);
                   const isActive = tokenAddress.toLowerCase() === launch.address.toLowerCase();
+                  const launchMarketCapQuote = quoteMarketCap(
+                    launch.totalSupply > 0n ? launch.totalSupply : defaultTotalSupply,
+                    launch.currentPriceQuotePerToken
+                  );
+                  const launchMarketCapUsd =
+                    launchMarketCapQuote > 0n && nativeUsdPrice
+                      ? (Number(launchMarketCapQuote) / 1e18) * nativeUsdPrice
+                      : null;
+                  const launchPriceUsd =
+                    nativeUsdPrice ? (Number(launch.currentPriceQuotePerToken) / 1e18) * nativeUsdPrice : null;
+                  const whitelistCountdownLabel =
+                    launch.state === "WhitelistCommit" && launch.whitelistSnapshot
+                      ? nowMs < Number(launch.whitelistSnapshot.opensAt) * 1000
+                        ? `${t("opensInShort")} ${formatCountdownLabel(Number(launch.whitelistSnapshot.opensAt) * 1000, nowMs)}`
+                        : `${t("endsInShort")} ${formatCountdownLabel(Number(launch.whitelistSnapshot.deadline) * 1000, nowMs)}`
+                      : "";
+                  const cardSecondaryMetric =
+                    launch.state === "WhitelistCommit" && whitelistCountdownLabel
+                      ? whitelistCountdownLabel
+                      : launchPriceUsd
+                        ? formatUsdUnitPrice(launchPriceUsd)
+                        : formatQuotePrice(launch.currentPriceQuotePerToken);
 
                   return (
                     <article key={launch.address} className={`launch-card ${isActive ? "active" : ""}`}>
@@ -1708,7 +1749,7 @@ export function App() {
                                 {metadata?.symbol || launch.symbol} · {launch.launchSuffix || t("launchSuffixFallback")}
                               </div>
                             </div>
-                            <div className="launch-card-price">{formatNative(launch.currentPriceQuotePerToken)}</div>
+                            <div className="launch-card-price">{launchMarketCapUsd ? formatUsdCompact(launchMarketCapUsd) : t("marketCapUnavailable")}</div>
                           </div>
                         <p className="launch-card-description">
                           {metadata?.description ||
@@ -1720,8 +1761,8 @@ export function App() {
                             <strong>{formatPercentFromBps(launch.graduationProgressBps)}</strong>
                           </div>
                           <div>
-                            <span className="metric-label">{t("price")}</span>
-                            <strong>{formatNative(launch.currentPriceQuotePerToken)}</strong>
+                            <span className="metric-label">{launch.state === "WhitelistCommit" ? t("countdownLabel") : t("price")}</span>
+                            <strong>{cardSecondaryMetric}</strong>
                           </div>
                         </div>
                         <div className="metadata-links">
@@ -2200,14 +2241,32 @@ export function App() {
                           </select>
                         </label>
                       </div>
+                      <label className="checkbox-row">
+                        <input
+                          type="checkbox"
+                          checked={createWhitelistScheduleEnabled}
+                          onChange={(e) => {
+                            setCreateWhitelistScheduleEnabled(e.target.checked);
+                            if (!e.target.checked) {
+                              setCreateWhitelistOpensAt("");
+                            }
+                          }}
+                        />
+                        <span>{t("wlScheduleToggle")}</span>
+                      </label>
                       <label className="field">
                         <span>{t("wlOpenTime")}</span>
                         <input
                           type="datetime-local"
                           value={createWhitelistOpensAt}
                           onChange={(e) => setCreateWhitelistOpensAt(e.target.value)}
+                          disabled={!createWhitelistScheduleEnabled}
                         />
-                        <small className="field-note">{tf("wlTimezoneNote", { timezone: whitelistLocalTimezone })}</small>
+                        <small className="field-note">
+                          {createWhitelistScheduleEnabled
+                            ? tf("wlTimezoneNote", { timezone: whitelistLocalTimezone })
+                            : t("wlImmediateToggleNote")}
+                        </small>
                         {isDelayedWhitelistOpen ? <small className="field-note">{tf("wlUtcPreview", { utc: whitelistOpensAtUtcText })}</small> : null}
                       </label>
                       <div className="create-summary-grid compact">

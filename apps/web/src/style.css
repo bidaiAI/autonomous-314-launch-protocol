@@ -1107,6 +1107,22 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   line-height: 1.5;
 }
 
+.checkbox-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  color: var(--text-secondary);
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.checkbox-row input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: #38bdf8;
+}
+
 .create-section h3 { font-size: 1.02rem; }
 .create-section-head {
   display: flex;

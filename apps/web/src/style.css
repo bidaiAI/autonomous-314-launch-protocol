@@ -1729,6 +1729,21 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   line-height: 1.6;
 }
 
+.trade-estimate-card {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: rgba(8, 16, 24, 0.28);
+}
+
+.trade-estimate-card strong {
+  font-size: 1.15rem;
+  line-height: 1.2;
+}
+
 .trade-side-tab {
   min-height: 46px;
   border-radius: var(--radius-md);
@@ -1765,6 +1780,41 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .quick-amount-chip:hover {
   color: var(--text-primary);
   border-color: var(--border-accent);
+}
+
+.trade-advanced {
+  margin-top: 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: rgba(8, 16, 24, 0.24);
+  overflow: hidden;
+}
+
+.trade-advanced summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 12px 14px;
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.trade-advanced summary::-webkit-details-marker {
+  display: none;
+}
+
+.trade-advanced[open] summary {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.trade-advanced-body {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.compact-actions {
+  margin-top: -2px;
 }
 
 .trade-row {

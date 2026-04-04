@@ -2832,54 +2832,74 @@ export function App() {
                           </button>
                         ))}
                       </div>
+                      <div className="trade-estimate-card">
+                        <span className="metric-label">{t("estimatedReceiveLabel")}</span>
+                        <strong>{buyPreviewState ? formatToken(buyPreviewState.tokenOut) : "—"}</strong>
+                        <div className="metric-subtle">
+                          {buyPreviewState
+                            ? tf("buyMinOutInline", { amount: formatToken(applySlippageBps(buyPreviewState.tokenOut, slippageToleranceBps)) })
+                            : t("marketPreviewPending")}
+                        </div>
+                      </div>
                     </>
                   ) : (
-                    <label className="field">
-                      <span>{t("sellAmount")}</span>
-                      <input value={sellInput} onChange={(e) => setSellInput(e.target.value)} />
-                      <small className="field-note">
-                        {sellPreviewState
-                          ? tf("estimatedQuoteOut", { amount: formatNative(sellPreviewState.netQuoteOut) })
-                          : t("marketPreviewPending")}
-                      </small>
-                    </label>
+                    <>
+                      <label className="field">
+                        <span>{t("sellAmount")}</span>
+                        <input value={sellInput} onChange={(e) => setSellInput(e.target.value)} />
+                      </label>
+                      <div className="trade-estimate-card">
+                        <span className="metric-label">{t("estimatedReceiveLabel")}</span>
+                        <strong>{sellPreviewState ? formatNative(sellPreviewState.netQuoteOut) : "—"}</strong>
+                        <div className="metric-subtle">
+                          {sellPreviewState
+                            ? tf("sellMinOutInline", { amount: formatNative(applySlippageBps(sellPreviewState.netQuoteOut, slippageToleranceBps)) })
+                            : t("marketPreviewPending")}
+                        </div>
+                      </div>
+                    </>
                   )}
-                  <label className="field">
-                    <span>{t("slippage")}</span>
-                    <input value={slippagePercent} inputMode="decimal" onChange={(e) => setSlippagePercent(e.target.value)} />
-                    <small className="field-note">{tf("slippageHint", { percent: formatPercentInput(slippagePercent), bps: slippageToleranceBps.toString() })}</small>
-                  </label>
                   <div className="button-row stacked">
                     {tradeSide === "buy" ? (
-                      <>
-                        <button className="secondary-button" onClick={handlePreviewBuy} disabled={!tokenAddress || !isBonding || !canWriteVerifiedLaunch}>{t("previewBuy")}</button>
-                        <button onClick={handleExecuteBuy} disabled={!isBonding || walletWrongNetwork || !canWriteVerifiedLaunch}>{t("executeBuy")}</button>
-                      </>
+                      <button onClick={handleExecuteBuy} disabled={!isBonding || walletWrongNetwork || !canWriteVerifiedLaunch}>{t("executeBuy")}</button>
                     ) : (
-                      <>
-                        <button className="secondary-button" onClick={handlePreviewSell} disabled={!tokenAddress || !isBonding || !canWriteVerifiedLaunch}>{t("previewSell")}</button>
-                        <button onClick={handleExecuteSell} disabled={!isBonding || walletWrongNetwork || !canWriteVerifiedLaunch}>{t("executeSell")}</button>
-                      </>
+                      <button onClick={handleExecuteSell} disabled={!isBonding || walletWrongNetwork || !canWriteVerifiedLaunch}>{t("executeSell")}</button>
                     )}
                   </div>
+                  <details className="trade-advanced">
+                    <summary>{t("advancedTradeSettings")}</summary>
+                    <div className="trade-advanced-body">
+                      <label className="field">
+                        <span>{t("slippage")}</span>
+                        <input value={slippagePercent} inputMode="decimal" onChange={(e) => setSlippagePercent(e.target.value)} />
+                        <small className="field-note">{tf("slippageHint", { percent: formatPercentInput(slippagePercent), bps: slippageToleranceBps.toString() })}</small>
+                      </label>
+                      <div className="button-row stacked compact-actions">
+                        {tradeSide === "buy" ? (
+                          <button className="secondary-button" onClick={handlePreviewBuy} disabled={!tokenAddress || !isBonding || !canWriteVerifiedLaunch}>{t("previewBuy")}</button>
+                        ) : (
+                          <button className="secondary-button" onClick={handlePreviewSell} disabled={!tokenAddress || !isBonding || !canWriteVerifiedLaunch}>{t("previewSell")}</button>
+                        )}
+                      </div>
+                      {tradeSide === "buy" && buyPreviewState && (
+                        <dl className="data-list compact">
+                          <div><dt>{t("buyTokenOut")}</dt><dd>{formatToken(buyPreviewState.tokenOut)}</dd></div>
+                          <div><dt>{t("buyFee")}</dt><dd>{formatNative(buyPreviewState.feeAmount)}</dd></div>
+                          <div><dt>{t("buyRefund")}</dt><dd>{formatNative(buyPreviewState.refundAmount)}</dd></div>
+                          <div><dt>{t("buyMinOut")}</dt><dd>{formatToken(applySlippageBps(buyPreviewState.tokenOut, slippageToleranceBps))}</dd></div>
+                        </dl>
+                      )}
 
-                  {tradeSide === "buy" && buyPreviewState && (
-                    <dl className="data-list compact">
-                      <div><dt>{t("buyTokenOut")}</dt><dd>{formatToken(buyPreviewState.tokenOut)}</dd></div>
-                      <div><dt>{t("buyFee")}</dt><dd>{formatNative(buyPreviewState.feeAmount)}</dd></div>
-                      <div><dt>{t("buyRefund")}</dt><dd>{formatNative(buyPreviewState.refundAmount)}</dd></div>
-                      <div><dt>{t("buyMinOut")}</dt><dd>{formatToken(applySlippageBps(buyPreviewState.tokenOut, slippageToleranceBps))}</dd></div>
-                    </dl>
-                  )}
-
-                  {tradeSide === "sell" && sellPreviewState && (
-                    <dl className="data-list compact">
-                      <div><dt>{t("sellGrossOut")}</dt><dd>{formatNative(sellPreviewState.grossQuoteOut)}</dd></div>
-                      <div><dt>{t("sellNetOut")}</dt><dd>{formatNative(sellPreviewState.netQuoteOut)}</dd></div>
-                      <div><dt>{t("sellFee")}</dt><dd>{formatNative(sellPreviewState.totalFee)}</dd></div>
-                      <div><dt>{t("sellMinOut")}</dt><dd>{formatNative(applySlippageBps(sellPreviewState.netQuoteOut, slippageToleranceBps))}</dd></div>
-                    </dl>
-                  )}
+                      {tradeSide === "sell" && sellPreviewState && (
+                        <dl className="data-list compact">
+                          <div><dt>{t("sellGrossOut")}</dt><dd>{formatNative(sellPreviewState.grossQuoteOut)}</dd></div>
+                          <div><dt>{t("sellNetOut")}</dt><dd>{formatNative(sellPreviewState.netQuoteOut)}</dd></div>
+                          <div><dt>{t("sellFee")}</dt><dd>{formatNative(sellPreviewState.totalFee)}</dd></div>
+                          <div><dt>{t("sellMinOut")}</dt><dd>{formatNative(applySlippageBps(sellPreviewState.netQuoteOut, slippageToleranceBps))}</dd></div>
+                        </dl>
+                      )}
+                    </div>
+                  </details>
                 </>
               )}
             </article>

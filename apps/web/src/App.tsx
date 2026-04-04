@@ -1949,34 +1949,29 @@ export function App() {
               )}
 
               <section className="launch-family-strip" aria-label={t("launchFamiliesAria")}>
-                {visibleLaunchFamilies.map((family) => {
-                  const isSelected = family.suffix === selectedLaunchFamily.suffix;
-                  return (
-                    <article
-                      key={family.suffix}
-                      className={`launch-family-card ${isSelected ? "selected" : ""}`}
-                    >
-                      <div className="launch-family-head">
-                        <div>
-                          <span className="section-kicker">{family.eyebrow}</span>
-                          <h3>{family.title}</h3>
-                        </div>
-                        <div className="launch-family-badges">
-                          <span className="launch-family-suffix">{family.suffix}</span>
-                          <span className={`family-state ${family.status}`}>
-                            {t("modeLive")}
-                          </span>
-                        </div>
-                      </div>
-                      <p>{family.description}</p>
-                      <ul className="launch-family-points">
-                        {family.operations.map((point: string) => (
-                          <li key={`${family.suffix}-${point}`}>{point}</li>
-                        ))}
-                      </ul>
-                    </article>
-                  );
-                })}
+                <article
+                  key={selectedLaunchFamily.suffix}
+                  className="launch-family-card selected"
+                >
+                  <div className="launch-family-head">
+                    <div>
+                      <span className="section-kicker">{selectedLaunchFamily.eyebrow}</span>
+                      <h3>{selectedLaunchFamily.title}</h3>
+                    </div>
+                    <div className="launch-family-badges">
+                      <span className="launch-family-suffix">{selectedLaunchFamily.suffix}</span>
+                      <span className={`family-state ${selectedLaunchFamily.status}`}>
+                        {t("modeLive")}
+                      </span>
+                    </div>
+                  </div>
+                  <p>{selectedLaunchFamily.description}</p>
+                  <ul className="launch-family-points">
+                    {selectedLaunchFamily.operations.map((point: string) => (
+                      <li key={`${selectedLaunchFamily.suffix}-${point}`}>{point}</li>
+                    ))}
+                  </ul>
+                </article>
               </section>
 
               <section className="create-steps-strip">

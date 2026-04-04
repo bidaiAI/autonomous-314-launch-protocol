@@ -4,7 +4,7 @@
       <stop stop-color="#122031"/>
       <stop offset="1" stop-color="#09111A"/>
     </linearGradient>
-    <linearGradient id="accent" x1="98" y1="74" x2="236" y2="228" gradientUnits="userSpaceOnUse">
+    <linearGradient id="accent" x1="98" y1="74" x2="190" y2="172" gradientUnits="userSpaceOnUse">
       <stop stop-color="#7CF9E8"/>
       <stop offset="0.48" stop-color="#38BDF8"/>
       <stop offset="1" stop-color="#8B5CF6"/>
@@ -17,10 +17,9 @@
 
   <rect x="24" y="24" width="272" height="272" rx="76" fill="#060D14"/>
   <rect x="32" y="32" width="256" height="256" rx="68" fill="url(#panel)" stroke="#1B3345" stroke-width="4"/>
-  <path d="M102 86H132L172 166H142L102 86Z" fill="url(#accent)" opacity="0.92"/>
-  <path d="M134 76H168L220 192H186L134 76Z" fill="url(#accent)"/>
-  <path d="M116 136H188L176 164H128L116 136Z" fill="#EAFBFF"/>
-  <text x="78" y="246" fill="#F8FBFF" font-size="120" font-weight="900" font-family="Inter, Arial, sans-serif" letter-spacing="-8">314</text>
+  <path d="M96 82H130L168 160H134L96 82Z" fill="url(#accent)" opacity="0.92"/>
+  <path d="M126 72H162L198 148H162L126 72Z" fill="url(#accent)" opacity="0.82"/>
+  <text x="72" y="248" fill="#F8FBFF" font-size="124" font-weight="900" font-family="Inter, Arial, sans-serif" letter-spacing="-10">314</text>
 
   <text x="348" y="136" fill="url(#word)" font-size="78" font-weight="800" font-family="Inter, Arial, sans-serif" letter-spacing="-2">AUTONOMOUS 314</text>
   <text x="352" y="190" fill="#90ABC0" font-size="24" font-weight="600" font-family="Inter, Arial, sans-serif" letter-spacing="5">OPEN MEME LAUNCH PROTOCOL</text>

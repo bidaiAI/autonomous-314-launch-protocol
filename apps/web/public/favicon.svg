@@ -4,7 +4,7 @@
       <stop stop-color="#122031"/>
       <stop offset="1" stop-color="#09111A"/>
     </linearGradient>
-    <linearGradient id="accent" x1="76" y1="64" x2="176" y2="166" gradientUnits="userSpaceOnUse">
+    <linearGradient id="accent" x1="70" y1="60" x2="132" y2="120" gradientUnits="userSpaceOnUse">
       <stop stop-color="#7CF9E8"/>
       <stop offset="0.48" stop-color="#38BDF8"/>
       <stop offset="1" stop-color="#8B5CF6"/>
@@ -12,8 +12,7 @@
   </defs>
   <rect x="16" y="16" width="224" height="224" rx="62" fill="#050B12"/>
   <rect x="26" y="26" width="204" height="204" rx="54" fill="url(#panel)" stroke="#1B3345" stroke-width="3"/>
-  <path d="M84 80H110L144 148H118L84 80Z" fill="url(#accent)" opacity="0.92"/>
-  <path d="M108 74H136L178 164H150L108 74Z" fill="url(#accent)"/>
-  <path d="M96 122H154L145 144H105L96 122Z" fill="#EAFBFF"/>
-  <text x="52" y="186" fill="#F8FBFF" font-size="76" font-weight="900" font-family="Inter, Arial, sans-serif" letter-spacing="-5">314</text>
+  <path d="M72 70H100L132 136H104L72 70Z" fill="url(#accent)" opacity="0.92"/>
+  <path d="M96 62H126L158 128H128L96 62Z" fill="url(#accent)" opacity="0.82"/>
+  <text x="44" y="180" fill="#F8FBFF" font-size="74" font-weight="900" font-family="Inter, Arial, sans-serif" letter-spacing="-6">314</text>
 </svg>

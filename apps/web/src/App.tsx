@@ -2702,6 +2702,19 @@ export function App() {
               {isWhitelistCommit && whitelistSnapshot ? (
                 <>
                   <h2>{t("wlCommitTitle")}</h2>
+                  <div className="trade-contract-bar">
+                    <div>
+                      <span className="metric-label">{t("tokenAddressLabel")}</span>
+                      <strong>{shortAddress(tokenSnapshot?.address || tokenAddress)}</strong>
+                    </div>
+                    <button
+                      type="button"
+                      className="copy-chip"
+                      onClick={() => void handleCopyText(tokenSnapshot?.address || tokenAddress, t("tokenAddressLabel"))}
+                    >
+                      {t("copyContract")}
+                    </button>
+                  </div>
                   <div className="create-summary-grid compact">
                           <div><span>{t("mode")}</span><strong>{tokenSnapshot?.launchSuffix || "b314"}</strong></div>
                     <div><span>{t("wlSeatSizeShort")}</span><strong>{formatNative(whitelistSnapshot.slotSize)}</strong></div>
@@ -2711,6 +2724,10 @@ export function App() {
                   <div className={`callout ${whitelistApproved ? "success" : "warn"} compact-callout`}>
                     <strong>{whitelistApproved ? t("wlApproved") : t("wlNotApproved")}</strong>
                     <p>{t("wlCommitExplain")}</p>
+                  </div>
+                  <div className="trade-hint-card">
+                    <strong>{t("wlDirectTransferTitle")}</strong>
+                    <p>{tf("wlDirectTransferBody", { amount: formatNative(whitelistSnapshot.slotSize) })}</p>
                   </div>
                   <div className="button-row stacked">
                     <button onClick={handleWhitelistCommit} disabled={!canCommitWhitelist || walletWrongNetwork || !canWriteVerifiedLaunch}>
@@ -2735,6 +2752,19 @@ export function App() {
               ) : (
                 <>
                   <h2>{t("bondingActions")}</h2>
+                  <div className="trade-contract-bar">
+                    <div>
+                      <span className="metric-label">{t("tokenAddressLabel")}</span>
+                      <strong>{shortAddress(tokenSnapshot?.address || tokenAddress)}</strong>
+                    </div>
+                    <button
+                      type="button"
+                      className="copy-chip"
+                      onClick={() => void handleCopyText(tokenSnapshot?.address || tokenAddress, t("tokenAddressLabel"))}
+                    >
+                      {t("copyContract")}
+                    </button>
+                  </div>
                   <div className="trade-side-tabs">
                     <button
                       type="button"
@@ -2753,6 +2783,10 @@ export function App() {
                   </div>
                   {tradeSide === "buy" ? (
                     <>
+                      <div className="trade-hint-card">
+                        <strong>{t("directTransferBuyTitle")}</strong>
+                        <p>{t("directTransferBuyBody")}</p>
+                      </div>
                       <label className="field">
                         <span>{`${t("buyAmount")} (${activeProtocolProfile.nativeSymbol})`}</span>
                         <input value={buyInput} inputMode="decimal" onChange={(e) => setBuyInput(e.target.value)} />

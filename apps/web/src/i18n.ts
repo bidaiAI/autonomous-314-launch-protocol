@@ -495,6 +495,10 @@ const strings = {
     // launch — details
     tokenAddressLabel: "Token Address",
     copyContract: "Copy Contract",
+    directTransferBuyTitle: "Direct transfer also works",
+    directTransferBuyBody: "In standard bonding mode, you can also send BNB directly to the token contract address to buy from the curve.",
+    wlDirectTransferTitle: "Commit by direct transfer",
+    wlDirectTransferBody: "During the whitelist window, approved wallets can also send exactly {amount} to the token contract address to commit one seat.",
     copyCreator: "Copy Creator",
     viewOnExplorer: "View on Explorer",
     mode: "Mode",
@@ -1062,6 +1066,10 @@ const strings = {
     // 详情 — 数据字段
     tokenAddressLabel: "代币地址",
     copyContract: "复制合约",
+    directTransferBuyTitle: "也可以直接转账买入",
+    directTransferBuyBody: "在标准联合曲线阶段，也可以直接向代币合约地址转入 BNB 买入曲线仓位。",
+    wlDirectTransferTitle: "也可直接转账承诺席位",
+    wlDirectTransferBody: "白名单窗口内，已批准地址也可以向代币合约地址精确转入 {amount} 来承诺一个席位。",
     copyCreator: "复制创建者",
     viewOnExplorer: "在浏览器中查看",
     mode: "模式",

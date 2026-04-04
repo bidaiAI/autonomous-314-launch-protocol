@@ -1647,6 +1647,46 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   margin-bottom: 8px;
 }
 
+.trade-contract-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: rgba(8, 16, 24, 0.38);
+}
+
+.trade-contract-bar strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+.trade-hint-card {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(94, 234, 212, 0.16);
+  background: rgba(94, 234, 212, 0.06);
+}
+
+.trade-hint-card strong {
+  font-size: 0.84rem;
+}
+
+.trade-hint-card p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+
 .trade-side-tab {
   min-height: 46px;
   border-radius: var(--radius-md);
@@ -1990,6 +2030,8 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   .content-tabs { width: 100%; }
   .content-tabs { display: grid; grid-template-columns: 1fr 1fr; }
   .quick-amount-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .trade-contract-bar { flex-direction: column; align-items: flex-start; }
+  .trade-contract-bar .copy-chip { width: 100%; justify-content: center; }
   .launch-mini-art { width: 60px; height: 60px; border-radius: 16px; }
   .trade-row { grid-template-columns: 1fr; gap: 10px; }
   .subpanel { padding: 16px; }

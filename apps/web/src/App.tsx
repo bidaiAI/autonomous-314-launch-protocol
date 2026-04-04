@@ -311,6 +311,11 @@ export function App() {
     return BigInt(Math.floor(ms / 1000));
   }, [createWhitelistOpensAt]);
   const isDelayedWhitelistOpen = createWhitelistOpensAtUnix > 0n;
+  const whitelistLocalTimezone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone || t('wlLocalTimeFallback'), [locale]);
+  const whitelistOpensAtUtcText = useMemo(() => {
+    if (!isDelayedWhitelistOpen) return '';
+    return new Date(Number(createWhitelistOpensAtUnix) * 1000).toUTCString().replace('GMT', 'UTC');
+  }, [createWhitelistOpensAtUnix, isDelayedWhitelistOpen]);
   const whitelistAddressCount = parsedWhitelistAddresses?.length ?? 0;
   const requiresAtomicBuy = createMode === "standard" || createMode === "taxed";
   const requiresWhitelistCommit = createMode === "whitelist" || createMode === "whitelistTaxed";
@@ -318,9 +323,10 @@ export function App() {
     !requiresWhitelistCommit || (parsedWhitelistAddresses !== null && whitelistAddressCount >= whitelistSeatTarget && whitelistSeatTarget > 0);
   const officialFactoryAddress = (import.meta.env.VITE_FACTORY_ADDRESS ?? "").trim().toLowerCase();
   const usingOfficialFactory = Boolean(factoryAddress && officialFactoryAddress && factoryAddress.trim().toLowerCase() === officialFactoryAddress);
-  const factorySupportsWhitelistMode = factorySnapshot?.supportsWhitelistMode ?? usingOfficialFactory;
-  const factorySupportsTaxedMode = factorySnapshot?.supportsTaxedMode ?? usingOfficialFactory;
-  const factorySupportsWhitelistTaxedMode = factorySnapshot?.supportsWhitelistTaxedMode ?? usingOfficialFactory;
+  const assumeOfficialFactoryCapabilities = Boolean(officialFactoryAddress && (usingOfficialFactory || factoryAddress.trim().length === 0));
+  const factorySupportsWhitelistMode = factorySnapshot?.supportsWhitelistMode ?? assumeOfficialFactoryCapabilities;
+  const factorySupportsTaxedMode = factorySnapshot?.supportsTaxedMode ?? assumeOfficialFactoryCapabilities;
+  const factorySupportsWhitelistTaxedMode = factorySnapshot?.supportsWhitelistTaxedMode ?? assumeOfficialFactoryCapabilities;
   const selectedCreateFee =
     isWhitelistFamily
       ? factorySnapshot?.whitelistCreateFee ?? (usingOfficialFactory ? parseEther('0.03') : 0n)
@@ -338,7 +344,7 @@ export function App() {
       {
         suffix: "b314",
         title: t("modeB314Title"),
-        status: "factory" as const,
+        status: factorySupportsWhitelistMode ? "live" as const : "factory" as const,
         eyebrow: t("modeB314Eyebrow"),
         description: t("modeB314Desc"),
         operations: ta("modeB314Points")
@@ -346,7 +352,7 @@ export function App() {
       {
         suffix: "1314–9314",
         title: t("modeTaxTitle"),
-        status: "planned" as const,
+        status: factorySupportsTaxedMode ? "live" as const : "planned" as const,
         eyebrow: t("modeTaxEyebrow"),
         description: t("modeTaxDesc"),
         operations: ta("modeTaxPoints")
@@ -354,13 +360,13 @@ export function App() {
       {
         suffix: "f314",
         title: t("modeF314Title"),
-        status: "planned" as const,
+        status: factorySupportsWhitelistTaxedMode ? "live" as const : "planned" as const,
         eyebrow: t("modeF314Eyebrow"),
         description: t("modeF314Desc"),
         operations: ta("modeF314Points")
       }
     ],
-    [locale]
+    [factorySupportsTaxedMode, factorySupportsWhitelistMode, factorySupportsWhitelistTaxedMode, locale]
   );
   const selectedLaunchFamily = useMemo(() => {
     if (createMode === "whitelist") return launchFamilies[1];
@@ -1590,7 +1596,7 @@ export function App() {
 
               <div className="create-layout">
                 <div className="create-sections">
-                  <section className="create-section">
+                  <section className="create-section identity-section">
                     <div className="create-section-head">
                       <div>
                         <span className="section-kicker">{t("identityKicker")}</span>
@@ -1598,12 +1604,13 @@ export function App() {
                       </div>
                       <span className="status-pill success">{selectedLaunchFamily.suffix.toUpperCase()}</span>
                     </div>
-                    <div className="metadata-two-column">
-                      <label className="field">
+                    <p className="create-section-lead">{t("identityLead")}</p>
+                    <div className="metadata-two-column identity-grid">
+                      <label className="field prominent-field">
                         <span>{t("tokenName")}</span>
                         <input value={createName} onChange={(e) => setCreateName(e.target.value)} placeholder={t("tokenNamePlaceholder")} />
                       </label>
-                      <label className="field">
+                      <label className="field prominent-field">
                         <span>{t("tokenSymbol")}</span>
                         <input value={createSymbol} onChange={(e) => setCreateSymbol(e.target.value)} placeholder={t("tokenSymbolPlaceholder")} />
                       </label>
@@ -1826,6 +1833,8 @@ export function App() {
                           value={createWhitelistOpensAt}
                           onChange={(e) => setCreateWhitelistOpensAt(e.target.value)}
                         />
+                        <small className="field-note">{tf("wlTimezoneNote", { timezone: whitelistLocalTimezone })}</small>
+                        {isDelayedWhitelistOpen ? <small className="field-note">{tf("wlUtcPreview", { utc: whitelistOpensAtUtcText })}</small> : null}
                       </label>
                       <div className="create-summary-grid compact">
                           <div><span>{t("wlSeatTarget")}</span><strong>{whitelistSeatTarget || "—"}</strong></div>

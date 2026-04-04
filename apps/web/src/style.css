@@ -966,6 +966,49 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 }
 .create-section:hover { border-color: rgba(148, 163, 184, 0.22); }
 
+.identity-section {
+  border-color: rgba(94, 234, 212, 0.2);
+  background: linear-gradient(180deg, rgba(14, 25, 38, 0.96), rgba(10, 18, 28, 0.92));
+  box-shadow: 0 0 0 1px rgba(94, 234, 212, 0.06) inset, 0 24px 60px rgba(2, 12, 27, 0.28);
+}
+
+.create-section-lead {
+  margin: -4px 0 16px;
+  color: var(--text-secondary);
+  line-height: 1.7;
+  max-width: 58ch;
+}
+
+.identity-grid {
+  margin-bottom: 12px;
+}
+
+.prominent-field span {
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+}
+
+.prominent-field input {
+  min-height: 58px;
+  font-size: 1.06rem;
+  font-weight: 600;
+  border-color: rgba(94, 234, 212, 0.18);
+  background: linear-gradient(180deg, rgba(7, 15, 24, 0.96), rgba(10, 19, 29, 0.92));
+  box-shadow: 0 0 0 1px rgba(94, 234, 212, 0.05) inset;
+}
+
+.prominent-field input::placeholder {
+  color: rgba(245, 247, 251, 0.42);
+}
+
+.field-note {
+  display: block;
+  margin-top: 8px;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
 .create-section h3 { font-size: 1.02rem; }
 .create-section-head {
   display: flex;

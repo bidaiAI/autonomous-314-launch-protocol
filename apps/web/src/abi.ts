@@ -1,6 +1,6 @@
-import factoryArtifact from "./artifacts/LaunchFactory.json";
-import tokenArtifact from "./artifacts/LaunchToken.json";
-import whitelistTokenArtifact from "./artifacts/LaunchTokenWhitelist.json";
+import factoryArtifact from "../../../packages/contracts/artifacts/contracts/LaunchFactory.sol/LaunchFactory.json";
+import tokenArtifact from "../../../packages/contracts/artifacts/contracts/LaunchToken.sol/LaunchToken.json";
+import whitelistTokenArtifact from "../../../packages/contracts/artifacts/contracts/LaunchTokenWhitelist.sol/LaunchTokenWhitelist.json";
 import taxedTokenArtifact from "../../../packages/contracts/artifacts/contracts/LaunchTokenTaxed.sol/LaunchTokenTaxed.json";
 import whitelistTaxedTokenArtifact from "../../../packages/contracts/artifacts/contracts/LaunchTokenWhitelistTaxed.sol/LaunchTokenWhitelistTaxed.json";
 import pairArtifact from "./artifacts/IUniswapV2LikePair.json";
@@ -98,6 +98,7 @@ const extraFactoryAbi = [
       { name: "metadataURI", type: "string" },
       { name: "whitelistThreshold", type: "uint256" },
       { name: "whitelistSlotSize", type: "uint256" },
+      { name: "whitelistOpensAt", type: "uint256" },
       { name: "whitelistAddresses", type: "address[]" }
     ],
     outputs: [{ name: "token", type: "address" }]
@@ -112,6 +113,7 @@ const extraFactoryAbi = [
       { name: "metadataURI", type: "string" },
       { name: "whitelistThreshold", type: "uint256" },
       { name: "whitelistSlotSize", type: "uint256" },
+      { name: "whitelistOpensAt", type: "uint256" },
       { name: "whitelistAddresses", type: "address[]" },
       { name: "salt", type: "bytes32" }
     ],
@@ -127,6 +129,7 @@ const extraFactoryAbi = [
       { name: "metadataURI", type: "string" },
       { name: "whitelistThreshold", type: "uint256" },
       { name: "whitelistSlotSize", type: "uint256" },
+      { name: "whitelistOpensAt", type: "uint256" },
       { name: "whitelistAddresses", type: "address[]" }
     ],
     outputs: [{ name: "token", type: "address" }]
@@ -141,6 +144,7 @@ const extraFactoryAbi = [
       { name: "metadataURI", type: "string" },
       { name: "whitelistThreshold", type: "uint256" },
       { name: "whitelistSlotSize", type: "uint256" },
+      { name: "whitelistOpensAt", type: "uint256" },
       { name: "whitelistAddresses", type: "address[]" },
       { name: "salt", type: "bytes32" }
     ],
@@ -209,6 +213,7 @@ const extraFactoryAbi = [
         components: [
           { name: "whitelistThreshold", type: "uint256" },
           { name: "whitelistSlotSize", type: "uint256" },
+          { name: "whitelistOpensAt", type: "uint256" },
           { name: "whitelistAddresses", type: "address[]" }
         ]
       },
@@ -240,6 +245,7 @@ const extraFactoryAbi = [
         components: [
           { name: "whitelistThreshold", type: "uint256" },
           { name: "whitelistSlotSize", type: "uint256" },
+          { name: "whitelistOpensAt", type: "uint256" },
           { name: "whitelistAddresses", type: "address[]" }
         ]
       },
@@ -272,6 +278,7 @@ const extraFactoryAbi = [
         components: [
           { name: "whitelistThreshold", type: "uint256" },
           { name: "whitelistSlotSize", type: "uint256" },
+          { name: "whitelistOpensAt", type: "uint256" },
           { name: "whitelistAddresses", type: "address[]" }
         ]
       },
@@ -303,6 +310,7 @@ const extraFactoryAbi = [
         components: [
           { name: "whitelistThreshold", type: "uint256" },
           { name: "whitelistSlotSize", type: "uint256" },
+          { name: "whitelistOpensAt", type: "uint256" },
           { name: "whitelistAddresses", type: "address[]" }
         ]
       },

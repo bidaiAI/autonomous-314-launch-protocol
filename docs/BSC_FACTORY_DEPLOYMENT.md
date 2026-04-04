@@ -5,7 +5,7 @@ This document describes the official BSC V2 deployment path for the open protoco
 ## Official BSC production profile
 
 - chain: **BSC Mainnet**
-- official V2 factory: `0xB7cc1e41D997667fa1e1314415b3F2ec815D0314`
+- official V2 factory: `0x09261904bf6f7Ce23dee2058379A49DF53B80314`
 - router: `0x10ED43C718714eb63d5aA57B78B54704E256024E`
 - protocol fee recipient fallback: `0xC4187bE6b362DF625696d4a9ec5E6FA461CC0314`
 - standard/tax create fee: `0.01 BNB`

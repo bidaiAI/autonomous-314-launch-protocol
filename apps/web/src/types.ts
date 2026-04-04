@@ -46,6 +46,7 @@ export type TaxConfig = {
 
 export type WhitelistSnapshot = {
   status: bigint;
+  opensAt: bigint;
   deadline: bigint;
   threshold: bigint;
   slotSize: bigint;
@@ -53,7 +54,6 @@ export type WhitelistSnapshot = {
   seatsFilled: bigint;
   committedTotal: bigint;
   tokensPerSeat: bigint;
-  whitelistCount: bigint;
 };
 
 export type TokenSnapshot = {

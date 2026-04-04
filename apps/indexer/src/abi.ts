@@ -1,5 +1,5 @@
-import factoryArtifact from "./artifacts/LaunchFactory.json";
-import tokenArtifact from "./artifacts/LaunchToken.json";
+import factoryArtifact from "../../../packages/contracts/artifacts/contracts/LaunchFactory.sol/LaunchFactory.json";
+import tokenArtifact from "../../../packages/contracts/artifacts/contracts/LaunchToken.sol/LaunchToken.json";
 import pairArtifact from "./artifacts/IUniswapV2LikePair.json";
 
 export const launchFactoryAbi = factoryArtifact.abi;

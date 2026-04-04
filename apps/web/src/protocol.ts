@@ -237,6 +237,7 @@ type SnapshotLaunchJson = {
   whitelistStatus?: number;
   whitelistSnapshot?: {
     status: string | number;
+    opensAt: string;
     deadline: string;
     threshold: string;
     slotSize: string;
@@ -244,7 +245,6 @@ type SnapshotLaunchJson = {
     seatsFilled: string;
     committedTotal: string;
     tokensPerSeat: string;
-    whitelistCount: string;
   } | null;
   dexTokenReserve: string;
   dexQuoteReserve: string;
@@ -689,6 +689,7 @@ function buildWhitelistLaunchInitCode(params: {
   graduationQuoteReserve: bigint;
   whitelistThreshold: bigint;
   whitelistSlotSize: bigint;
+  whitelistOpensAt: bigint;
   whitelistAddresses: readonly `0x${string}`[];
 }): Hex {
   const encodedArgs = encodeAbiParameters(
@@ -700,6 +701,7 @@ function buildWhitelistLaunchInitCode(params: {
       { type: "address" },
       { type: "address" },
       { type: "address" },
+      { type: "uint256" },
       { type: "uint256" },
       { type: "uint256" },
       { type: "uint256" },
@@ -716,6 +718,7 @@ function buildWhitelistLaunchInitCode(params: {
       params.graduationQuoteReserve,
       params.whitelistThreshold,
       params.whitelistSlotSize,
+      params.whitelistOpensAt,
       params.whitelistAddresses
     ]
   );
@@ -785,6 +788,7 @@ function buildWhitelistTaxedLaunchInitCode(params: {
   graduationQuoteReserve: bigint;
   whitelistThreshold: bigint;
   whitelistSlotSize: bigint;
+  whitelistOpensAt: bigint;
   whitelistAddresses: readonly `0x${string}`[];
   launchModeId: number;
   taxBps: number;
@@ -801,6 +805,7 @@ function buildWhitelistTaxedLaunchInitCode(params: {
       { type: "address" },
       { type: "address" },
       { type: "address" },
+      { type: "uint256" },
       { type: "uint256" },
       { type: "uint256" },
       { type: "uint256" },
@@ -822,6 +827,7 @@ function buildWhitelistTaxedLaunchInitCode(params: {
       params.graduationQuoteReserve,
       params.whitelistThreshold,
       params.whitelistSlotSize,
+      params.whitelistOpensAt,
       params.whitelistAddresses,
       params.launchModeId,
       params.taxBps,
@@ -847,6 +853,7 @@ async function findVanityLaunchSalt(params: {
   graduationQuoteReserve: bigint;
   whitelistThreshold?: bigint;
   whitelistSlotSize?: bigint;
+  whitelistOpensAt?: bigint;
   whitelistAddresses?: readonly `0x${string}`[];
   taxBps?: number;
   burnShareBps?: number;
@@ -877,6 +884,7 @@ async function findVanityLaunchSalt(params: {
           graduationQuoteReserve: params.graduationQuoteReserve,
           whitelistThreshold: params.whitelistThreshold ?? 0n,
           whitelistSlotSize: params.whitelistSlotSize ?? 0n,
+          whitelistOpensAt: params.whitelistOpensAt ?? 0n,
           whitelistAddresses: params.whitelistAddresses ?? []
         })
       : params.mode === "taxed"
@@ -907,6 +915,7 @@ async function findVanityLaunchSalt(params: {
               graduationQuoteReserve: params.graduationQuoteReserve,
               whitelistThreshold: params.whitelistThreshold ?? 0n,
               whitelistSlotSize: params.whitelistSlotSize ?? 0n,
+              whitelistOpensAt: params.whitelistOpensAt ?? 0n,
               whitelistAddresses: params.whitelistAddresses ?? [],
               launchModeId: 12,
               taxBps: params.taxBps ?? 100,
@@ -1254,14 +1263,14 @@ export async function readToken(address: string): Promise<TokenSnapshot> {
         ? null
         : {
             status: whitelistSnapshot[0],
-            deadline: whitelistSnapshot[1],
-            threshold: whitelistSnapshot[2],
-            slotSize: whitelistSnapshot[3],
-            seatCount: whitelistSnapshot[4],
-            seatsFilled: whitelistSnapshot[5],
-            committedTotal: whitelistSnapshot[6],
-            tokensPerSeat: whitelistSnapshot[7],
-            whitelistCount: whitelistSnapshot[8]
+            opensAt: whitelistSnapshot[1],
+            deadline: whitelistSnapshot[2],
+            threshold: whitelistSnapshot[3],
+            slotSize: whitelistSnapshot[4],
+            seatCount: whitelistSnapshot[5],
+            seatsFilled: whitelistSnapshot[6],
+            committedTotal: whitelistSnapshot[7],
+            tokensPerSeat: whitelistSnapshot[8]
           },
     dexTokenReserve: dexReserves[0],
     dexQuoteReserve: dexReserves[1]
@@ -1477,6 +1486,7 @@ export async function createLaunch(
     minTokenOut?: bigint;
     whitelistThreshold?: bigint;
     whitelistSlotSize?: bigint;
+    whitelistOpensAt?: bigint;
     whitelistAddresses?: readonly `0x${string}`[];
     taxBps?: number;
     burnShareBps?: number;
@@ -1497,6 +1507,7 @@ export async function createLaunch(
   const minTokenOut = params.minTokenOut ?? 0n;
   const whitelistThreshold = params.whitelistThreshold ?? 0n;
   const whitelistSlotSize = params.whitelistSlotSize ?? 0n;
+  const whitelistOpensAt = params.whitelistOpensAt ?? 0n;
   const taxBps = params.taxBps ?? 100;
   const burnShareBps = params.burnShareBps ?? 5000;
   const treasuryShareBps = params.treasuryShareBps ?? 5000;
@@ -1549,22 +1560,24 @@ export async function createLaunch(
     if (!whitelistThreshold || !whitelistSlotSize) {
       throw new Error("Whitelist launches require a threshold and seat size.");
     }
+    const delayedOpen = whitelistOpensAt > 0n;
     hash = await walletClient.writeContract({
       account,
       chain: appChain,
       address: normalizedFactoryAddress,
       abi: launchFactoryAbi,
-      functionName: "createWhitelistLaunchAndCommitWithSalt",
+      functionName: delayedOpen ? "createWhitelistLaunchWithSalt" : "createWhitelistLaunchAndCommitWithSalt",
       args: [
         params.name,
         params.symbol,
         params.metadataURI,
         whitelistThreshold,
         whitelistSlotSize,
+        whitelistOpensAt,
         params.whitelistAddresses ?? [],
         vanity.salt
       ],
-      value: params.createFee + whitelistSlotSize
+      value: delayedOpen ? params.createFee : params.createFee + whitelistSlotSize
     });
   } else if (family === "taxed") {
     if (atomicQuoteIn <= 0n) {
@@ -1593,6 +1606,7 @@ export async function createLaunch(
     if (!whitelistThreshold || !whitelistSlotSize) {
       throw new Error("Whitelist-taxed launches require a threshold and seat size.");
     }
+    const delayedOpen = whitelistOpensAt > 0n;
     const initCode = buildWhitelistTaxedLaunchInitCode({
       name: params.name,
       symbol: params.symbol,
@@ -1604,6 +1618,7 @@ export async function createLaunch(
       graduationQuoteReserve: factorySnapshot.graduationQuoteReserve,
       whitelistThreshold,
       whitelistSlotSize,
+      whitelistOpensAt,
       whitelistAddresses: params.whitelistAddresses ?? [],
       launchModeId: 12,
       taxBps,
@@ -1616,7 +1631,7 @@ export async function createLaunch(
       chain: appChain,
       address: normalizedFactoryAddress,
       abi: launchFactoryAbi,
-      functionName: "createWhitelistTaxLaunchAndCommitWithSalt",
+      functionName: delayedOpen ? "createWhitelistTaxLaunchWithSalt" : "createWhitelistTaxLaunchAndCommitWithSalt",
       args: [
         params.name,
         params.symbol,
@@ -1624,6 +1639,7 @@ export async function createLaunch(
         {
           whitelistThreshold,
           whitelistSlotSize,
+          whitelistOpensAt,
           whitelistAddresses: params.whitelistAddresses ?? []
         },
         {
@@ -1635,7 +1651,7 @@ export async function createLaunch(
         initCode,
         vanity.salt
       ],
-      value: params.createFee + whitelistSlotSize
+      value: delayedOpen ? params.createFee : params.createFee + whitelistSlotSize
     });
   }
 
@@ -1976,14 +1992,14 @@ function convertSnapshotLaunch(launch: SnapshotLaunchJson): TokenSnapshot {
     whitelistSnapshot: launch.whitelistSnapshot
       ? {
           status: BigInt(launch.whitelistSnapshot.status),
+          opensAt: BigInt(launch.whitelistSnapshot.opensAt),
           deadline: BigInt(launch.whitelistSnapshot.deadline),
           threshold: BigInt(launch.whitelistSnapshot.threshold),
           slotSize: BigInt(launch.whitelistSnapshot.slotSize),
           seatCount: BigInt(launch.whitelistSnapshot.seatCount),
           seatsFilled: BigInt(launch.whitelistSnapshot.seatsFilled),
           committedTotal: BigInt(launch.whitelistSnapshot.committedTotal),
-          tokensPerSeat: BigInt(launch.whitelistSnapshot.tokensPerSeat),
-          whitelistCount: BigInt(launch.whitelistSnapshot.whitelistCount)
+          tokensPerSeat: BigInt(launch.whitelistSnapshot.tokensPerSeat)
         }
       : null,
     dexTokenReserve: BigInt(launch.dexTokenReserve),
@@ -2026,14 +2042,14 @@ function convertApiLaunchSummary(launch: ApiLaunchSummaryJson, graduationQuoteRe
     whitelistSnapshot: launch.whitelistSnapshot
       ? {
           status: BigInt(launch.whitelistSnapshot.status),
+          opensAt: BigInt(launch.whitelistSnapshot.opensAt),
           deadline: BigInt(launch.whitelistSnapshot.deadline),
           threshold: BigInt(launch.whitelistSnapshot.threshold),
           slotSize: BigInt(launch.whitelistSnapshot.slotSize),
           seatCount: BigInt(launch.whitelistSnapshot.seatCount),
           seatsFilled: BigInt(launch.whitelistSnapshot.seatsFilled),
           committedTotal: BigInt(launch.whitelistSnapshot.committedTotal),
-          tokensPerSeat: BigInt(launch.whitelistSnapshot.tokensPerSeat),
-          whitelistCount: BigInt(launch.whitelistSnapshot.whitelistCount)
+          tokensPerSeat: BigInt(launch.whitelistSnapshot.tokensPerSeat)
         }
       : null,
     dexTokenReserve: 0n,

@@ -413,14 +413,14 @@ async function readLaunchSnapshot(client: ReturnType<typeof createPublicClient>,
       ? null
       : {
           status: whitelistSnapshot[0].toString(),
-          deadline: whitelistSnapshot[1].toString(),
-          threshold: whitelistSnapshot[2].toString(),
-          slotSize: whitelistSnapshot[3].toString(),
-          seatCount: whitelistSnapshot[4].toString(),
-          seatsFilled: whitelistSnapshot[5].toString(),
-          committedTotal: whitelistSnapshot[6].toString(),
-          tokensPerSeat: whitelistSnapshot[7].toString(),
-          whitelistCount: whitelistSnapshot[8].toString()
+          opensAt: whitelistSnapshot[1].toString(),
+          deadline: whitelistSnapshot[2].toString(),
+          threshold: whitelistSnapshot[3].toString(),
+          slotSize: whitelistSnapshot[4].toString(),
+          seatCount: whitelistSnapshot[5].toString(),
+          seatsFilled: whitelistSnapshot[6].toString(),
+          committedTotal: whitelistSnapshot[7].toString(),
+          tokensPerSeat: whitelistSnapshot[8].toString()
         };
 
   return {

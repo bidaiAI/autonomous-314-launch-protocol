@@ -174,6 +174,7 @@ export function App() {
   const [createAtomicBuyAmount, setCreateAtomicBuyAmount] = useState("1");
   const [createWhitelistThreshold, setCreateWhitelistThreshold] = useState("4");
   const [createWhitelistSlotSize, setCreateWhitelistSlotSize] = useState("0.2");
+  const [createWhitelistOpensAt, setCreateWhitelistOpensAt] = useState("");
   const [createWhitelistAddresses, setCreateWhitelistAddresses] = useState("");
   const [createTaxBps, setCreateTaxBps] = useState("1");
   const [createTaxBurnShareBps, setCreateTaxBurnShareBps] = useState("5000");
@@ -303,6 +304,13 @@ export function App() {
     isWhitelistFamily && whitelistThresholdValue > 0 && whitelistSlotValue > 0
       ? Math.round(whitelistThresholdValue / whitelistSlotValue)
       : 0;
+  const createWhitelistOpensAtUnix = useMemo(() => {
+    if (!createWhitelistOpensAt.trim()) return 0n;
+    const ms = new Date(createWhitelistOpensAt).getTime();
+    if (!Number.isFinite(ms) || ms <= 0) return 0n;
+    return BigInt(Math.floor(ms / 1000));
+  }, [createWhitelistOpensAt]);
+  const isDelayedWhitelistOpen = createWhitelistOpensAtUnix > 0n;
   const whitelistAddressCount = parsedWhitelistAddresses?.length ?? 0;
   const requiresAtomicBuy = createMode === "standard" || createMode === "taxed";
   const requiresWhitelistCommit = createMode === "whitelist" || createMode === "whitelistTaxed";
@@ -806,6 +814,7 @@ export function App() {
       }
       const whitelistThreshold = requiresWhitelistCommit ? parseEther(createWhitelistThreshold) : undefined;
       const whitelistSlotSize = requiresWhitelistCommit ? parseEther(createWhitelistSlotSize) : undefined;
+      const whitelistOpensAt = requiresWhitelistCommit ? createWhitelistOpensAtUnix : undefined;
       const atomicBuyAmount = requiresAtomicBuy ? parseEther(createAtomicBuyAmount || "0") : 0n;
       const taxBps = isTaxedFamily ? Number.parseInt(createTaxBps || "1", 10) * 100 : undefined;
       const burnShareBps = isTaxedFamily ? Number.parseInt(createTaxBurnShareBps || "0", 10) : undefined;
@@ -821,7 +830,7 @@ export function App() {
         if (!parsedWhitelistAddresses || whitelistAddressCount < whitelistSeatTarget) {
           throw new Error(t("errorWhitelistCoverage"));
         }
-        if (!parsedWhitelistAddresses.some((entry) => entry.toLowerCase() === wallet.toLowerCase())) {
+        if (!isDelayedWhitelistOpen && !parsedWhitelistAddresses.some((entry) => entry.toLowerCase() === wallet.toLowerCase())) {
           throw new Error(t("errorWhitelistMustIncludeWallet"));
         }
       }
@@ -861,6 +870,7 @@ export function App() {
         minTokenOut: 0n,
         whitelistThreshold,
         whitelistSlotSize,
+        whitelistOpensAt,
         whitelistAddresses: parsedWhitelistAddresses ?? undefined,
         taxBps,
         burnShareBps,
@@ -1623,8 +1633,8 @@ export function App() {
                     )}
                     {requiresWhitelistCommit && (
                       <div className="callout compact-callout">
-                        <strong>{t("summaryAtomicSeat")}</strong>
-                        <p>{t("creatorFlowSeatNote")}</p>
+                        <strong>{isDelayedWhitelistOpen ? t("summaryScheduledSeat") : t("summaryAtomicSeat")}</strong>
+                        <p>{isDelayedWhitelistOpen ? t("creatorFlowScheduledSeatNote") : t("creatorFlowSeatNote")}</p>
                       </div>
                     )}
                   </section>
@@ -1807,14 +1817,22 @@ export function App() {
                           </select>
                         </label>
                       </div>
+                      <label className="field">
+                        <span>{t("wlOpenTime")}</span>
+                        <input
+                          type="datetime-local"
+                          value={createWhitelistOpensAt}
+                          onChange={(e) => setCreateWhitelistOpensAt(e.target.value)}
+                        />
+                      </label>
                       <div className="create-summary-grid compact">
                           <div><span>{t("wlSeatTarget")}</span><strong>{whitelistSeatTarget || "—"}</strong></div>
                         <div><span>{t("wlAddressCount")}</span><strong>{whitelistAddressCount}</strong></div>
-                        <div><span>{t("wlWindow")}</span><strong>24h</strong></div>
+                        <div><span>{t("wlWindow")}</span><strong>{isDelayedWhitelistOpen ? t("wlScheduled24h") : "24h"}</strong></div>
                       </div>
-                      <div className="callout warn compact-callout">
-                        <strong>{t("wlStartTimePendingTitle")}</strong>
-                        <p>{t("wlStartTimePendingDesc")}</p>
+                      <div className={`callout ${isDelayedWhitelistOpen ? "success" : "warn"} compact-callout`}>
+                        <strong>{isDelayedWhitelistOpen ? t("wlStartTimeScheduledTitle") : t("wlStartTimeImmediateTitle")}</strong>
+                        <p>{isDelayedWhitelistOpen ? t("wlStartTimeScheduledDesc") : t("wlStartTimeImmediateDesc")}</p>
                       </div>
                       <label className="field">
                         <span>{t("wlAddresses")}</span>

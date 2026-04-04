@@ -439,7 +439,7 @@ See:
 
 ## Official BSC deployment
 
-- **Factory:** `0xB7cc1e41D997667fa1e1314415b3F2ec815D0314`
+- **Factory:** `0x09261904bf6f7Ce23dee2058379A49DF53B80314`
 - **Chain:** BNB Smart Chain
 - **Router:** PancakeSwap V2 Router `0x10ED43C718714eb63d5aA57B78B54704E256024E`
 - **Modes:** `0314 / b314 / 1314..9314 / f314`

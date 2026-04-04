@@ -25,6 +25,7 @@ export type TaxConfigSnapshot = {
 
 export type WhitelistSnapshot = {
   status: string;
+  opensAt: string;
   deadline: string;
   threshold: string;
   slotSize: string;
@@ -32,7 +33,6 @@ export type WhitelistSnapshot = {
   seatsFilled: string;
   committedTotal: string;
   tokensPerSeat: string;
-  whitelistCount: string;
 } | null;
 
 export type LaunchSnapshot = {

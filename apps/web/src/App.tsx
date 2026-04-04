@@ -2630,36 +2630,33 @@ export function App() {
                                 key={`${activity.txHash}-${activity.blockNumber.toString()}-${activity.logIndex}`}
                                 className={`trade-row ${activityTone(activity)}`}
                               >
-                                <div>
-                                  <strong>{activityLabel(activity)}</strong>
-                                  <div className="trade-meta">{formatDateTime(activity.timestampMs)} · {activityPhaseLabel(activity)}</div>
+                                <div className="trade-row-main">
+                                  <div className="trade-row-head">
+                                    <strong>{activityLabel(activity)}</strong>
+                                    <div className="trade-badges">
+                                      <span className="trade-badge">{activityPhaseLabel(activity)}</span>
+                                      <span className="trade-badge subtle">{shortAddress(activity.txHash)}</span>
+                                    </div>
+                                  </div>
+                                  <div className="trade-meta">{formatDateTime(activity.timestampMs)}</div>
                                 </div>
-                                <div>
+                                <div className="trade-row-value">
                                   {activity.kind === "graduated" ? (
                                     <>
                                       <strong>{formatNative(activity.quoteAmountContributed)}</strong>
                                       <div className="trade-meta">
                                         {t("lpSeed")} · {formatToken(activity.tokenAmount)} {t("tokenUnit")}
-                                        {activity.preloadedQuoteAmount > 0n ? ` + ${formatNative(activity.preloadedQuoteAmount)} ${t("preload")}` : ""}
+                                      </div>
+                                      <div className="trade-meta">
+                                        {shortAddress(activity.marketAddress)}
+                                        {activity.preloadedQuoteAmount > 0n ? ` · + ${formatNative(activity.preloadedQuoteAmount)} ${t("preload")}` : ""}
                                       </div>
                                     </>
                                   ) : (
                                     <>
                                       <strong>{formatNative(activity.netQuote)}</strong>
                                       <div className="trade-meta">{formatToken(activity.tokenAmount)} {t("tokenUnit")}</div>
-                                    </>
-                                  )}
-                                </div>
-                                <div>
-                                  {activity.kind === "graduated" ? (
-                                    <>
-                                      <strong>{shortAddress(activity.marketAddress)}</strong>
-                                      <div className="trade-meta">{formatToken(activity.liquidityBurned)} {t("lpBurned")}</div>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <strong>{formatNative(activity.priceQuotePerToken)}</strong>
-                                      <div className="trade-meta">{shortAddress(activity.txHash)}</div>
+                                      <div className="trade-meta">{formatNative(activity.priceQuotePerToken)}</div>
                                     </>
                                   )}
                                 </div>

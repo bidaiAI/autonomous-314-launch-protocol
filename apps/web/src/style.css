@@ -795,6 +795,36 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .button-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
 .button-row.stacked { display: grid; grid-template-columns: 1fr; }
 
+.factory-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.factory-switch-pill {
+  min-height: 46px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-subtle);
+  background: rgba(148, 163, 184, 0.06);
+  color: var(--text-secondary);
+  font-weight: 600;
+  transition: all var(--transition-fast);
+}
+
+.factory-switch-pill:hover {
+  border-color: var(--border-default);
+  color: var(--text-primary);
+  background: rgba(148, 163, 184, 0.1);
+}
+
+.factory-switch-pill.active {
+  background: rgba(94, 234, 212, 0.12);
+  border-color: rgba(94, 234, 212, 0.26);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-accent);
+}
+
 /* ── Progress Bar ── */
 .progress-shell {
   height: 10px;
@@ -895,6 +925,11 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 }
 .headline-metrics > div { display: grid; gap: 5px; }
 .headline-metrics strong { word-break: break-word; }
+.metric-subtle {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
 
 /* ── Callouts ── */
 .callout {
@@ -1393,13 +1428,14 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   gap: 16px;
   margin-bottom: 20px;
 }
+.launch-hero.compact { margin-bottom: 12px; }
 .launch-hero-copy { display: grid; gap: 10px; }
 .launch-hero-head { display: flex; justify-content: space-between; align-items: start; gap: 14px; }
 .launch-hero-head h3 { font-size: 1.15rem; }
 .launch-hero-title-wrap { display: flex; align-items: center; gap: 14px; }
 .launch-mini-art {
-  width: 72px;
-  height: 72px;
+  width: 56px;
+  height: 56px;
   border-radius: 18px;
   overflow: hidden;
   background: linear-gradient(135deg, rgba(94, 234, 212, 0.15), rgba(56, 189, 248, 0.15));
@@ -1725,6 +1761,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   button { min-height: 46px; }
   .button-row { display: grid; grid-template-columns: 1fr; }
   .button-row > button, .button-row > a { width: 100%; justify-content: center; }
+  .factory-switch { grid-template-columns: 1fr; }
   .search-hero { padding: 16px; gap: 14px; }
   .search-hero-row, .market-toolbar { flex-direction: column; align-items: stretch; }
   .search-hero-row .field { width: 100%; }

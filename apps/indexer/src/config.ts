@@ -13,7 +13,7 @@ export const indexerConfig = {
   factoryAddress: process.env.INDEXER_FACTORY_ADDRESS as `0x${string}` | undefined,
   fromBlock: process.env.INDEXER_FROM_BLOCK ? BigInt(process.env.INDEXER_FROM_BLOCK) : undefined,
   lookbackBlocks: process.env.INDEXER_LOOKBACK_BLOCKS ? BigInt(process.env.INDEXER_LOOKBACK_BLOCKS) : 50_000n,
-  logBatchBlocks: process.env.INDEXER_LOG_BATCH_BLOCKS ? BigInt(process.env.INDEXER_LOG_BATCH_BLOCKS) : 10n,
+  logBatchBlocks: process.env.INDEXER_LOG_BATCH_BLOCKS ? BigInt(process.env.INDEXER_LOG_BATCH_BLOCKS) : 2_000n,
   launchLimit: process.env.INDEXER_LAUNCH_LIMIT ? Number(process.env.INDEXER_LAUNCH_LIMIT) : 25,
   activityLimitPerLaunch: process.env.INDEXER_ACTIVITY_LIMIT ? Number(process.env.INDEXER_ACTIVITY_LIMIT) : 40,
   outputPath: process.env.INDEXER_OUTPUT_PATH ?? "../web/public/data/indexer-snapshot.json",

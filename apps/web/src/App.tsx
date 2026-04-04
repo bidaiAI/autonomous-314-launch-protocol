@@ -44,6 +44,7 @@ import { activeProtocolProfile } from "./profiles";
 const REPO_URL = "https://github.com/bidaiAI/autonomous-314-launch-protocol";
 const BRAND_MARK_URL = "/brand/logo-mark.svg";
 const BRAND_FULL_URL = "/brand/logo-full.svg";
+const OFFICIAL_FACTORY_ADDRESS = (import.meta.env.VITE_FACTORY_ADDRESS ?? "").trim();
 
 function useLocale(): Locale {
   return useSyncExternalStore(onLocaleChange, getLocale, getLocale);
@@ -92,6 +93,42 @@ function formatPercentInput(value: string) {
 function quoteMarketCap(totalSupply: bigint, priceQuotePerToken: bigint) {
   if (totalSupply <= 0n || priceQuotePerToken <= 0n) return 0n;
   return (totalSupply * priceQuotePerToken) / 10n ** 18n;
+}
+
+function compactNumber(value: number) {
+  if (!Number.isFinite(value)) return "—";
+  return new Intl.NumberFormat(undefined, {
+    notation: "compact",
+    maximumFractionDigits: value >= 100 ? 0 : 1
+  }).format(value);
+}
+
+function formatUsdCompact(value: number | null) {
+  if (value === null || !Number.isFinite(value) || value <= 0) return "—";
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: "USD",
+    notation: "compact",
+    maximumFractionDigits: value >= 100 ? 0 : 1
+  }).format(value);
+}
+
+function formatNativeCompact(value: bigint) {
+  const numeric = Number(value) / 1e18;
+  if (!Number.isFinite(numeric) || numeric <= 0) return `0 ${activeProtocolProfile.nativeSymbol}`;
+  return `${compactNumber(numeric)} ${activeProtocolProfile.nativeSymbol}`;
+}
+
+function formatQuotePrice(value: bigint) {
+  const numeric = Number(value) / 1e18;
+  if (!Number.isFinite(numeric) || numeric <= 0) return `0 ${activeProtocolProfile.nativeSymbol}`;
+  if (numeric >= 1) {
+    return `${numeric.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${activeProtocolProfile.nativeSymbol}`;
+  }
+  if (numeric >= 0.000001) {
+    return `${numeric.toLocaleString(undefined, { maximumSignificantDigits: 6 })} ${activeProtocolProfile.nativeSymbol}`;
+  }
+  return `${numeric.toExponential(4)} ${activeProtocolProfile.nativeSymbol}`;
 }
 
 function activityTone(activity: ActivityFeedItem) {
@@ -189,7 +226,9 @@ function launchStateLabel(state: string) {
 export function App() {
   const [route, setRoute] = useState<AppRoute>(() => parseRoute(window.location.pathname));
   const [wallet, setWallet] = useState<string>("");
-  const [factoryAddress, setFactoryAddress] = useState(import.meta.env.VITE_FACTORY_ADDRESS ?? "");
+  const [factoryAddress, setFactoryAddress] = useState(OFFICIAL_FACTORY_ADDRESS);
+  const [factoryInputMode, setFactoryInputMode] = useState<"official" | "custom">(OFFICIAL_FACTORY_ADDRESS ? "official" : "custom");
+  const [customFactoryInput, setCustomFactoryInput] = useState("");
   const [tokenAddress, setTokenAddress] = useState(import.meta.env.VITE_TOKEN_ADDRESS ?? "");
   const [createName, setCreateName] = useState("Autonomous 314");
   const [createSymbol, setCreateSymbol] = useState("A314");
@@ -212,6 +251,7 @@ export function App() {
   const [createTaxBurnShareBps, setCreateTaxBurnShareBps] = useState("5000");
   const [createTaxTreasuryShareBps, setCreateTaxTreasuryShareBps] = useState("5000");
   const [createTaxTreasuryWallet, setCreateTaxTreasuryWallet] = useState(import.meta.env.VITE_DEFAULT_TREASURY ?? "");
+  const [nativeUsdPrice, setNativeUsdPrice] = useState<number | null>(null);
   const [factorySnapshot, setFactorySnapshot] = useState<FactorySnapshot | null>(null);
   const [recentLaunchSnapshots, setRecentLaunchSnapshots] = useState<TokenSnapshot[]>([]);
   const [tokenSnapshot, setTokenSnapshot] = useState<TokenSnapshot | null>(null);
@@ -278,6 +318,14 @@ export function App() {
     return "danger";
   }, [tokenSnapshot]);
   const heroMarketCap = tokenSnapshot ? quoteMarketCap(tokenSnapshot.totalSupply, tokenSnapshot.currentPriceQuotePerToken) : 0n;
+  const heroRaised = tokenSnapshot
+    ? tokenSnapshot.graduationQuoteReserve > tokenSnapshot.remainingQuoteCapacity
+      ? tokenSnapshot.graduationQuoteReserve - tokenSnapshot.remainingQuoteCapacity
+      : 0n
+    : 0n;
+  const heroMarketCapUsd = heroMarketCap > 0n && nativeUsdPrice
+    ? (Number(heroMarketCap) / 1e18) * nativeUsdPrice
+    : null;
   const verificationLabel = tokenVerification
     ? tokenVerification.status === "official"
       ? t("verifiedOfficial")
@@ -376,7 +424,7 @@ export function App() {
   const requiresWhitelistCommit = createMode === "whitelist" || createMode === "whitelistTaxed";
   const whitelistAddressCountValid =
     !requiresWhitelistCommit || (parsedWhitelistAddresses !== null && whitelistAddressCount >= whitelistSeatTarget && whitelistSeatTarget > 0);
-  const officialFactoryAddress = (import.meta.env.VITE_FACTORY_ADDRESS ?? "").trim().toLowerCase();
+  const officialFactoryAddress = OFFICIAL_FACTORY_ADDRESS.toLowerCase();
   const usingOfficialFactory = Boolean(factoryAddress && officialFactoryAddress && factoryAddress.trim().toLowerCase() === officialFactoryAddress);
   const assumeOfficialFactoryCapabilities = Boolean(officialFactoryAddress && (usingOfficialFactory || factoryAddress.trim().length === 0));
   const factorySupportsWhitelistMode = factorySnapshot?.supportsWhitelistMode ?? assumeOfficialFactoryCapabilities;
@@ -473,6 +521,12 @@ export function App() {
     }
   }, [createMode, whitelistModeUnsupported, taxedModeUnsupported, whitelistTaxedModeUnsupported]);
 
+  useEffect(() => {
+    if (!usingOfficialFactory && factoryAddress.trim()) {
+      setCustomFactoryInput(factoryAddress.trim());
+    }
+  }, [factoryAddress, usingOfficialFactory]);
+
   const launchMetadata = useMemo(
     () =>
       buildLaunchMetadata({
@@ -525,6 +579,26 @@ export function App() {
     const onPopState = () => setRoute(parseRoute(window.location.pathname));
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=binancecoin&vs_currencies=usd");
+        if (!response.ok) return;
+        const json = (await response.json()) as { binancecoin?: { usd?: number } };
+        const price = json.binancecoin?.usd;
+        if (!cancelled && typeof price === "number" && Number.isFinite(price) && price > 0) {
+          setNativeUsdPrice(price);
+        }
+      } catch {
+        if (!cancelled) setNativeUsdPrice(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -660,9 +734,23 @@ export function App() {
           )
         : Promise.resolve(null)
     ]);
-    const [activity, chart] = indexed
-      ? [indexed.recentActivity, indexed.segmentedChart]
-      : await Promise.all([fetchUnifiedActivity(address), fetchSegmentedChartSnapshot(address)]);
+    let activity = indexed?.recentActivity ?? [];
+    let chart = indexed?.segmentedChart ?? null;
+    const needsLiveActivityFallback =
+      activity.length === 0 && (snapshot.state === "Bonding314" || snapshot.state === "DEXOnly" || snapshot.state === "Migrating");
+    const needsLiveChartFallback =
+      !chart ||
+      ((chart.bondingCandles.length === 0 && chart.dexCandles.length === 0) &&
+        (snapshot.state === "Bonding314" || snapshot.state === "DEXOnly" || snapshot.state === "Migrating"));
+
+    if (!indexed || needsLiveActivityFallback || needsLiveChartFallback) {
+      const [liveActivity, liveChart] = await Promise.all([
+        needsLiveActivityFallback || !indexed ? fetchUnifiedActivity(address) : Promise.resolve(activity),
+        needsLiveChartFallback || !indexed ? fetchSegmentedChartSnapshot(address) : Promise.resolve(chart!)
+      ]);
+      activity = liveActivity;
+      chart = liveChart;
+    }
 
     if (requestId !== workspaceRequestRef.current) {
       return snapshot;
@@ -671,9 +759,9 @@ export function App() {
     setTokenSnapshot(snapshot);
     setTokenVerification(verification);
     setRecentActivity(activity);
-    setBondingCandles(chart.bondingCandles);
-    setDexCandles(chart.dexCandles);
-    setGraduationTimestampMs(chart.graduationTimestampMs);
+    setBondingCandles(chart?.bondingCandles ?? []);
+    setDexCandles(chart?.dexCandles ?? []);
+    setGraduationTimestampMs(chart?.graduationTimestampMs ?? null);
 
     return snapshot;
   }
@@ -710,7 +798,12 @@ export function App() {
   async function handleLoadFactory() {
     try {
       setLoading(true);
-      const { factory, launches } = await readRecentLaunchSnapshots(factoryAddress);
+      const targetFactoryAddress = factoryInputMode === "official" ? OFFICIAL_FACTORY_ADDRESS : customFactoryInput.trim();
+      if (!targetFactoryAddress) {
+        throw new Error(t("statusFactoryLoadFailed"));
+      }
+      setFactoryAddress(targetFactoryAddress);
+      const { factory, launches } = await readRecentLaunchSnapshots(targetFactoryAddress);
       setFactorySnapshot(factory);
       setRecentLaunchSnapshots(launches);
       setStatus(t("statusFactoryLoaded"));
@@ -1565,24 +1658,52 @@ export function App() {
           <aside className="rail">
             <article className="panel">
               <h2>{t('factoryAddress')}</h2>
-              <label className="field">
-                <span>{t('factoryAddress')}</span>
-                <input value={factoryAddress} onChange={(e) => setFactoryAddress(e.target.value)} placeholder="0x..." />
-              </label>
+              <div className="factory-switch" role="tablist" aria-label={t('factoryAddress')}>
+                <button
+                  type="button"
+                  className={factoryInputMode === "official" ? "factory-switch-pill active" : "factory-switch-pill"}
+                  onClick={() => {
+                    setFactoryInputMode("official");
+                    setFactoryAddress(OFFICIAL_FACTORY_ADDRESS);
+                  }}
+                >
+                  {t("useOfficialFactory")}
+                </button>
+                <button
+                  type="button"
+                  className={factoryInputMode === "custom" ? "factory-switch-pill active" : "factory-switch-pill"}
+                  onClick={() => {
+                    setFactoryInputMode("custom");
+                    setFactoryAddress(customFactoryInput.trim());
+                  }}
+                >
+                  {t("useCustomFactory")}
+                </button>
+              </div>
+              {factoryInputMode === "official" ? (
+                <label className="field">
+                  <span>{t('factoryAddress')}</span>
+                  <input value={OFFICIAL_FACTORY_ADDRESS} readOnly />
+                </label>
+              ) : (
+                <label className="field">
+                  <span>{t('factoryAddress')}</span>
+                  <input
+                    value={customFactoryInput}
+                    onChange={(e) => {
+                      setCustomFactoryInput(e.target.value);
+                      setFactoryAddress(e.target.value);
+                    }}
+                    placeholder="0x..."
+                  />
+                </label>
+              )}
               <div className="callout compact-callout">
                 <strong>{usingOfficialFactory ? t("useOfficialFactory") : t("factoryAddress")}</strong>
                 <p>{t("factoryAddressNote")}</p>
               </div>
               <div className="button-row">
                 <button onClick={handleLoadFactory}>{t('loadFactoryBtn')}</button>
-                <button
-                  className="secondary-button"
-                  type="button"
-                  onClick={() => setFactoryAddress(import.meta.env.VITE_FACTORY_ADDRESS ?? "")}
-                  disabled={usingOfficialFactory}
-                >
-                  {t("useOfficialFactory")}
-                </button>
                 <button
                   className="secondary-button"
                   onClick={handleClaimFactoryFees}
@@ -2170,15 +2291,15 @@ export function App() {
 
               {tokenSnapshot ? (
                 <>
-                  <div className={`launch-hero ${selectedLaunchHasImage ? "with-image" : "without-image"}`}>
+                  <div className="launch-hero compact">
                     <div className="launch-hero-copy">
                       <div className="launch-hero-head">
                         <div className="launch-hero-title-wrap">
-                          {selectedLaunchHasImage && (
+                          {selectedLaunchHasImage ? (
                             <div className="launch-mini-art">
                               <img src={resolvePreviewImage(selectedLaunchMetadata?.image ?? "")!} alt={tf("launchCoverAlt", { name: selectedLaunchMetadata?.name || tokenSnapshot.name })} />
                             </div>
-                          )}
+                          ) : null}
                           <div>
                             <span className="section-kicker">{t("launchOverview")}</span>
                             <h3>{selectedLaunchMetadata?.name || tokenSnapshot.name}</h3>
@@ -2206,22 +2327,38 @@ export function App() {
                     </div>
                   </div>
 
+                  <article className="subpanel chart-hero-panel">
+                    <div className="subpanel-header">
+                      <h3>{t("priceTrajectory")}</h3>
+                      <span className="list-item-meta">
+                        {t("marketCap")}: {heroMarketCapUsd ? formatUsdCompact(heroMarketCapUsd) : formatNativeCompact(heroMarketCap)}
+                      </span>
+                    </div>
+                    {bondingCandles.length > 0 || dexCandles.length > 0 ? (
+                      <SegmentedPhaseChart bondingCandles={bondingCandles} dexCandles={dexCandles} graduationTimestampMs={graduationTimestampMs} />
+                    ) : (
+                      <div className="empty-state">{t("noChartData")}</div>
+                    )}
+                  </article>
+
                   <div className="headline-metrics">
                     <div>
-                      <span className="metric-label">Current price</span>
-                      <strong>{formatNative(tokenSnapshot.currentPriceQuotePerToken)}</strong>
+                      <span className="metric-label">{t("currentPrice")}</span>
+                      <strong>{formatQuotePrice(tokenSnapshot.currentPriceQuotePerToken)}</strong>
                     </div>
                     <div>
-                      <span className="metric-label">{t("marketCap")}</span>
-                      <strong>{formatNative(heroMarketCap)}</strong>
+                      <span className="metric-label">{t("marketCapShort")}</span>
+                      <strong>{heroMarketCapUsd ? formatUsdCompact(heroMarketCapUsd) : formatNativeCompact(heroMarketCap)}</strong>
+                      <div className="metric-subtle">{tf("marketCapApproxNative", { value: formatNativeCompact(heroMarketCap) })}</div>
                     </div>
                     <div>
-                      <span className="metric-label">Graduation progress</span>
+                      <span className="metric-label">{t("raisedLabel")}</span>
+                      <strong>{formatNativeCompact(heroRaised)}</strong>
+                      <div className="metric-subtle">{tf("raisedAgainstTarget", { raised: formatNativeCompact(heroRaised), target: formatNativeCompact(tokenSnapshot.graduationQuoteReserve) })}</div>
+                    </div>
+                    <div>
+                      <span className="metric-label">{t("graduationProgress")}</span>
                       <strong>{formatPercentFromBps(tokenSnapshot.graduationProgressBps)}</strong>
-                    </div>
-                    <div>
-                      <span className="metric-label">Remaining capacity</span>
-                      <strong>{formatNative(tokenSnapshot.remainingQuoteCapacity)}</strong>
                     </div>
                   </div>
 
@@ -2237,19 +2374,7 @@ export function App() {
                     <div className={`lifecycle-step ${isDexOnly ? "current" : ""}`}>{t("stateDexOnly")}</div>
                   </div>
 
-                  <article className="subpanel chart-hero-panel">
-                    <div className="subpanel-header">
-                      <h3>{t("priceTrajectory")}</h3>
-                      <span className="list-item-meta">{t("marketCap")}: {formatNative(heroMarketCap)}</span>
-                    </div>
-                    {bondingCandles.length > 0 || dexCandles.length > 0 ? (
-                      <SegmentedPhaseChart bondingCandles={bondingCandles} dexCandles={dexCandles} graduationTimestampMs={graduationTimestampMs} />
-                    ) : (
-                      <div className="empty-state">{t("noChartData")}</div>
-                    )}
-                  </article>
-
-                  {tokenVerification && (
+                  {tokenVerification && tokenVerification.status !== "official" && (
                     <div className={`callout compact-callout ${verificationTone}`}>
                       <strong>{verificationLabel}</strong>
                       <p>{tokenVerification.summary}</p>

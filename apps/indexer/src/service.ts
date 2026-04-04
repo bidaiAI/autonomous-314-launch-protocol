@@ -204,25 +204,77 @@ async function getLogsChunked(
     toBlock: bigint;
   }
 ) {
-  const batch = indexerConfig.logBatchBlocks > 0n ? indexerConfig.logBatchBlocks : 10n;
-  const logs: Log[] = [];
+  const configuredBatch = indexerConfig.logBatchBlocks > 0n ? indexerConfig.logBatchBlocks : 2_000n;
+  return getLogsChunkedWithBatch(client, params, configuredBatch);
+}
 
-  let cursor = params.fromBlock;
-  while (cursor <= params.toBlock) {
-    const end = cursor + batch - 1n > params.toBlock ? params.toBlock : cursor + batch - 1n;
+async function getLogsChunkedWithBatch(
+  client: ReturnType<typeof createPublicClient>,
+  params: {
+    address: `0x${string}`;
+    topics?: (Hex | Hex[] | null)[];
+    fromBlock: bigint;
+    toBlock: bigint;
+  },
+  batch: bigint
+) {
+  if (params.fromBlock > params.toBlock) {
+    return [] as Log[];
+  }
+
+  const safeBatch = batch > 0n ? batch : 2_000n;
+  if (params.toBlock - params.fromBlock + 1n <= safeBatch) {
     const chunk = await client.request({
       method: "eth_getLogs",
       params: [
         {
           address: params.address,
           topics: params.topics,
-          fromBlock: `0x${cursor.toString(16)}`,
-          toBlock: `0x${end.toString(16)}`
+          fromBlock: `0x${params.fromBlock.toString(16)}`,
+          toBlock: `0x${params.toBlock.toString(16)}`
         }
       ]
     });
-    logs.push(...chunk.map((entry) => rpcLogToLog(entry as any)));
-    cursor = end + 1n;
+    return chunk.map((entry) => rpcLogToLog(entry as any));
+  }
+
+  const logs: Log[] = [];
+
+  let cursor = params.fromBlock;
+  while (cursor <= params.toBlock) {
+    const end = cursor + safeBatch - 1n > params.toBlock ? params.toBlock : cursor + safeBatch - 1n;
+    try {
+      const chunk = await client.request({
+        method: "eth_getLogs",
+        params: [
+          {
+            address: params.address,
+            topics: params.topics,
+            fromBlock: `0x${cursor.toString(16)}`,
+            toBlock: `0x${end.toString(16)}`
+          }
+        ]
+      });
+      logs.push(...chunk.map((entry) => rpcLogToLog(entry as any)));
+      cursor = end + 1n;
+    } catch (error) {
+      if (safeBatch <= 50n) {
+        throw error;
+      }
+      const narrowedBatch = safeBatch / 2n;
+      const retried = await getLogsChunkedWithBatch(
+        client,
+        {
+          address: params.address,
+          topics: params.topics,
+          fromBlock: cursor,
+          toBlock: end
+        },
+        narrowedBatch
+      );
+      logs.push(...retried);
+      cursor = end + 1n;
+    }
   }
 
   return logs;

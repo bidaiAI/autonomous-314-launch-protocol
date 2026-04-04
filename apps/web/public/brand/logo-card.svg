@@ -1,34 +1,38 @@
 <svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="bg" x1="124" y1="48" x2="1022" y2="596" gradientUnits="userSpaceOnUse">
+    <linearGradient id="bg" x1="118" y1="52" x2="1044" y2="598" gradientUnits="userSpaceOnUse">
       <stop stop-color="#08111B"/>
       <stop offset="0.5" stop-color="#0D1826"/>
       <stop offset="1" stop-color="#071018"/>
     </linearGradient>
-    <linearGradient id="beam" x1="176" y1="134" x2="424" y2="430" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#5EEAD4"/>
-      <stop offset="0.55" stop-color="#38BDF8"/>
+    <linearGradient id="beamL" x1="182" y1="154" x2="260" y2="372" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7CF9E8"/>
+      <stop offset="1" stop-color="#2DD4BF"/>
+    </linearGradient>
+    <linearGradient id="beamR" x1="286" y1="144" x2="358" y2="372" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7DD3FC"/>
       <stop offset="1" stop-color="#8B5CF6"/>
     </linearGradient>
-    <linearGradient id="word" x1="520" y1="154" x2="1032" y2="404" gradientUnits="userSpaceOnUse">
+    <linearGradient id="word" x1="520" y1="154" x2="1048" y2="392" gradientUnits="userSpaceOnUse">
       <stop stop-color="#FFFFFF"/>
-      <stop offset="1" stop-color="#D5F7FF"/>
+      <stop offset="1" stop-color="#D7EDF8"/>
     </linearGradient>
   </defs>
 
   <rect width="1200" height="630" rx="42" fill="#040A10"/>
   <rect x="24" y="24" width="1152" height="582" rx="34" fill="url(#bg)" stroke="rgba(94,234,212,0.18)"/>
-  <circle cx="1034" cy="118" r="122" fill="#0E1B29" opacity="0.5"/>
+  <circle cx="1028" cy="118" r="126" fill="#0E1B29" opacity="0.5"/>
 
   <rect x="116" y="116" width="336" height="336" rx="92" fill="#060D14"/>
-  <rect x="128" y="128" width="312" height="312" rx="80" fill="#0F1C29" stroke="rgba(94,234,212,0.24)" stroke-width="4"/>
-  <path d="M190 150H238L366 404H318L190 150Z" fill="url(#beam)"/>
-  <path d="M190 150H238L274 212H226L190 150Z" fill="#9CF7E7"/>
-  <text x="226" y="304" fill="#F8FBFF" font-size="116" font-weight="800" font-family="Inter, Arial, sans-serif" letter-spacing="-8">314</text>
-  <text x="232" y="356" fill="#8EA8BB" font-size="28" font-weight="700" font-family="Inter, Arial, sans-serif" letter-spacing="8">AUTO</text>
+  <rect x="128" y="128" width="312" height="312" rx="80" fill="#0F1C29" stroke="#1B3345" stroke-width="4"/>
+  <path d="M196 382L250 162H288L234 382H196Z" fill="url(#beamL)"/>
+  <path d="M320 382L266 162H304L358 382H320Z" fill="url(#beamR)"/>
+  <path d="M228 270H330L316 314H242L228 270Z" fill="#EAFBFF"/>
+  <path d="M188 410H366" stroke="rgba(145,183,204,0.24)" stroke-width="3" stroke-linecap="round"/>
+  <text x="194" y="440" fill="#F8FBFF" font-size="78" font-weight="800" font-family="Inter, Arial, sans-serif" letter-spacing="8">314</text>
 
-  <text x="504" y="228" fill="url(#word)" font-size="92" font-weight="800" font-family="Inter, Arial, sans-serif" letter-spacing="-3">AUTONOMOUS 314</text>
-  <text x="508" y="294" fill="#91B7CC" font-size="30" font-weight="600" font-family="Inter, Arial, sans-serif" letter-spacing="6">OPEN MEME LAUNCH PROTOCOL</text>
-  <text x="508" y="390" fill="#D2DEE9" font-size="38" font-weight="600" font-family="Inter, Arial, sans-serif">Build a launchpad in 5 minutes.</text>
-  <text x="508" y="444" fill="#89A4B9" font-size="26" font-weight="500" font-family="Inter, Arial, sans-serif">Contract-native market · Automatic DEX graduation · Whitelist & tax families</text>
+  <text x="504" y="224" fill="url(#word)" font-size="92" font-weight="800" font-family="Inter, Arial, sans-serif" letter-spacing="-3">AUTONOMOUS 314</text>
+  <text x="508" y="292" fill="#91B7CC" font-size="30" font-weight="600" font-family="Inter, Arial, sans-serif" letter-spacing="6">OPEN MEME LAUNCH PROTOCOL</text>
+  <text x="508" y="388" fill="#D1DFEA" font-size="38" font-weight="600" font-family="Inter, Arial, sans-serif">Build your own launchpad in 5 minutes.</text>
+  <text x="508" y="442" fill="#88A4B9" font-size="26" font-weight="500" font-family="Inter, Arial, sans-serif">Contract-native market · Automatic DEX graduation · Whitelist & tax families</text>
 </svg>

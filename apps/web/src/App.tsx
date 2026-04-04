@@ -155,6 +155,19 @@ function formatUsdUnitPrice(value: number | null) {
   }).format(value);
 }
 
+function formatUsdMicroPrice(value: number | null) {
+  if (value === null || !Number.isFinite(value) || value <= 0) return "—";
+  if (value >= 0.01) return formatUsdUnitPrice(value);
+  const raw = value.toFixed(12).replace(/0+$/, "");
+  const [, decimals = ""] = raw.split(".");
+  const leadingZeros = decimals.match(/^0*/)?.[0].length ?? 0;
+  if (leadingZeros >= 4) {
+    const significant = decimals.slice(leadingZeros, leadingZeros + 3) || "0";
+    return `$0.0(${leadingZeros})${significant}`;
+  }
+  return formatUsdUnitPrice(value);
+}
+
 function formatCountdownLabel(targetMs: number, nowMs: number) {
   const diffMs = Math.max(0, targetMs - nowMs);
   const totalMinutes = Math.ceil(diffMs / 60000);
@@ -1732,10 +1745,15 @@ export function App() {
                       : "";
                   const cardSecondaryMetric =
                     launch.state === "WhitelistCommit" && whitelistCountdownLabel
-                      ? whitelistCountdownLabel
+                      ? formatCountdownLabel(
+                          whitelistCountdownPending
+                            ? Number(launch.whitelistSnapshot!.opensAt) * 1000
+                            : Number(launch.whitelistSnapshot!.deadline) * 1000,
+                          nowMs
+                        )
                       : launchPriceUsd
-                        ? formatUsdUnitPrice(launchPriceUsd)
-                        : formatQuotePrice(launch.currentPriceQuotePerToken);
+                        ? formatUsdMicroPrice(launchPriceUsd)
+                        : "—";
 
                   return (
                     <article key={launch.address} className={`launch-card ${isActive ? "active" : ""}`}>

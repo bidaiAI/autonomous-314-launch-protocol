@@ -672,9 +672,9 @@ a:hover { opacity: 0.8; }
 
 .launch-card-description {
   color: var(--text-secondary);
-  line-height: 1.6;
-  min-height: 52px;
-  font-size: 0.88rem;
+  line-height: 1.55;
+  min-height: 40px;
+  font-size: 0.84rem;
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
@@ -699,7 +699,9 @@ a:hover { opacity: 0.8; }
   border: 1px solid rgba(148, 163, 184, 0.08);
 }
 .launch-card-stats strong {
-  font-size: 1rem;
+  font-size: clamp(0.94rem, 1.4vw, 1rem);
+  line-height: 1.15;
+  overflow-wrap: anywhere;
 }
 
 .launch-card-actions {

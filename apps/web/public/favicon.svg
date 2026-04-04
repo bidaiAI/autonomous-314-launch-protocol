@@ -1,37 +1,17 @@
-<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="bg" x1="72" y1="72" x2="440" y2="440" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#13263A"/>
-      <stop offset="1" stop-color="#08111B"/>
+    <linearGradient id="panel" x1="32" y1="32" x2="224" y2="224" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#122131"/>
+      <stop offset="1" stop-color="#09121C"/>
     </linearGradient>
-    <linearGradient id="stroke" x1="92" y1="92" x2="420" y2="420" gradientUnits="userSpaceOnUse">
+    <linearGradient id="beam" x1="58" y1="48" x2="182" y2="194" gradientUnits="userSpaceOnUse">
       <stop stop-color="#5EEAD4"/>
-      <stop offset="0.52" stop-color="#38BDF8"/>
+      <stop offset="0.55" stop-color="#38BDF8"/>
       <stop offset="1" stop-color="#8B5CF6"/>
     </linearGradient>
-    <linearGradient id="glow" x1="158" y1="140" x2="352" y2="360" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#EAF9FF"/>
-      <stop offset="1" stop-color="#D1FAF3"/>
-    </linearGradient>
-    <filter id="soft" x="36" y="36" width="440" height="440" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
-      <feGaussianBlur stdDeviation="18"/>
-    </filter>
   </defs>
-
-  <rect x="52" y="52" width="408" height="408" rx="120" fill="#0A1420"/>
-  <rect x="64" y="64" width="384" height="384" rx="108" fill="url(#bg)"/>
-  <rect x="64" y="64" width="384" height="384" rx="108" stroke="url(#stroke)" stroke-width="8"/>
-
-  <g filter="url(#soft)" opacity="0.45">
-    <path d="M150 164C170 138 204 124 244 124C297 124 338 154 338 200C338 227 323 247 300 259C331 271 352 299 352 334C352 385 306 420 240 420C192 420 152 400 131 365" stroke="url(#stroke)" stroke-width="18" stroke-linecap="round"/>
-  </g>
-
-  <path d="M156 172C175 147 207 134 245 134C295 134 331 159 331 198C331 223 314 241 286 251C321 262 345 289 345 327C345 380 300 410 238 410C196 410 161 394 141 364" stroke="url(#glow)" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M214 164H294" stroke="url(#glow)" stroke-width="28" stroke-linecap="round"/>
-  <path d="M226 251H296" stroke="url(#glow)" stroke-width="28" stroke-linecap="round"/>
-  <path d="M222 342H289" stroke="url(#glow)" stroke-width="28" stroke-linecap="round"/>
-  <path d="M110 305L234 305" stroke="url(#glow)" stroke-width="28" stroke-linecap="round"/>
-  <path d="M250 138V386" stroke="url(#glow)" stroke-width="28" stroke-linecap="round"/>
-  <path d="M334 138V386" stroke="url(#glow)" stroke-width="28" stroke-linecap="round"/>
-  <path d="M334 264H250" stroke="url(#glow)" stroke-width="28" stroke-linecap="round"/>
+  <rect x="20" y="20" width="216" height="216" rx="56" fill="#060D14"/>
+  <rect x="28" y="28" width="200" height="200" rx="50" fill="url(#panel)" stroke="rgba(94,234,212,0.24)" stroke-width="3"/>
+  <path d="M64 56H92L170 196H142L64 56Z" fill="url(#beam)"/>
+  <text x="78" y="154" fill="#F8FBFF" font-size="70" font-weight="800" font-family="Inter, Arial, sans-serif" letter-spacing="-5">314</text>
 </svg>

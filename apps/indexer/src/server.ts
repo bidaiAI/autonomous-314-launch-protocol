@@ -275,6 +275,18 @@ const server = createServer(async (req, res) => {
 
     sendJson(res, 404, { error: "Not found" });
   } catch (error) {
+    console.error("[indexer-api] request failed", {
+      method: req.method,
+      url: req.url,
+      error:
+        error instanceof Error
+          ? {
+              name: error.name,
+              message: error.message,
+              stack: error.stack
+            }
+          : String(error)
+    });
     sendJson(res, 500, {
       error: error instanceof Error ? error.message : "Internal server error"
     });

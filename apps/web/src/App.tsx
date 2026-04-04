@@ -2380,7 +2380,7 @@ export function App() {
               {tokenSnapshot ? (
                 <>
                   <div className="launch-hero compact">
-                    <div className="launch-hero-copy">
+                    <div className="launch-hero-primary">
                       <div className="launch-hero-head">
                         <div className="launch-hero-title-wrap">
                           {selectedLaunchHasImage ? (
@@ -2393,11 +2393,6 @@ export function App() {
                             <h3>{selectedLaunchMetadata?.name || tokenSnapshot.name}</h3>
                             <div className="launch-card-symbol">{selectedLaunchMetadata?.symbol || tokenSnapshot.symbol}</div>
                           </div>
-                        </div>
-                        <div className="launch-meta-strip">
-                          <span className="status-pill">{tokenSnapshot.launchSuffix}</span>
-                          <span className="status-pill">{tokenSnapshot.launchMode}</span>
-                          <span className="status-pill">{shortAddress(tokenSnapshot.creator)}</span>
                         </div>
                       </div>
                       <p>
@@ -2417,6 +2412,32 @@ export function App() {
                           <span>{t("noSocialLinks")}</span>
                         )}
                       </div>
+                    </div>
+
+                    <div className="launch-hero-side">
+                      <div className="launch-meta-strip">
+                        <span className="status-pill">{tokenSnapshot.launchSuffix}</span>
+                        <span className="status-pill">{tokenSnapshot.launchMode}</span>
+                        <span className="status-pill">{shortAddress(tokenSnapshot.creator)}</span>
+                      </div>
+                      <dl className="launch-hero-summary">
+                        <div>
+                          <dt>{t("creator")}</dt>
+                          <dd>{shortAddress(tokenSnapshot.creator)}</dd>
+                        </div>
+                        <div>
+                          <dt>{t("tokenAddressLabel")}</dt>
+                          <dd>{shortAddress(tokenSnapshot.address)}</dd>
+                        </div>
+                        <div>
+                          <dt>{t("mode")}</dt>
+                          <dd>{tokenSnapshot.launchMode}</dd>
+                        </div>
+                        <div>
+                          <dt>{t("suffix")}</dt>
+                          <dd>{tokenSnapshot.launchSuffix}</dd>
+                        </div>
+                      </dl>
                       <div className="launch-utility-row">
                         <button type="button" className="copy-chip" onClick={() => void handleCopyText(tokenSnapshot.address, t("tokenAddressLabel"))}>
                           {t("copyContract")}
@@ -2437,7 +2458,7 @@ export function App() {
                     <div className="subpanel-header">
                       <h3>{t("priceTrajectory")}</h3>
                       <span className="list-item-meta">
-                        {t("marketCap")}: {displayedMarketCapUsd ? formatUsdCompact(displayedMarketCapUsd) : formatNativeCompact(heroMarketCap)}
+                        {t("marketCap")}: {displayedMarketCapUsd ? formatUsdCompact(displayedMarketCapUsd) : t("marketCapUnavailable")}
                       </span>
                     </div>
                     {bondingCandles.length > 0 || dexCandles.length > 0 ? (
@@ -2455,8 +2476,8 @@ export function App() {
                     </div>
                     <div>
                       <span className="metric-label">{t("marketCapShort")}</span>
-                      <strong>{displayedMarketCapUsd ? formatUsdCompact(displayedMarketCapUsd) : formatNativeCompact(heroMarketCap)}</strong>
-                      <div className="metric-subtle">{tf("marketCapApproxNative", { value: formatNativeCompact(heroMarketCap) })}</div>
+                      <strong>{displayedMarketCapUsd ? formatUsdCompact(displayedMarketCapUsd) : t("marketCapUnavailable")}</strong>
+                      <div className="metric-subtle">{t("marketCapQuoteNotice")}</div>
                     </div>
                     <div>
                       <span className="metric-label">{t("raisedLabel")}</span>

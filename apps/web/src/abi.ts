@@ -1,8 +1,8 @@
-import factoryArtifact from "../../../packages/contracts/artifacts/contracts/LaunchFactory.sol/LaunchFactory.json";
-import tokenArtifact from "../../../packages/contracts/artifacts/contracts/LaunchToken.sol/LaunchToken.json";
-import whitelistTokenArtifact from "../../../packages/contracts/artifacts/contracts/LaunchTokenWhitelist.sol/LaunchTokenWhitelist.json";
-import taxedTokenArtifact from "../../../packages/contracts/artifacts/contracts/LaunchTokenTaxed.sol/LaunchTokenTaxed.json";
-import whitelistTaxedTokenArtifact from "../../../packages/contracts/artifacts/contracts/LaunchTokenWhitelistTaxed.sol/LaunchTokenWhitelistTaxed.json";
+import factoryArtifact from "./artifacts/LaunchFactory.json";
+import tokenArtifact from "./artifacts/LaunchToken.json";
+import whitelistTokenArtifact from "./artifacts/LaunchTokenWhitelist.json";
+import taxedTokenArtifact from "./artifacts/LaunchTokenTaxed.json";
+import whitelistTaxedTokenArtifact from "./artifacts/LaunchTokenWhitelistTaxed.json";
 import pairArtifact from "./artifacts/IUniswapV2LikePair.json";
 
 const extraFactoryAbi = [

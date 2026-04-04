@@ -258,6 +258,14 @@ async function getLogsChunkedWithBatch(
       logs.push(...chunk.map((entry) => rpcLogToLog(entry as any)));
       cursor = end + 1n;
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const prunedHistory =
+        message.toLowerCase().includes("history has been pruned") ||
+        message.toLowerCase().includes("pruned for this block");
+      if (prunedHistory) {
+        cursor = end + 1n;
+        continue;
+      }
       if (safeBatch <= 50n) {
         throw error;
       }

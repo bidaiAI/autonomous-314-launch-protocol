@@ -1744,6 +1744,14 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   line-height: 1.2;
 }
 
+.whitelist-estimate-card strong {
+  font-size: 1.35rem;
+}
+
+.whitelist-summary-grid {
+  margin-bottom: 12px;
+}
+
 .trade-side-tab {
   min-height: 46px;
   border-radius: var(--radius-md);

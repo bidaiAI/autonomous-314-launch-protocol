@@ -2739,15 +2739,16 @@ export function App() {
                       {t("copyContract")}
                     </button>
                   </div>
-                  <div className="create-summary-grid compact">
-                          <div><span>{t("mode")}</span><strong>{tokenSnapshot?.launchSuffix || "b314"}</strong></div>
-                    <div><span>{t("wlSeatSizeShort")}</span><strong>{formatNative(whitelistSnapshot.slotSize)}</strong></div>
+                  <div className="trade-estimate-card whitelist-estimate-card">
+                    <span className="metric-label">{t("wlSeatSummaryLabel")}</span>
+                    <strong>{formatNative(whitelistSnapshot.slotSize)}</strong>
+                    <div className="metric-subtle">{whitelistApproved ? t("wlApproved") : t("wlNotApproved")}</div>
+                  </div>
+                  <div className="create-summary-grid compact whitelist-summary-grid">
+                    <div><span>{t("mode")}</span><strong>{tokenSnapshot?.launchSuffix || "b314"}</strong></div>
                     <div><span>{t("wlFilledShort")}</span><strong>{whitelistSeatsFilled.toString()}</strong></div>
                     <div><span>{t("wlRemainingShort")}</span><strong>{whitelistSeatsRemaining.toString()}</strong></div>
-                  </div>
-                  <div className={`callout ${whitelistApproved ? "success" : "warn"} compact-callout`}>
-                    <strong>{whitelistApproved ? t("wlApproved") : t("wlNotApproved")}</strong>
-                    <p>{t("wlCommitExplain")}</p>
+                    <div><span>{t("wlSeatSizeShort")}</span><strong>{formatNative(whitelistSnapshot.slotSize)}</strong></div>
                   </div>
                   <div className="trade-hint-card">
                     <strong>{t("wlDirectTransferTitle")}</strong>
@@ -2757,21 +2758,32 @@ export function App() {
                     <button onClick={handleWhitelistCommit} disabled={!canCommitWhitelist || walletWrongNetwork || !canWriteVerifiedLaunch}>
                       {t("commitSeat")}
                     </button>
-                    <button
-                      className="secondary-button"
-                      onClick={handleClaimWhitelistAllocation}
-                      disabled={!canClaimWhitelistAllocationForWallet || walletWrongNetwork || !canWriteVerifiedLaunch}
-                    >
-                      {t("claimAllocation")}
-                    </button>
-                    <button
-                      className="secondary-button"
-                      onClick={handleClaimWhitelistRefund}
-                      disabled={!canClaimWhitelistRefundForWallet || walletWrongNetwork || !canWriteVerifiedLaunch}
-                    >
-                      {t("claimRefund")}
-                    </button>
                   </div>
+                  <details className="trade-advanced">
+                    <summary>{t("advancedWhitelistActions")}</summary>
+                    <div className="trade-advanced-body">
+                      <div className={`callout ${whitelistApproved ? "success" : "warn"} compact-callout`}>
+                        <strong>{whitelistApproved ? t("wlApproved") : t("wlNotApproved")}</strong>
+                        <p>{t("wlCommitExplain")}</p>
+                      </div>
+                      <div className="button-row stacked compact-actions">
+                        <button
+                          className="secondary-button"
+                          onClick={handleClaimWhitelistAllocation}
+                          disabled={!canClaimWhitelistAllocationForWallet || walletWrongNetwork || !canWriteVerifiedLaunch}
+                        >
+                          {t("claimAllocation")}
+                        </button>
+                        <button
+                          className="secondary-button"
+                          onClick={handleClaimWhitelistRefund}
+                          disabled={!canClaimWhitelistRefundForWallet || walletWrongNetwork || !canWriteVerifiedLaunch}
+                        >
+                          {t("claimRefund")}
+                        </button>
+                      </div>
+                    </div>
+                  </details>
                 </>
               ) : (
                 <>

@@ -2370,7 +2370,7 @@ export function App() {
               <div className="stage-header">
                 <div>
                   <span className="section-kicker">{t("selectedLaunch")}</span>
-                  <h2>{tokenSnapshot ? `${tokenSnapshot.name} (${tokenSnapshot.symbol})` : t("loadWorkspace")}</h2>
+                  {tokenSnapshot ? null : <h2>{t("loadWorkspace")}</h2>}
                 </div>
                 <span className={`stage-pill ${isBonding ? "live" : isMigrating ? "warn" : isDexOnly ? "done" : ""}`}>
                   {tokenSnapshot ? launchStateLabel(tokenSnapshot.state) : t("noSelection")}
@@ -2454,6 +2454,29 @@ export function App() {
                     </div>
                   </div>
 
+                  <div className="launch-status-band">
+                    <div className="launch-status-card primary">
+                      <span className="metric-label">{t("statusMessage")}</span>
+                      <strong>{launchStateLabel(tokenSnapshot.state)}</strong>
+                      <div className="metric-subtle">{tokenSnapshot.launchMode} · {tokenSnapshot.launchSuffix}</div>
+                    </div>
+                    <div className="launch-status-card">
+                      <span className="metric-label">{t("graduationProgress")}</span>
+                      <strong>{formatPercentFromBps(tokenSnapshot.graduationProgressBps)}</strong>
+                      <div className="metric-subtle">{tf("raisedAgainstTarget", { raised: formatNativeCompact(heroRaised), target: formatNativeCompact(tokenSnapshot.graduationQuoteReserve) })}</div>
+                    </div>
+                    <div className="launch-status-card">
+                      <span className="metric-label">{t("raisedLabel")}</span>
+                      <strong>{formatNativeCompact(heroRaised)}</strong>
+                      <div className="metric-subtle">{t("bondingActions")}</div>
+                    </div>
+                    <div className="launch-status-card">
+                      <span className="metric-label">{t("remainingCapacity")}</span>
+                      <strong>{formatNativeCompact(tokenSnapshot.remainingQuoteCapacity)}</strong>
+                      <div className="metric-subtle">{t("graduationTarget")}</div>
+                    </div>
+                  </div>
+
                   <article className="subpanel chart-hero-panel">
                     <div className="subpanel-header">
                       <h3>{t("priceTrajectory")}</h3>
@@ -2485,8 +2508,9 @@ export function App() {
                       <div className="metric-subtle">{tf("raisedAgainstTarget", { raised: formatNativeCompact(heroRaised), target: formatNativeCompact(tokenSnapshot.graduationQuoteReserve) })}</div>
                     </div>
                     <div>
-                      <span className="metric-label">{t("graduationProgress")}</span>
-                      <strong>{formatPercentFromBps(tokenSnapshot.graduationProgressBps)}</strong>
+                      <span className="metric-label">{t("remainingCapacity")}</span>
+                      <strong>{formatNativeCompact(tokenSnapshot.remainingQuoteCapacity)}</strong>
+                      <div className="metric-subtle">{t("graduationTarget")}</div>
                     </div>
                   </div>
 

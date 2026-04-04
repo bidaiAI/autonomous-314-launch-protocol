@@ -932,7 +932,7 @@ async function findVanityLaunchSalt(params: {
             taxBps: params.taxBps ?? 100,
             burnShareBps: params.burnShareBps ?? 5000,
             treasuryShareBps: params.treasuryShareBps ?? 5000,
-            treasuryWallet: params.treasuryWallet ?? params.protocolFeeRecipient
+            treasuryWallet: params.treasuryWallet ?? zeroAddress
           })
         : params.mode === "whitelistTaxed"
           ? buildWhitelistTaxedLaunchInitCode({
@@ -952,7 +952,7 @@ async function findVanityLaunchSalt(params: {
               taxBps: params.taxBps ?? 100,
               burnShareBps: params.burnShareBps ?? 5000,
               treasuryShareBps: params.treasuryShareBps ?? 5000,
-              treasuryWallet: params.treasuryWallet ?? params.protocolFeeRecipient
+              treasuryWallet: params.treasuryWallet ?? zeroAddress
             })
         : buildLaunchInitCode({
           name: params.name,
@@ -1549,7 +1549,7 @@ export async function createLaunch(
   const taxBps = params.taxBps ?? 100;
   const burnShareBps = params.burnShareBps ?? 5000;
   const treasuryShareBps = params.treasuryShareBps ?? 5000;
-  const treasuryWallet = params.treasuryWallet ?? factorySnapshot.protocolFeeRecipient;
+  const treasuryWallet = params.treasuryWallet ?? zeroAddress;
 
   const vanity = await findVanityLaunchSalt({
     mode: family,

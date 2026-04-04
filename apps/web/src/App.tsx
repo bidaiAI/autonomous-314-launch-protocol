@@ -530,7 +530,7 @@ export function App() {
         ? getAddress("0x0000000000000000000000000000000000000000")
         : (() => {
             try {
-              return getAddress(createTaxTreasuryWallet || factorySnapshot?.protocolFeeRecipient || "");
+              return createTaxTreasuryWallet.trim() ? getAddress(createTaxTreasuryWallet.trim()) : "";
             } catch {
               return "";
             }
@@ -1191,7 +1191,9 @@ export function App() {
         isTaxedFamily
           ? treasuryShareBps === 0
             ? getAddress("0x0000000000000000000000000000000000000000")
-            : getAddress(createTaxTreasuryWallet || snapshot.protocolFeeRecipient)
+            : createTaxTreasuryWallet.trim()
+              ? getAddress(createTaxTreasuryWallet.trim())
+              : undefined
           : undefined;
 
       if (requiresWhitelistCommit) {

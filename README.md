@@ -88,7 +88,7 @@ Important suffix rules:
 - `f314` only means **whitelist + tax family**; the actual tax rate must be read from `taxConfig()`
 - `b314` and `f314` can open immediately or at a configured `whitelistOpensAt` up to `3 days` after creation
 - whitelist families use **fixed seats**, not variable-size presale allocations
-- each approved address can commit **one exact seat amount once**; any other amount is rejected by revert, not auto-refunded
+- each approved address can commit **one exact seat amount once**; any other amount is rejected by revert
 - when the threshold is reached, the whitelist finalizes and **every filled seat receives the same token allocation per seat**
 - delayed-open whitelist families intentionally disable atomic creator seat commit
 - batch ops such as protocol fee sweeping and claiming are protocol tooling, not end-user UI features

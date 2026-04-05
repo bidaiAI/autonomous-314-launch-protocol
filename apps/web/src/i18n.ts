@@ -195,7 +195,7 @@ const strings = {
     mode0314Points: [
       "Creator uses create + atomic buy to secure the first position without being front-run.",
       "Pre-graduation: send native tokens to the contract to buy. 1-block sell cooldown applies.",
-      "After graduation, sending native tokens to the contract or transferring tokens back to the contract reverts instead of auto-refunding.",
+      "After graduation, sending native tokens to the contract or transferring tokens back to the contract simply reverts.",
       "Best for fully open launches. Cleanest audit surface."
     ],
 
@@ -813,7 +813,7 @@ const strings = {
     mode0314Points: [
       "创建时自动完成原子买入，确保创建者拿到第一笔仓位，不被抢先。",
       "毕业前：向合约地址发送原生代币即可买入。卖出有 1 个区块的冷却期。",
-      "毕业后，再向合约地址发送原生代币或把 token 转回合约地址，都会直接 revert 失败，不会自动退回。",
+      "毕业后，再向合约地址发送原生代币或把 token 转回合约地址，都会直接 revert 失败。",
       "适合完全开放的社区发射，审计面最小。"
     ],
 

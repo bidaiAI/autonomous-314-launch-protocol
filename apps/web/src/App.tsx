@@ -2202,17 +2202,13 @@ export function App() {
                     </div>
                     <div className="metadata-two-column identity-grid">
                       <label className="field prominent-field">
-                        {renderFieldLabel(t("tokenName"), "tokenName")}
-                        {createFieldHelp === "tokenName" ? <small className="field-help-copy">{t("tokenNameHelp")}</small> : null}
+                        {renderFieldLabel(t("tokenName"))}
                         <input value={createName} onChange={(e) => setCreateName(sanitizeUnicodeLabel(e.target.value, "name"))} placeholder={t("tokenNamePlaceholder")} />
-                        <small className="field-note">{t("tokenNameNote")}</small>
-                      </label>
+                                              </label>
                       <label className="field prominent-field">
-                        {renderFieldLabel(t("tokenSymbol"), "tokenSymbol")}
-                        {createFieldHelp === "tokenSymbol" ? <small className="field-help-copy">{t("tokenSymbolHelp")}</small> : null}
+                        {renderFieldLabel(t("tokenSymbol"))}
                         <input value={createSymbol} onChange={(e) => setCreateSymbol(sanitizeUnicodeLabel(e.target.value, "symbol"))} placeholder={t("tokenSymbolPlaceholder")} />
-                        <small className="field-note">{t("tokenSymbolNote")}</small>
-                      </label>
+                                              </label>
                     </div>
                     <label className="field">
                       {renderFieldLabel(t("description"), "description", true)}

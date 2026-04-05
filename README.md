@@ -313,7 +313,7 @@ Reference UIs should still prefer explicit contract calls such as `buy(minTokenO
 
 ## Creator-first economics
 
-The protocol is deliberately positioned against platform-first fee extraction.
+One of the protocol's design goals is not to reinforce platform-led extraction from on-chain liquidity, but to return launch, trading, and graduation flow back to the market itself through contracts and open participation.
 
 - **creator share**: `0.7%`
 - **protocol share**: `0.3%`

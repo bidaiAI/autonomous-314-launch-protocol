@@ -300,6 +300,14 @@ function launchStateLabel(state: string) {
   return state;
 }
 
+function launchModeLabel(mode: string) {
+  if (mode === "Standard0314") return t("mode0314Title");
+  if (mode === "WhitelistB314") return t("modeB314Title");
+  if (mode === "WhitelistTaxF314") return t("modeF314Title");
+  if (/^Taxed\d+314$/.test(mode)) return t("modeTaxTitle");
+  return mode;
+}
+
 export function App() {
   const [route, setRoute] = useState<AppRoute>(() => parseRoute(window.location.pathname));
   const [wallet, setWallet] = useState<string>("");
@@ -2628,7 +2636,7 @@ export function App() {
                     <div className="launch-hero-side">
                       <div className="launch-meta-strip">
                         <span className="status-pill">{tokenSnapshot.launchSuffix}</span>
-                        <span className="status-pill">{tokenSnapshot.launchMode}</span>
+                        <span className="status-pill">{launchModeLabel(tokenSnapshot.launchMode)}</span>
                         <span className="status-pill">{shortAddress(tokenSnapshot.creator)}</span>
                       </div>
                       <dl className="launch-hero-summary">
@@ -2642,7 +2650,7 @@ export function App() {
                         </div>
                         <div>
                           <dt>{t("mode")}</dt>
-                          <dd>{tokenSnapshot.launchMode}</dd>
+                          <dd>{launchModeLabel(tokenSnapshot.launchMode)}</dd>
                         </div>
                         <div>
                           <dt>{t("suffix")}</dt>
@@ -2669,7 +2677,7 @@ export function App() {
                     <div className="launch-status-card primary">
                       <span className="metric-label">{t("statusMessage")}</span>
                       <strong>{launchStateLabel(tokenSnapshot.state)}</strong>
-                      <div className="metric-subtle">{tokenSnapshot.launchMode} · {tokenSnapshot.launchSuffix}</div>
+                      <div className="metric-subtle">{launchModeLabel(tokenSnapshot.launchMode)} · {tokenSnapshot.launchSuffix}</div>
                     </div>
                     <div className="launch-status-card">
                       <span className="metric-label">{t("graduationProgress")}</span>
@@ -2881,7 +2889,7 @@ export function App() {
                     <div className="detail-grid">
                       <dl className="data-list">
                         <div><dt>{t("tokenAddressLabel")}</dt><dd>{tokenSnapshot.address}</dd></div>
-                        <div><dt>{t("mode")}</dt><dd>{tokenSnapshot.launchMode}</dd></div>
+                        <div><dt>{t("mode")}</dt><dd>{launchModeLabel(tokenSnapshot.launchMode)}</dd></div>
                         <div><dt>{t("suffix")}</dt><dd>{tokenSnapshot.launchSuffix}</dd></div>
                         <div><dt>{t("metadataUriLabel")}</dt><dd>{tokenSnapshot.metadataURI}</dd></div>
                         <div><dt>{t("gradTarget")}</dt><dd>{formatNative(tokenSnapshot.graduationQuoteReserve)}</dd></div>

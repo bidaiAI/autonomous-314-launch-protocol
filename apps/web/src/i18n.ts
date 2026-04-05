@@ -219,7 +219,7 @@ const strings = {
       "Burn share + treasury share always sum to 100%."
     ],
 
-    modeF314Title: "Whitelist + Tax",
+    modeF314Title: "Taxed Whitelist",
     modeF314Eyebrow: "Full feature set",
     modeF314Desc: "Whitelist fixed-seat launch that transitions into a taxed post-graduation token. Once the threshold is met, every filled seat receives the same token allocation. Suffix is always f314; actual tax rate is read from chain.",
     modeF314Points: [
@@ -484,8 +484,8 @@ const strings = {
     raisedAgainstTarget: "{raised} / {target}",
     creator: "Creator",
     launchOverview: "Launch Overview",
-    resolvingMetadata: "Resolving off-chain metadata...",
-    noMetadata: "No off-chain metadata resolved. The protocol state is live; discovery metadata may be hosted elsewhere.",
+    resolvingMetadata: "Loading project profile...",
+    noMetadata: "No project profile was provided yet. You can still trade and inspect the on-chain launch state.",
 
     // launch — state
     stateCreated: "Created",
@@ -823,7 +823,7 @@ const strings = {
       "燃烧比例 + 金库比例始终加总为 100%。"
     ],
 
-    modeF314Title: "白名单 + 税",
+    modeF314Title: "带税白名单",
     modeF314Eyebrow: "全功能版",
     modeF314Desc: "先走白名单承诺流程，达到门槛后每个已填充席位获得相同额度的代币，毕业后自动带税。后缀固定为 f314，实际税率从链上读取。",
     modeF314Points: [
@@ -1090,8 +1090,8 @@ const strings = {
     raisedAgainstTarget: "{raised} / {target}",
     creator: "创建者",
     launchOverview: "发射概览",
-    resolvingMetadata: "正在解析链下元数据...",
-    noMetadata: "未解析到链下元数据。协议状态是活跃的，元数据可能存储在其他位置。",
+    resolvingMetadata: "正在加载项目资料...",
+    noMetadata: "暂未提供项目简介，但你仍可查看链上状态与交易。",
 
     // 详情 — 状态
     stateCreated: "已创建",

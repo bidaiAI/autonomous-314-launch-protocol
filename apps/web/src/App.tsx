@@ -2248,24 +2248,18 @@ export function App() {
 
               <section className="create-steps-strip">
                 <article className="create-step-card">
-                  <div className="create-step-head">
-                    <span className="create-step-index">01</span>
-                    <strong>{t("createStepOneTitle")}</strong>
-                  </div>
+                  <span className="create-step-index">01</span>
+                  <strong>{t("createStepOneTitle")}</strong>
                   <p>{t("createStepOneDesc")}</p>
                 </article>
                 <article className="create-step-card">
-                  <div className="create-step-head">
-                    <span className="create-step-index">02</span>
-                    <strong>{t("createStepTwoTitle")}</strong>
-                  </div>
+                  <span className="create-step-index">02</span>
+                  <strong>{t("createStepTwoTitle")}</strong>
                   <p>{t("createStepTwoDesc")}</p>
                 </article>
                 <article className="create-step-card">
-                  <div className="create-step-head">
-                    <span className="create-step-index">03</span>
-                    <strong>{t("createStepThreeTitle")}</strong>
-                  </div>
+                  <span className="create-step-index">03</span>
+                  <strong>{t("createStepThreeTitle")}</strong>
                   <p>{t("createStepThreeDesc")}</p>
                 </article>
               </section>

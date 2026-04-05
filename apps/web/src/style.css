@@ -1684,11 +1684,9 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .create-step-card {
   display: grid;
-  grid-template-columns: 36px minmax(0, 1fr);
-  align-items: start;
-  align-self: start;
+  align-content: start;
   gap: 12px;
-  padding: 16px 18px;
+  padding: 18px 20px;
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-subtle);
   background: rgba(15, 23, 42, 0.42);
@@ -1696,13 +1694,13 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .create-step-index {
   display: inline-flex;
-  width: 36px;
-  height: 36px;
+  width: 42px;
+  height: 42px;
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-full);
   font-family: var(--font-mono);
-  font-size: 0.76rem;
+  font-size: 0.78rem;
   letter-spacing: 0.08em;
   background: rgba(94, 234, 212, 0.08);
   border: 1px solid rgba(94, 234, 212, 0.18);
@@ -1711,14 +1709,15 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .create-step-card strong {
   display: block;
-  margin-bottom: 4px;
-  font-size: 0.92rem;
+  margin: 0;
+  font-size: 1.06rem;
+  line-height: 1.28;
 }
 
 .create-step-card p {
   margin: 0;
-  font-size: 0.84rem;
-  line-height: 1.6;
+  font-size: 0.9rem;
+  line-height: 1.72;
   color: var(--text-secondary);
 }
 

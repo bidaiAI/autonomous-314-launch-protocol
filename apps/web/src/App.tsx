@@ -2279,14 +2279,16 @@ export function App() {
                       </label>
                     </div>
                     <div className="social-trigger-card">
-                      <div>
-                        <span className="section-kicker">{t("socialLinksLabel")} <em className="field-badge optional">{t("optionalField")}</em></span>
-                        <strong>{t("socialLinksTitle")}</strong>
-                        <p>{configuredSocialCount > 0 ? tf("socialLinksCount", { count: String(configuredSocialCount) }) : t("socialLinksEmptyHint")}</p>
+                      <div className="social-trigger-head">
+                        <div className="social-trigger-copy">
+                          <span className="section-kicker">{t("socialLinksLabel")} <em className="field-badge optional">{t("optionalField")}</em></span>
+                          <strong>{t("socialLinksTitle")}</strong>
+                          <p className="social-trigger-note">{configuredSocialCount > 0 ? tf("socialLinksCount", { count: String(configuredSocialCount) }) : t("socialLinksEmptyHint")}</p>
+                        </div>
+                        <button type="button" className="secondary-button" onClick={() => setShowSocialEditor((current) => !current)}>
+                          {showSocialEditor ? t("hideSocialLinks") : configuredSocialCount > 0 ? t("editSocialLinks") : t("showSocialLinks")}
+                        </button>
                       </div>
-                      <button type="button" className="secondary-button" onClick={() => setShowSocialEditor((current) => !current)}>
-                        {showSocialEditor ? t("hideSocialLinks") : configuredSocialCount > 0 ? t("editSocialLinks") : t("showSocialLinks")}
-                      </button>
                     </div>
                     {showSocialEditor && (
                       <div className="social-inline-editor panel subtle-panel">

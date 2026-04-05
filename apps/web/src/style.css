@@ -1259,14 +1259,21 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 }
 
 .social-trigger-card {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 16px;
   padding: 16px 18px;
   border-radius: var(--radius-lg);
   border: 1px solid rgba(148, 163, 184, 0.12);
   background: rgba(8, 16, 24, 0.4);
+}
+
+.social-trigger-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 16px;
+}
+
+.social-trigger-copy {
+  min-width: 0;
 }
 
 .social-trigger-card strong {
@@ -1275,17 +1282,18 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   font-size: 1rem;
 }
 
-.social-trigger-card p {
+.social-trigger-note {
   margin: 8px 0 0;
   color: var(--text-secondary);
-  line-height: 1.5;
+  line-height: 1.45;
   font-size: 0.92rem;
-  max-width: 34ch;
+  max-width: 42ch;
 }
 
 .social-trigger-card .secondary-button {
   min-width: 180px;
   justify-content: center;
+  align-self: center;
 }
 
 .social-dialog {
@@ -2465,7 +2473,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   .launch-card-actions { grid-template-columns: 1fr; }
   .launch-card-actions .list-item-meta { margin-left: 0; }
   .metadata-two-column { grid-template-columns: 1fr; }
-  .social-trigger-card { grid-template-columns: 1fr; align-items: stretch; }
+  .social-trigger-head { grid-template-columns: 1fr; align-items: stretch; }
   .social-trigger-card .secondary-button { width: 100%; min-width: 0; }
   .create-hero-card { flex-direction: column; padding: 18px 16px; }
   .create-section { padding: 16px; }

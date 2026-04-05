@@ -313,6 +313,7 @@ export function App() {
   const [wallet, setWallet] = useState<string>("");
   const [factoryAddress, setFactoryAddress] = useState(OFFICIAL_FACTORY_ADDRESS);
   const [factoryInputMode, setFactoryInputMode] = useState<"official" | "custom">(OFFICIAL_FACTORY_ADDRESS ? "official" : "custom");
+  const [showFactorySettings, setShowFactorySettings] = useState(false);
   const [customFactoryInput, setCustomFactoryInput] = useState("");
   const [tokenAddress, setTokenAddress] = useState(import.meta.env.VITE_TOKEN_ADDRESS ?? "");
   const [createName, setCreateName] = useState("Autonomous 314");
@@ -1938,8 +1939,21 @@ export function App() {
         <section className="page-grid create-grid">
           <aside className="rail">
             <article className="panel">
-              <h2>{t('factoryAddress')}</h2>
-              <div className="factory-switch" role="tablist" aria-label={t('factoryAddress')}>
+              <div className="section-head compact-head">
+                <div>
+                  <h2>{t('factorySettings')}</h2>
+                  <p>{t('factoryAddressNote')}</p>
+                </div>
+                <button
+                  type="button"
+                  className="secondary-button factory-toggle"
+                  onClick={() => setShowFactorySettings((current) => !current)}
+                  aria-expanded={showFactorySettings || factoryInputMode === "custom"}
+                >
+                  {showFactorySettings || factoryInputMode === "custom" ? t('hideFactorySettings') : t('showFactorySettings')}
+                </button>
+              </div>
+              <div className="factory-switch" role="tablist" aria-label={t('factorySettings')}>
                 <button
                   type="button"
                   className={factoryInputMode === "official" ? "factory-switch-pill active" : "factory-switch-pill"}
@@ -1955,71 +1969,84 @@ export function App() {
                   className={factoryInputMode === "custom" ? "factory-switch-pill active" : "factory-switch-pill"}
                   onClick={() => {
                     setFactoryInputMode("custom");
+                    setShowFactorySettings(true);
                     setFactoryAddress(customFactoryInput.trim());
                   }}
                 >
                   {t("useCustomFactory")}
                 </button>
               </div>
-              {factoryInputMode === "official" ? (
-                <label className="field">
-                  <span>{t('factoryAddress')}</span>
-                  <input value={OFFICIAL_FACTORY_ADDRESS} readOnly />
-                </label>
-              ) : (
-                <label className="field">
-                  <span>{t('factoryAddress')}</span>
-                  <input
-                    value={customFactoryInput}
-                    onChange={(e) => {
-                      setCustomFactoryInput(e.target.value);
-                      setFactoryAddress(e.target.value);
-                    }}
-                    placeholder="0x..."
-                  />
-                </label>
-              )}
-              <div className="callout compact-callout">
-                <strong>{usingOfficialFactory ? t("useOfficialFactory") : t("factoryAddress")}</strong>
-                <p>{t("factoryAddressNote")}</p>
+              <div className="factory-summary">
+                <div>
+                  <span>{t('factorySource')}</span>
+                  <strong>{factoryInputMode === 'official' ? t('useOfficialFactory') : (customFactoryInput.trim() || t('useCustomFactory'))}</strong>
+                </div>
+                <div>
+                  <span>{t('createFeeStandard')}</span>
+                  <strong>{formatNative(factorySnapshot?.standardCreateFee ?? parseEther('0.01'))}</strong>
+                </div>
+                <div>
+                  <span>{t('createFeeWhitelist')}</span>
+                  <strong>{formatNative(factorySnapshot?.whitelistCreateFee ?? parseEther('0.03'))}</strong>
+                </div>
               </div>
-              <div className="button-row">
-                <button onClick={handleLoadFactory}>{t('loadFactoryBtn')}</button>
-                <button
-                  className="secondary-button"
-                  onClick={handleClaimFactoryFees}
-                  disabled={!factorySnapshot || !connectedAsProtocolRecipient || walletWrongNetwork}
-                >
-                  {t('claimFactoryFees')}
-                </button>
-              </div>
-              {factorySnapshot && (
-                <>
-                  <dl className="data-list compact">
-                    <div><dt>{t('createFeeStandard')}</dt><dd>{formatNative(factorySnapshot.standardCreateFee)}</dd></div>
-                    <div><dt>{t('createFeeWhitelist')}</dt><dd>{formatNative(factorySnapshot.whitelistCreateFee)}</dd></div>
-                    <div><dt>{t('graduationTarget')}</dt><dd>{formatNative(factorySnapshot.graduationQuoteReserve)}</dd></div>
-                    <div><dt>{t('totalLaunches')}</dt><dd>{factorySnapshot.totalLaunches.toString()}</dd></div>
-                    <div><dt>{t('protocolRecipient')}</dt><dd>{shortAddress(factorySnapshot.protocolFeeRecipient)}</dd></div>
-                    <div><dt>{t('accruedFees')}</dt><dd>{formatNative(factorySnapshot.accruedProtocolCreateFees)}</dd></div>
-                  </dl>
-                  <div className="mini-list">
-                    <div className="mini-list-title">{t('recentLaunches')}</div>
-                    {recentLaunchSnapshots.length === 0 ? (
-                      <div className="mini-list-empty">{t('noLaunches')}</div>
-                    ) : (
-                      recentLaunchSnapshots.slice(0, 8).map((launch) => (
-                        <button key={launch.address} className="list-item" onClick={() => void handleSelectLaunch(launch.address)}>
-                          <span className="list-item-main">
-                            <strong>{launch.symbol}</strong>
-                            <span>{launchStateLabel(launch.state)} · {formatPercentFromBps(launch.graduationProgressBps)}</span>
-                          </span>
-                          <span className="list-item-meta">{formatNative(launch.currentPriceQuotePerToken)}</span>
-                        </button>
-                      ))
-                    )}
+              {(showFactorySettings || factoryInputMode === "custom") && (
+                <div className="factory-expanded">
+                  {factoryInputMode === "official" ? (
+                    <label className="field">
+                      <span>{t('factoryAddress')}</span>
+                      <input value={OFFICIAL_FACTORY_ADDRESS} readOnly />
+                    </label>
+                  ) : (
+                    <label className="field">
+                      <span>{t('factoryAddress')}</span>
+                      <input
+                        value={customFactoryInput}
+                        onChange={(e) => {
+                          setCustomFactoryInput(e.target.value);
+                          setFactoryAddress(e.target.value);
+                        }}
+                        placeholder="0x..."
+                      />
+                    </label>
+                  )}
+                  <div className="button-row">
+                    <button onClick={handleLoadFactory}>{t('loadFactoryBtn')}</button>
+                    <button
+                      className="secondary-button"
+                      onClick={handleClaimFactoryFees}
+                      disabled={!factorySnapshot || !connectedAsProtocolRecipient || walletWrongNetwork}
+                    >
+                      {t('claimFactoryFees')}
+                    </button>
                   </div>
-                </>
+                  {factorySnapshot && (
+                    <>
+                      <dl className="data-list compact">
+                        <div><dt>{t('graduationTarget')}</dt><dd>{formatNative(factorySnapshot.graduationQuoteReserve)}</dd></div>
+                        <div><dt>{t('totalLaunches')}</dt><dd>{factorySnapshot.totalLaunches.toString()}</dd></div>
+                        <div><dt>{t('protocolRecipient')}</dt><dd>{shortAddress(factorySnapshot.protocolFeeRecipient)}</dd></div>
+                        <div><dt>{t('accruedFees')}</dt><dd>{formatNative(factorySnapshot.accruedProtocolCreateFees)}</dd></div>
+                      </dl>
+                      <div className="mini-list">
+                        <div className="mini-list-title">{t('recentLaunches')}</div>
+                        {recentLaunchSnapshots.length === 0 ? (
+                          <div className="mini-list-empty">{t('noLaunches')}</div>
+                        ) : (
+                          recentLaunchSnapshots.slice(0, 8).map((launch) => (
+                            <button key={launch.address} className="list-item" onClick={() => void handleSelectLaunch(launch.address)}>
+                              <span className="list-item-main">
+                                <strong>{launch.symbol}</strong>
+                                <span>{launchStateLabel(launch.state)} · {formatPercentFromBps(launch.graduationProgressBps)}</span>
+                              </span>
+                              <span className="list-item-meta">{formatNative(launch.currentPriceQuotePerToken)}</span>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
               )}
             </article>
           </aside>

@@ -874,6 +874,64 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   box-shadow: var(--shadow-accent);
 }
 
+.compact-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.compact-head h2 {
+  margin: 0 0 6px;
+  font-size: 1.04rem;
+}
+
+.compact-head p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.factory-toggle {
+  white-space: nowrap;
+}
+
+.factory-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.factory-summary > div {
+  padding: 12px 14px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+  background: rgba(148, 163, 184, 0.04);
+}
+
+.factory-summary span {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  margin-bottom: 6px;
+}
+
+.factory-summary strong {
+  display: block;
+  color: var(--text-primary);
+  font-size: 0.92rem;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.factory-expanded {
+  display: grid;
+  gap: 12px;
+}
+
 /* ── Progress Bar ── */
 .progress-shell {
   height: 10px;
@@ -2313,6 +2371,8 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   .button-row { display: grid; grid-template-columns: 1fr; }
   .button-row > button, .button-row > a { width: 100%; justify-content: center; }
   .factory-switch { grid-template-columns: 1fr; }
+  .factory-summary { grid-template-columns: 1fr; }
+  .compact-head { flex-direction: column; align-items: stretch; }
   .search-hero { padding: 16px; gap: 14px; }
   .search-hero-row, .market-toolbar { flex-direction: column; align-items: stretch; }
   .search-hero-row .field { width: 100%; }
@@ -2357,4 +2417,10 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   .app-footer { flex-direction: column; align-items: flex-start; padding-bottom: calc(18px + env(safe-area-inset-bottom)); }
   .footer-brand { flex-direction: column; align-items: flex-start; }
   .footer-brand-mark { height: 24px; }
+}
+
+
+@media (max-width: 1180px) {
+  .factory-summary { grid-template-columns: 1fr; }
+  .compact-head { flex-direction: column; align-items: stretch; }
 }

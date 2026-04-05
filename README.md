@@ -10,6 +10,8 @@
 
 Open-source **EVM-native** launch protocol for creator-first, platform-independent token launches. Pre-graduation trading lives inside the launch contract itself, and graduation hands liquidity off to a canonical V2-style DEX without requiring a centralized launch platform to remain online.
 
+**Official frontend:** [https://auto314.cc](https://auto314.cc)
+
 > Not another launchpad website — a self-contained launch protocol where the contract itself is the market, the reserve system, and the graduation engine.
 
 ## One-line thesis
@@ -52,7 +54,7 @@ At a functional level, the protocol already provides:
 - **post-grad hard cutover**
   - after graduation, 314 is permanently disabled and the token behaves like a normal transferable asset
 - **creator-first fee accounting**
-  - 1% total fee split into 0.7% creator and 0.3% protocol
+  - 1% total fee = 0.7% creator + 0.3% protocol, pre-grad only
 - **abandoned creator-fee resolution**
   - abandoned pre-grad launches can eventually sweep unclaimable creator fees into the protocol vault
 - **reference integration stack**
@@ -237,7 +239,7 @@ Autonomous 314 is designed for:
 - **graduation**: immutable per-factory quote target + 20% token reserve seeds the canonical V2 pair
 - **post-graduation**: 314 permanently disabled, standard ERC-20 transfers enabled
 - **LP handling**: minted directly to the dead address
-- **fees**: 1% total = 0.3% protocol + 0.7% creator
+- **fees**: 1% total = 0.3% protocol + 0.7% creator, internal pre-grad market only
 - **abandoned creator fees**: if a launch is still pre-graduation after `180 days` and has had no trades for `30 days`, anyone may sweep the unclaimable creator fee vault into the protocol fee vault
 - **safety**: quote-side wrapped-native preload is surfaced as a non-canonical opening-state warning rather than a cheap graduation DOS path
 - **deployment**: factory supports `CREATE2` salts for vanity suffix search such as `0314`
@@ -315,12 +317,12 @@ Reference UIs should still prefer explicit contract calls such as `buy(minTokenO
 
 One of the protocol's design goals is not to reinforce platform-led extraction from on-chain liquidity, but to return launch, trading, and graduation flow back to the market itself through contracts and open participation.
 
-- **creator share**: `0.7%`
-- **protocol share**: `0.3%`
+- **creator share**: `0.7%` (internal pre-grad market only)
+- **protocol share**: `0.3%` (internal pre-grad market only)
 - **standard/taxed create fee**: `0.01 native`
 - **whitelist/whitelist-tax create fee**: `0.03 native`
 
-This means the protocol keeps a small sustainability fee while routing the majority of the trading fee back toward the project side.
+This means the protocol keeps a small sustainability fee during the internal pre-grad market while routing the majority of that fee back toward the project side.
 
 Very small dust-sized trades are also protected against fee bypass. In practice this means extremely small buys or sells may either pay a minimum 1 wei total fee or become non-executable if the net output would be zero after fees.
 

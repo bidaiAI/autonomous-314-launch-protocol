@@ -695,6 +695,12 @@ export function App() {
     () => (resolvedCreateMetadataUri ? new TextEncoder().encode(resolvedCreateMetadataUri).length : 0),
     [resolvedCreateMetadataUri]
   );
+  const hasRequiredCreateIdentity = Boolean(sanitizedCreateName && sanitizedCreateSymbol && launchMetadata.image);
+  const canReviewCreate =
+    Boolean(wallet) &&
+    !walletWrongNetwork &&
+    hasRequiredCreateIdentity &&
+    (!requiresWhitelistCommit || whitelistAddressCountValid);
 
   function navigate(nextRoute: AppRoute, replace = false) {
     const href = routeHref(nextRoute);
@@ -1173,6 +1179,19 @@ export function App() {
   }
 
   function handleOpenCreateConfirm() {
+    if (!wallet) {
+      setStatus(t("statusConnectWalletBeforeCreate"));
+      void handleConnectWallet();
+      return;
+    }
+    if (!sanitizedCreateName || !sanitizedCreateSymbol) {
+      setStatus(t("errorTokenIdentityRequired"));
+      return;
+    }
+    if (!launchMetadata.image) {
+      setStatus(t("errorTokenImageRequired"));
+      return;
+    }
     setShowCreateConfirm(true);
   }
 
@@ -1212,6 +1231,9 @@ export function App() {
       const finalMetadataUri = createMetadataUri.trim() || generatedInlineMetadataUri;
       if (!sanitizedName || !sanitizedSymbol) {
         throw new Error(t("errorTokenIdentityRequired"));
+      }
+      if (!launchMetadata.image) {
+        throw new Error(t("errorTokenImageRequired"));
       }
       if (!finalMetadataUri) {
         throw new Error(
@@ -2175,6 +2197,7 @@ export function App() {
                       <label className="field">
                         <span>{t("imageUrl")}</span>
                         <input value={createImageUrl} onChange={(e) => setCreateImageUrl(e.target.value)} placeholder={t("imageUrlPlaceholder")} />
+                        <small className="field-note">{t("imageRequiredNote")}</small>
                       </label>
                       <label className="field">
                         <span>{t("uploadImage")}</span>
@@ -2185,6 +2208,7 @@ export function App() {
                             void handleMetadataImageUpload(e.target.files?.[0] ?? null);
                           }}
                         />
+                        <small className="field-note">{t("imageRequiredNote")}</small>
                       </label>
                     </div>
                     <div className="metadata-two-column">
@@ -2471,14 +2495,19 @@ export function App() {
                   <div className="status-hint">
                     {t("standardAndTaxedFlow")}
                   </div>
-                  <button onClick={handleOpenCreateConfirm} disabled={walletWrongNetwork || (requiresWhitelistCommit && !whitelistAddressCountValid)}>
-                    {createMode === "standard"
-                      ? t("createReviewBtn0314")
-                      : createMode === "whitelist"
-                        ? t("createReviewBtnB314")
-                        : createMode === "taxed"
-                          ? t("createReviewBtnTax")
-                          : t("createReviewBtnF314")}
+                  <button
+                    onClick={!wallet ? () => void handleConnectWallet() : handleOpenCreateConfirm}
+                    disabled={loading || (wallet ? !canReviewCreate : false)}
+                  >
+                    {!wallet
+                      ? t("connectWalletBeforeCreate")
+                      : createMode === "standard"
+                        ? t("createReviewBtn0314")
+                        : createMode === "whitelist"
+                          ? t("createReviewBtnB314")
+                          : createMode === "taxed"
+                            ? t("createReviewBtnTax")
+                            : t("createReviewBtnF314")}
                   </button>
                 </aside>
               </div>

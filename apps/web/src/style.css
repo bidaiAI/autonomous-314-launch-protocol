@@ -1259,8 +1259,8 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 }
 
 .social-trigger-card {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 16px;
   padding: 16px 18px;
@@ -1272,13 +1272,20 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .social-trigger-card strong {
   display: block;
   margin-top: 6px;
+  font-size: 1rem;
 }
 
 .social-trigger-card p {
   margin: 8px 0 0;
   color: var(--text-secondary);
-  line-height: 1.55;
-  max-width: 50ch;
+  line-height: 1.5;
+  font-size: 0.92rem;
+  max-width: 34ch;
+}
+
+.social-trigger-card .secondary-button {
+  min-width: 180px;
+  justify-content: center;
 }
 
 .social-dialog {
@@ -2458,6 +2465,8 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   .launch-card-actions { grid-template-columns: 1fr; }
   .launch-card-actions .list-item-meta { margin-left: 0; }
   .metadata-two-column { grid-template-columns: 1fr; }
+  .social-trigger-card { grid-template-columns: 1fr; align-items: stretch; }
+  .social-trigger-card .secondary-button { width: 100%; min-width: 0; }
   .create-hero-card { flex-direction: column; padding: 18px 16px; }
   .create-section { padding: 16px; }
   .create-section-head { gap: 12px; }

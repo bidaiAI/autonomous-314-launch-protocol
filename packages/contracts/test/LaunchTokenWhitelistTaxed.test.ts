@@ -198,4 +198,42 @@ describe("LaunchTokenWhitelistTaxed", function () {
     expect(await token.balanceOf(dead)).to.equal(deadBefore + expectedBurn);
     expect(await token.balanceOf(treasury.address)).to.equal(treasuryBefore + expectedTreasury);
   });
+
+  it("does not tax wallet-to-wallet transfers after graduation and rejects direct sends back into the token", async function () {
+    const { deployer, buyer, buyer2, buyer3, buyer4, treasury, token, pair } = await deployFixture();
+    const dead = "0x000000000000000000000000000000000000dEaD";
+
+    await buyer.sendTransaction({ to: await token.getAddress(), value: SLOT });
+    await buyer2.sendTransaction({ to: await token.getAddress(), value: SLOT });
+    await buyer3.sendTransaction({ to: await token.getAddress(), value: SLOT });
+    await buyer4.sendTransaction({ to: await token.getAddress(), value: SLOT });
+    await token.connect(buyer).claimWhitelistAllocation();
+
+    await deployer.sendTransaction({ to: buyer.address, value: ethers.parseEther("20") });
+    await token.connect(buyer).buy(0, { value: ethers.parseEther("20") });
+    expect(await token.state()).to.equal(3n);
+
+    const walletTransferAmount = (await token.balanceOf(buyer.address)) / 20n;
+    const deadBefore = await token.balanceOf(dead);
+    const treasuryBefore = await token.balanceOf(treasury.address);
+
+    await token.connect(buyer).transfer(buyer2.address, walletTransferAmount);
+
+    expect(await token.balanceOf(buyer2.address)).to.be.gte(walletTransferAmount);
+    expect(await token.balanceOf(dead)).to.equal(deadBefore);
+    expect(await token.balanceOf(treasury.address)).to.equal(treasuryBefore);
+
+    await expect(
+      buyer.sendTransaction({ to: await token.getAddress(), value: ethers.parseEther("0.1") })
+    ).to.be.revertedWithCustomError(token, "InvalidState");
+
+    await expect(token.connect(buyer).transfer(await token.getAddress(), 1n)).to.be.revertedWithCustomError(
+      token,
+      "InvalidRecipient"
+    );
+
+    const sellAmount = (await token.balanceOf(buyer.address)) / 10n;
+    await token.connect(buyer).transfer(await pair.getAddress(), sellAmount);
+    expect(await token.balanceOf(dead)).to.be.gt(deadBefore);
+  });
 });

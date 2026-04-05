@@ -332,6 +332,34 @@ describe("LaunchFactory", function () {
     expect(await token.taxConfig()).to.deep.equal([true, 500n, 3000n, 7000n, creator.address, false]);
   });
 
+  it("rejects invalid taxed launch configurations", async function () {
+    const { creator, launchFactory } = await deployFixture();
+
+    await expect(
+      launchFactory
+        .connect(creator)
+        .createTaxLaunch("BadSplit", "BAD", "ipfs://bad-split", 100, 4000, 5000, creator.address, {
+          value: STANDARD_CREATE_FEE,
+        })
+    ).to.be.revertedWithCustomError(launchFactory, "InvalidTaxConfig");
+
+    await expect(
+      launchFactory
+        .connect(creator)
+        .createTaxLaunch("MissingTreasury", "BAD", "ipfs://bad-wallet", 100, 5000, 5000, ethers.ZeroAddress, {
+          value: STANDARD_CREATE_FEE,
+        })
+    ).to.be.revertedWithCustomError(launchFactory, "InvalidTaxConfig");
+
+    await expect(
+      launchFactory
+        .connect(creator)
+        .createTaxLaunch("BurnOnlyWallet", "BAD", "ipfs://bad-burn", 100, 10000, 0, creator.address, {
+          value: STANDARD_CREATE_FEE,
+        })
+    ).to.be.revertedWithCustomError(launchFactory, "InvalidTaxConfig");
+  });
+
   it("creates a standard launch and atomically buys for the creator", async function () {
     const { creator, launchFactory } = await deployFixture();
 
@@ -974,6 +1002,27 @@ describe("LaunchFactory", function () {
     expect(await (await ethers.getContractAt("LaunchToken", tokenB)).protocolClaimable()).to.equal(0n);
   });
 
+  it("batch claim reverts the whole call when an unknown token is mixed into the array", async function () {
+    const { creator, protocol, launchFactory } = await deployFixture();
+
+    const tx = await launchFactory.connect(creator).createLaunch("Alpha", "ALP", "ipfs://alpha", {
+      value: STANDARD_CREATE_FEE,
+    });
+    const receipt = await tx.wait();
+    const tokenAddr = receipt!.logs.find((log) => "fragment" in log && log.fragment?.name === "LaunchCreated")!.args
+      .token as string;
+    const token = await ethers.getContractAt("LaunchToken", tokenAddr);
+
+    await token.connect(creator).buy(0, { value: ethers.parseEther("0.1") });
+    const claimableBefore = await token.protocolClaimable();
+
+    await expect(
+      launchFactory.connect(protocol).batchClaimProtocolFees([tokenAddr, ethers.Wallet.createRandom().address], protocol.address)
+    ).to.be.revertedWithCustomError(launchFactory, "UnknownLaunch");
+
+    expect(await token.protocolClaimable()).to.equal(claimableBefore);
+  });
+
   it("batch sweeps abandoned creator fees from multiple launches", async function () {
     const { creator, launchFactory } = await deployFixture();
 
@@ -1007,5 +1056,29 @@ describe("LaunchFactory", function () {
     expect(await tokenB.creatorFeeSweepReady()).to.equal(false);
     expect(await tokenA.protocolClaimable()).to.be.gt(beforeA);
     expect(await tokenB.protocolClaimable()).to.be.gt(beforeB);
+  });
+
+  it("batch sweep reverts the whole call when an unknown token is mixed into the array", async function () {
+    const { creator, launchFactory } = await deployFixture();
+
+    const tx = await launchFactory.connect(creator).createLaunch("Alpha", "ALP", "ipfs://alpha", {
+      value: STANDARD_CREATE_FEE,
+    });
+    const receipt = await tx.wait();
+    const tokenAddr = receipt!.logs.find((log) => "fragment" in log && log.fragment?.name === "LaunchCreated")!.args
+      .token as string;
+    const token = await ethers.getContractAt("LaunchToken", tokenAddr);
+
+    await token.connect(creator).buy(0, { value: ethers.parseEther("0.1") });
+    await ethers.provider.send("evm_increaseTime", [180 * 24 * 60 * 60 + 31 * 24 * 60 * 60]);
+    await ethers.provider.send("evm_mine", []);
+
+    expect(await token.creatorFeeSweepReady()).to.equal(true);
+
+    await expect(
+      launchFactory.batchSweepAbandonedCreatorFees([tokenAddr, ethers.Wallet.createRandom().address])
+    ).to.be.revertedWithCustomError(launchFactory, "UnknownLaunch");
+
+    expect(await token.creatorFeeSweepReady()).to.equal(true);
   });
 });

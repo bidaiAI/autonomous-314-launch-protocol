@@ -149,6 +149,43 @@ describe("Deep Audit: AMM Math & Edge Cases", function () {
       expect(receipt!.gasUsed).to.be.lte(500_000n);
       expect(await token.state()).to.equal(3n); // DEXOnly
     });
+
+    it("same-block competing buys near graduation only allow one successful graduation path", async function () {
+      const { token, buyer, buyer2, buyer3 } = await deployFixture();
+
+      await token.connect(buyer).buy(0, { value: ethers.parseEther("0.18") });
+      expect(await token.state()).to.equal(1n);
+
+      await network.provider.send("evm_setAutomine", [false]);
+      try {
+        const buyData = token.interface.encodeFunctionData("buy", [0]);
+
+        const tx1 = await buyer2.sendTransaction({
+          to: await token.getAddress(),
+          data: buyData,
+          value: OVERBUY,
+          gasLimit: 1_500_000
+        });
+
+        const tx2 = await buyer3.sendTransaction({
+          to: await token.getAddress(),
+          data: buyData,
+          value: OVERBUY,
+          gasLimit: 1_500_000
+        });
+
+        await network.provider.send("evm_mine");
+
+        const receipt1 = await ethers.provider.getTransactionReceipt(tx1.hash);
+        const receipt2 = await ethers.provider.getTransactionReceipt(tx2.hash);
+
+        const statuses = [receipt1?.status, receipt2?.status].sort();
+        expect(statuses).to.deep.equal([0, 1]);
+        expect(await token.state()).to.equal(3n);
+      } finally {
+        await network.provider.send("evm_setAutomine", [true]);
+      }
+    });
   });
 
   // =====================================================================

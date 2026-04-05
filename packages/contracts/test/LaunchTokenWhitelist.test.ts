@@ -215,4 +215,23 @@ describe("LaunchTokenWhitelist", function () {
       })
     ).to.be.revertedWithCustomError(LaunchTokenWhitelist, "InvalidWhitelistAddressCount");
   });
+
+  it("auto-falls back to bonding on the first normal buy after whitelist expiry", async function () {
+    const { token, buyer, deployer } = await deployFixture();
+    const outsider = ethers.Wallet.createRandom().connect(ethers.provider);
+    await deployer.sendTransaction({ to: outsider.address, value: ethers.parseEther("1") });
+
+    await buyer.sendTransaction({ to: await token.getAddress(), value: SLOT });
+    await increaseTime(24 * 60 * 60 + 1);
+
+    expect(await token.state()).to.equal(4n);
+    expect(await token.whitelistStatus()).to.equal(4n);
+
+    await outsider.sendTransaction({ to: await token.getAddress(), value: ethers.parseEther("0.1") });
+
+    expect(await token.state()).to.equal(1n);
+    expect(await token.whitelistExpiredWithoutFinalization()).to.equal(true);
+    expect(await token.balanceOf(outsider.address)).to.be.gt(0n);
+    expect(await token.canClaimWhitelistRefund(buyer.address)).to.equal(true);
+  });
 });

@@ -393,6 +393,21 @@ export function App() {
       ) : null}
     </span>
   );
+  const renderFieldMethodLabel = (label: string, helpKey?: string) => (
+    <span className="label-row">
+      <span>{label}</span>
+      {helpKey ? (
+        <button
+          type="button"
+          className={`field-help-toggle ${createFieldHelp === helpKey ? "active" : ""}`}
+          onClick={() => toggleCreateFieldHelp(helpKey)}
+          aria-label={t("toggleHelp")}
+        >
+          <span className="field-help-chevron" aria-hidden="true" />
+        </button>
+      ) : null}
+    </span>
+  );
   const [createMetadataUri, setCreateMetadataUri] = useState("");
   const [createAtomicBuyEnabled, setCreateAtomicBuyEnabled] = useState(true);
   const [createAtomicBuyAmount, setCreateAtomicBuyAmount] = useState("1");
@@ -2337,13 +2352,13 @@ export function App() {
                         <h3>{t("metadataTitle")}</h3>
                       </div>
                     </div>
-                    <div className="callout compact-callout subtle-callout">
+                    <div className="field-group-head">
                       <strong>{t("coverImageLabel")} <em className="field-required-mark">*</em></strong>
                       <p>{t("imageEitherOrNote")}</p>
                     </div>
                     <div className="metadata-image-stack">
                       <label className="field">
-                        {renderFieldLabel(t("imageUrl"), "image")}
+                        {renderFieldMethodLabel(t("imageUrl"), "image")}
                         {createFieldHelp === "image" ? <small className="field-help-copy">{t("imageHelp")}</small> : null}
                         <input value={createImageUrl} onChange={(e) => setCreateImageUrl(e.target.value)} placeholder={t("imageUrlPlaceholder")} />
                         <small className="field-note">{t("imageUrlOptionalNote")}</small>
@@ -2352,7 +2367,7 @@ export function App() {
                         <span>{t("imageEitherOrDivider")}</span>
                       </div>
                       <label className="field">
-                        {renderFieldLabel(t("uploadImage"), "imageUpload")}
+                        {renderFieldMethodLabel(t("uploadImage"), "imageUpload")}
                         {createFieldHelp === "imageUpload" ? <small className="field-help-copy">{t("imageUploadHelp")}</small> : null}
                         <input
                           type="file"

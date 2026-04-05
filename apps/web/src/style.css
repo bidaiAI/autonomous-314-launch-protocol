@@ -1353,7 +1353,27 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .metadata-image-stack {
   display: grid;
-  gap: 12px;
+  gap: 14px;
+  max-width: 720px;
+}
+
+.field-group-head {
+  margin-bottom: 14px;
+  padding: 0;
+}
+
+.field-group-head strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1.05rem;
+}
+
+.field-group-head p {
+  margin: 10px 0 0;
+  max-width: 56ch;
+  color: var(--text-secondary);
+  line-height: 1.65;
 }
 
 .metadata-image-divider {
@@ -1364,6 +1384,14 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   font-size: 0.9rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+}
+
+.metadata-image-stack .field {
+  max-width: 100%;
+}
+
+.metadata-image-stack .field-note {
+  max-width: 52ch;
 }
 
 .metadata-image-divider::before,

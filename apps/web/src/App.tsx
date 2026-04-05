@@ -328,6 +328,7 @@ export function App() {
   const [createTelegram, setCreateTelegram] = useState("");
   const [createDiscord, setCreateDiscord] = useState("");
   const [showSocialEditor, setShowSocialEditor] = useState(false);
+  const [createHelpSection, setCreateHelpSection] = useState<null | "identity" | "metadata" | "tax" | "whitelist">(null);
   const [createMetadataUri, setCreateMetadataUri] = useState("");
   const [createAtomicBuyAmount, setCreateAtomicBuyAmount] = useState("1");
   const [createWhitelistThreshold, setCreateWhitelistThreshold] = useState("4");
@@ -2175,9 +2176,21 @@ export function App() {
                         <span className="section-kicker">{t("identityKicker")}</span>
                         <h3>{t("identityTitle")}</h3>
                       </div>
-                      <span className="status-pill success">{selectedLaunchFamily.suffix.toUpperCase()}</span>
+                      <div className="section-head-actions">
+                        <button
+                          type="button"
+                          className={`help-dot ${createHelpSection === "identity" ? "active" : ""}`}
+                          onClick={() => setCreateHelpSection((current) => current === "identity" ? null : "identity")}
+                          aria-label={t("toggleHelp")}
+                        >
+                          ?
+                        </button>
+                        <span className="status-pill success">{selectedLaunchFamily.suffix.toUpperCase()}</span>
+                      </div>
                     </div>
-                    <p className="create-section-lead">{t("identityLead")}</p>
+                    {createHelpSection === "identity" && (
+                      <div className="help-inline-box">{t("identityLead")}</div>
+                    )}
                     <div className="metadata-two-column identity-grid">
                       <label className="field prominent-field">
                         <span>{t("tokenName")}</span>
@@ -2229,7 +2242,24 @@ export function App() {
                         <span className="section-kicker">{t("metadataKicker")}</span>
                         <h3>{t("metadataTitle")}</h3>
                       </div>
+                      <div className="section-head-actions">
+                        <button
+                          type="button"
+                          className={`help-dot ${createHelpSection === "metadata" ? "active" : ""}`}
+                          onClick={() => setCreateHelpSection((current) => current === "metadata" ? null : "metadata")}
+                          aria-label={t("toggleHelp")}
+                        >
+                          ?
+                        </button>
+                      </div>
                     </div>
+                    {createHelpSection === "metadata" && (
+                      <div className="help-inline-box help-inline-stack">
+                        <strong>{t("localUploadNote")}</strong>
+                        <span>{t("localUploadExplain")}</span>
+                        <span>{t("referenceMetadataNote")}</span>
+                      </div>
+                    )}
                     <div className="metadata-two-column">
                       <label className="field">
                         <span>{t("imageUrl")}</span>
@@ -2283,14 +2313,11 @@ export function App() {
                         </div>
                       </div>
                     )}
-                    <div className="callout warn compact-callout">
-                      <strong>{t("localUploadNote")}</strong>
-                      <p>
-                        {t("localUploadExplain")}
-                      </p>
-                      <p>{t("referenceMetadataNote")}</p>
-                      {createImageFileName && <p>{t("selectedFile")} {createImageFileName}</p>}
-                    </div>
+                    {createImageFileName && (
+                      <div className="callout compact-callout subtle-callout">
+                        <p>{t("selectedFile")} {createImageFileName}</p>
+                      </div>
+                    )}
                     <label className="field">
                       <span className="label-with-badge">{t("metadataUri")} <em className="field-badge optional">{t("optionalField")}</em></span>
                       <input
@@ -2319,8 +2346,24 @@ export function App() {
                           <span className="section-kicker">{t("taxKicker")}</span>
                           <h3>{t("taxTitle")}</h3>
                         </div>
-                        <span className="status-pill warn">{createMode === "whitelistTaxed" ? "f314" : `${createTaxBps}314`}</span>
+                        <div className="section-head-actions">
+                          <button
+                            type="button"
+                            className={`help-dot ${createHelpSection === "tax" ? "active" : ""}`}
+                            onClick={() => setCreateHelpSection((current) => current === "tax" ? null : "tax")}
+                            aria-label={t("toggleHelp")}
+                          >
+                            ?
+                          </button>
+                          <span className="status-pill warn">{createMode === "whitelistTaxed" ? "f314" : `${createTaxBps}314`}</span>
+                        </div>
                       </div>
+                      {createHelpSection === "tax" && (
+                        <div className="help-inline-box help-inline-stack">
+                          <strong>{t("taxOnlyPostGrad")}</strong>
+                          <span>{t("taxWalletTransferFree")}</span>
+                        </div>
+                      )}
                       <div className="metadata-two-column">
                         <label className="field">
                           <span>{t("taxRate")}</span>
@@ -2388,10 +2431,6 @@ export function App() {
                           </div>
                         </div>
                       </div>
-                      <div className="callout compact-callout">
-                        <strong>{t("taxOnlyPostGrad")}</strong>
-                        <p>{t("taxWalletTransferFree")}</p>
-                      </div>
                     </section>
                   )}
 
@@ -2402,7 +2441,23 @@ export function App() {
                           <span className="section-kicker">{t("wlKicker")}</span>
                           <h3>{t("wlTitle")}</h3>
                         </div>
+                        <div className="section-head-actions">
+                          <button
+                            type="button"
+                            className={`help-dot ${createHelpSection === "whitelist" ? "active" : ""}`}
+                            onClick={() => setCreateHelpSection((current) => current === "whitelist" ? null : "whitelist")}
+                            aria-label={t("toggleHelp")}
+                          >
+                            ?
+                          </button>
+                        </div>
                       </div>
+                      {createHelpSection === "whitelist" && (
+                        <div className="help-inline-box help-inline-stack">
+                          <strong>{t("wlCoverageRule")}</strong>
+                          <span>{t("wlExplain")}</span>
+                        </div>
+                      )}
                       <div className="metadata-two-column">
                         <label className="field">
                           <span>{`${t("wlThreshold")} (${activeProtocolProfile.nativeSymbol})`}</span>
@@ -2456,8 +2511,7 @@ export function App() {
                         <div><span>{t("wlWindow")}</span><strong>{isDelayedWhitelistOpen ? t("wlScheduled24h") : "24h"}</strong></div>
                       </div>
                       <div className={`callout ${isDelayedWhitelistOpen ? "success" : "warn"} compact-callout`}>
-                        <strong>{isDelayedWhitelistOpen ? t("wlStartTimeScheduledTitle") : t("wlStartTimeImmediateTitle")}</strong>
-                        <p>{isDelayedWhitelistOpen ? t("wlStartTimeScheduledDesc") : t("wlStartTimeImmediateDesc")}</p>
+                        <p>{isDelayedWhitelistOpen ? t("wlStartTimeScheduledTitle") : t("wlStartTimeImmediateTitle")}</p>
                       </div>
                       <label className="field">
                         <span>{t("wlAddresses")}</span>
@@ -2469,8 +2523,7 @@ export function App() {
                         />
                       </label>
                       <div className={`callout ${whitelistAddressCountValid ? "success" : "warn"} compact-callout`}>
-                        <strong>{whitelistAddressCountValid ? t("wlCoverageValid") : t("wlCoverageNeed")}</strong>
-                        <p>{t("wlExplain")}</p>
+                        <p>{whitelistAddressCountValid ? t("wlCoverageValid") : t("wlCoverageNeed")}</p>
                       </div>
                     </section>
                   )}

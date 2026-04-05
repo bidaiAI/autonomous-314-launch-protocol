@@ -2310,15 +2310,18 @@ export function App() {
                       <strong>{t("coverImageLabel")} <em className="field-required-mark">*</em></strong>
                       <p>{t("imageEitherOrNote")}</p>
                     </div>
-                    <div className="metadata-two-column">
+                    <div className="metadata-image-stack">
                       <label className="field">
-                        {renderFieldLabel(t("imageUrl"), "image", true)}
+                        {renderFieldLabel(t("imageUrl"), "image")}
                         {createFieldHelp === "image" ? <small className="field-help-copy">{t("imageHelp")}</small> : null}
                         <input value={createImageUrl} onChange={(e) => setCreateImageUrl(e.target.value)} placeholder={t("imageUrlPlaceholder")} />
                         <small className="field-note">{t("imageUrlOptionalNote")}</small>
                       </label>
+                      <div className="metadata-image-divider">
+                        <span>{t("imageEitherOrDivider")}</span>
+                      </div>
                       <label className="field">
-                        {renderFieldLabel(t("uploadImage"), "imageUpload", true)}
+                        {renderFieldLabel(t("uploadImage"), "imageUpload")}
                         {createFieldHelp === "imageUpload" ? <small className="field-help-copy">{t("imageUploadHelp")}</small> : null}
                         <input
                           type="file"

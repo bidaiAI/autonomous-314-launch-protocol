@@ -1350,6 +1350,29 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   background: rgba(8, 16, 24, 0.4);
 }
 
+.metadata-image-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.metadata-image-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-tertiary);
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.metadata-image-divider::before,
+.metadata-image-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: rgba(148, 163, 184, 0.12);
+}
+
 .social-trigger-head {
   display: grid;
   grid-template-columns: 1fr;

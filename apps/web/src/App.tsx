@@ -1686,25 +1686,25 @@ export function App() {
             </div>
             <div className="protocol-intro-points">
               <article className="protocol-point">
-                <span className="protocol-point-index">01</span>
-                <div>
+                <div className="protocol-point-head">
+                  <span className="protocol-point-index">01</span>
                   <h3>{t("protocolPointOneTitle")}</h3>
-                  <p>{t("protocolPointOneDesc")}</p>
                 </div>
+                <p>{t("protocolPointOneDesc")}</p>
               </article>
               <article className="protocol-point">
-                <span className="protocol-point-index">02</span>
-                <div>
+                <div className="protocol-point-head">
+                  <span className="protocol-point-index">02</span>
                   <h3>{t("protocolPointTwoTitle")}</h3>
-                  <p>{t("protocolPointTwoDesc")}</p>
                 </div>
+                <p>{t("protocolPointTwoDesc")}</p>
               </article>
               <article className="protocol-point">
-                <span className="protocol-point-index">03</span>
-                <div>
+                <div className="protocol-point-head">
+                  <span className="protocol-point-index">03</span>
                   <h3>{t("protocolPointThreeTitle")}</h3>
-                  <p>{t("protocolPointThreeDesc")}</p>
                 </div>
+                <p>{t("protocolPointThreeDesc")}</p>
               </article>
             </div>
           </section>
@@ -2248,25 +2248,25 @@ export function App() {
 
               <section className="create-steps-strip">
                 <article className="create-step-card">
-                  <span className="create-step-index">01</span>
-                  <div>
+                  <div className="create-step-head">
+                    <span className="create-step-index">01</span>
                     <strong>{t("createStepOneTitle")}</strong>
-                    <p>{t("createStepOneDesc")}</p>
                   </div>
+                  <p>{t("createStepOneDesc")}</p>
                 </article>
                 <article className="create-step-card">
-                  <span className="create-step-index">02</span>
-                  <div>
+                  <div className="create-step-head">
+                    <span className="create-step-index">02</span>
                     <strong>{t("createStepTwoTitle")}</strong>
-                    <p>{t("createStepTwoDesc")}</p>
                   </div>
+                  <p>{t("createStepTwoDesc")}</p>
                 </article>
                 <article className="create-step-card">
-                  <span className="create-step-index">03</span>
-                  <div>
+                  <div className="create-step-head">
+                    <span className="create-step-index">03</span>
                     <strong>{t("createStepThreeTitle")}</strong>
-                    <p>{t("createStepThreeDesc")}</p>
                   </div>
+                  <p>{t("createStepThreeDesc")}</p>
                 </article>
               </section>
 

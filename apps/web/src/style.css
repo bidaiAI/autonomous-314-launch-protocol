@@ -361,24 +361,30 @@ a:hover { opacity: 0.8; }
   background: rgba(15, 23, 42, 0.48);
 }
 
+.protocol-point-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .protocol-point-index {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 42px;
   height: 42px;
-  margin-bottom: 2px;
   border-radius: var(--radius-full);
   background: rgba(94, 234, 212, 0.1);
   border: 1px solid rgba(94, 234, 212, 0.18);
   color: #d5fbf5;
+  flex-shrink: 0;
   font-family: var(--font-mono);
   font-size: 0.78rem;
   letter-spacing: 0.08em;
 }
 
 .protocol-point h3 {
-  margin: 0 0 4px;
+  margin: 0;
   font-size: 0.98rem;
 }
 

@@ -178,4 +178,41 @@ describe("LaunchTokenWhitelist", function () {
     await buyer.sendTransaction({ to: await token.getAddress(), value: SLOT });
     expect(await token.whitelistSeatsFilled()).to.equal(1n);
   });
+
+  it("rejects whitelist arrays above three times the seat count", async function () {
+    const [deployer, creator, protocol] = await ethers.getSigners();
+
+    const MockWNATIVE = await ethers.getContractFactory("MockERC20");
+    const wbnb = await MockWNATIVE.deploy("Wrapped Native", "WNATIVE");
+    await wbnb.waitForDeployment();
+
+    const MockFactory = await ethers.getContractFactory("MockDexV2Factory");
+    const mockFactory = await MockFactory.deploy();
+    await mockFactory.waitForDeployment();
+
+    const MockRouter = await ethers.getContractFactory("MockDexV2Router");
+    const mockRouter = await MockRouter.deploy(await mockFactory.getAddress(), await wbnb.getAddress());
+    await mockRouter.waitForDeployment();
+
+    const oversizedWhitelist = Array.from({ length: 61 }, () => ethers.Wallet.createRandom().address);
+
+    const LaunchTokenWhitelist = await ethers.getContractFactory("LaunchTokenWhitelist");
+    await expect(
+      LaunchTokenWhitelist.deploy({
+        name: "Whitelist314",
+        symbol: "B314",
+        metadataURI: "ipfs://b314",
+        creator: creator.address,
+        factory: deployer.address,
+        protocolFeeRecipient: protocol.address,
+        router: await mockRouter.getAddress(),
+        graduationQuoteReserve: GRADUATION_TARGET,
+        whitelistThreshold: THRESHOLD,
+        whitelistSlotSize: SLOT,
+        whitelistOpensAt: 0,
+        whitelistAddresses: oversizedWhitelist,
+        launchModeId: 2,
+      })
+    ).to.be.revertedWithCustomError(LaunchTokenWhitelist, "InvalidWhitelistAddressCount");
+  });
 });

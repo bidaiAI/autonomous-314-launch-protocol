@@ -19,6 +19,7 @@ contract LaunchTokenWhitelist is LaunchTokenBase {
     uint256 public constant SLOT_05_BNB = 0.5 ether;
     uint256 public constant SLOT_1_BNB = 1 ether;
     uint256 public constant MAX_SEATS = 80;
+    uint256 public constant MAX_WHITELIST_MULTIPLE = 3;
 
     struct ConstructorArgs {
         string name;
@@ -99,7 +100,11 @@ contract LaunchTokenWhitelist is LaunchTokenBase {
 
         uint256 seatCount = args.whitelistThreshold / args.whitelistSlotSize;
         if (seatCount == 0 || seatCount > MAX_SEATS) revert InvalidWhitelistSeatCount();
-        if (args.whitelistAddresses.length < seatCount) revert InvalidWhitelistAddressCount();
+
+        uint256 whitelistCount = args.whitelistAddresses.length;
+        if (whitelistCount < seatCount || whitelistCount > seatCount * MAX_WHITELIST_MULTIPLE) {
+            revert InvalidWhitelistAddressCount();
+        }
 
         uint256 opensAt = args.whitelistOpensAt == 0 ? block.timestamp : args.whitelistOpensAt;
         if (opensAt < block.timestamp || opensAt > block.timestamp + MAX_WHITELIST_DELAY) revert InvalidWhitelistOpenTime();

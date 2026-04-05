@@ -772,6 +772,67 @@ describe("LaunchFactory", function () {
     ).to.be.reverted;
   });
 
+  it("rejects whitelist arrays above three times the seat count for b314 and f314", async function () {
+    const { creator, protocol, treasury, mockRouter, launchFactory } = await deployFixture();
+    const oversizedWhitelist = Array.from({ length: 61 }, (_, i) =>
+      i === 0 ? creator.address : ethers.Wallet.createRandom().address
+    );
+
+    await expect(
+      launchFactory.connect(creator).createWhitelistLaunch(
+        "TooManyWL",
+        "TMWL",
+        "ipfs://too-many-wl",
+        ethers.parseEther("4"),
+        ethers.parseEther("0.2"),
+        0,
+        oversizedWhitelist,
+        { value: WHITELIST_CREATE_FEE }
+      )
+    ).to.be.reverted;
+
+    const initCode = await buildWhitelistTaxedInitCode({
+      name: "TooManyF",
+      symbol: "TF314",
+      metadataURI: "ipfs://too-many-f314",
+      creator: creator.address,
+      factory: await launchFactory.getAddress(),
+      protocolFeeRecipient: protocol.address,
+      router: await mockRouter.getAddress(),
+      graduationQuoteReserve: GRADUATION_TARGET,
+      whitelistThreshold: ethers.parseEther("4"),
+      whitelistSlotSize: ethers.parseEther("0.2"),
+      whitelistOpensAt: 0,
+      whitelistAddresses: oversizedWhitelist,
+      taxBps: 500,
+      burnShareBps: 5000,
+      treasuryShareBps: 5000,
+      treasuryWallet: treasury.address,
+    });
+
+    await expect(
+      launchFactory.connect(creator).createWhitelistTaxLaunch(
+        "TooManyF",
+        "TF314",
+        "ipfs://too-many-f314",
+        {
+          whitelistThreshold: ethers.parseEther("4"),
+          whitelistSlotSize: ethers.parseEther("0.2"),
+          whitelistOpensAt: 0,
+          whitelistAddresses: oversizedWhitelist,
+        },
+        {
+          taxBps: 500,
+          burnShareBps: 5000,
+          treasuryShareBps: 5000,
+          treasuryWallet: treasury.address,
+        },
+        initCode,
+        { value: WHITELIST_CREATE_FEE }
+      )
+    ).to.be.reverted;
+  });
+
   it("supports deterministic CREATE2 prediction with explicit salt", async function () {
     const { creator, launchFactory, standardDeployer, mockRouter, protocol } = await deployFixture();
 

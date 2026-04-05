@@ -2037,18 +2037,18 @@ export function App() {
                               {t('openWorkspace')}
                             </button>
                           </div>
-                        </div>
-                        <div className="launch-card-contract-row">
-                          <span className="launch-card-address">{shortAddress(launch.address)}</span>
-                          <button
-                            type="button"
-                            className="copy-chip launch-card-copy-chip"
-                            aria-label={copiedLaunchAddress === launch.address ? t('copied') : t('copyContract')}
-                            title={copiedLaunchAddress === launch.address ? t('copied') : t('copyContract')}
-                            onClick={() => void handleCopyLaunchAddress(launch.address)}
-                          >
-                            {copiedLaunchAddress === launch.address ? '✓' : '⧉'}
-                          </button>
+                          <div className="launch-card-contract-row">
+                            <span className="launch-card-address">{shortAddress(launch.address)}</span>
+                            <button
+                              type="button"
+                              className="copy-chip launch-card-copy-chip"
+                              aria-label={copiedLaunchAddress === launch.address ? t('copied') : t('copyContract')}
+                              title={copiedLaunchAddress === launch.address ? t('copied') : t('copyContract')}
+                              onClick={() => void handleCopyLaunchAddress(launch.address)}
+                            >
+                              {copiedLaunchAddress === launch.address ? '✓' : '⧉'}
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </article>

@@ -2570,6 +2570,8 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   .origin-grid { grid-template-columns: 1fr; }
   .market-strip { grid-template-columns: 1fr; }
   .launch-card-grid { grid-template-columns: repeat(2, 1fr); }
+  .launch-card-actions { flex-wrap: wrap; align-items: flex-start; }
+  .launch-card-contract-row { width: 100%; justify-content: flex-start; margin-left: 0; }
   .headline-metrics { grid-template-columns: repeat(2, 1fr); }
   .launch-status-band { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .dex-metrics-strip { grid-template-columns: repeat(2, 1fr); }

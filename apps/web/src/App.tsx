@@ -2290,15 +2290,19 @@ export function App() {
                         <h3>{t("metadataTitle")}</h3>
                       </div>
                     </div>
+                    <div className="callout compact-callout subtle-callout">
+                      <strong>{t("coverImageLabel")} <em className="field-required-mark">*</em></strong>
+                      <p>{t("imageEitherOrNote")}</p>
+                    </div>
                     <div className="metadata-two-column">
                       <label className="field">
-                        {renderFieldLabel(t("imageUrl"), "image")}
+                        {renderFieldLabel(t("imageUrl"), "image", true)}
                         {createFieldHelp === "image" ? <small className="field-help-copy">{t("imageHelp")}</small> : null}
                         <input value={createImageUrl} onChange={(e) => setCreateImageUrl(e.target.value)} placeholder={t("imageUrlPlaceholder")} />
-                        <small className="field-note">{t("imageRequiredNote")}</small>
+                        <small className="field-note">{t("imageUrlOptionalNote")}</small>
                       </label>
                       <label className="field">
-                        {renderFieldLabel(t("uploadImage"), "imageUpload")}
+                        {renderFieldLabel(t("uploadImage"), "imageUpload", true)}
                         {createFieldHelp === "imageUpload" ? <small className="field-help-copy">{t("imageUploadHelp")}</small> : null}
                         <input
                           type="file"
@@ -2307,7 +2311,7 @@ export function App() {
                             void handleMetadataImageUpload(e.target.files?.[0] ?? null);
                           }}
                         />
-                        <small className="field-note">{t("imageRequiredNote")}</small>
+                        <small className="field-note">{t("imageUploadOptionalNote")}</small>
                       </label>
                     </div>
                     <div className="social-trigger-card">

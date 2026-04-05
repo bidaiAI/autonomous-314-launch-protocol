@@ -727,7 +727,7 @@ a:hover { opacity: 0.8; }
   gap: 12px;
 }
 .launch-card-stats-triple {
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.8fr) minmax(0, 1.15fr);
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.72fr) minmax(0, 1.23fr);
   gap: 10px;
 }
 .launch-card-stats > div {
@@ -738,7 +738,7 @@ a:hover { opacity: 0.8; }
   background: rgba(8, 15, 25, 0.46);
   border: 1px solid rgba(148, 163, 184, 0.08);
   align-content: start;
-  min-height: 82px;
+  min-height: 78px;
 }
 .launch-card-stats strong {
   font-size: clamp(0.84rem, 1.1vw, 0.96rem);
@@ -750,11 +750,12 @@ a:hover { opacity: 0.8; }
 }
 
 .launch-card-metric-value.compact {
-  font-size: clamp(0.72rem, 0.95vw, 0.88rem);
+  font-size: clamp(0.68rem, 0.9vw, 0.84rem);
   white-space: normal;
   overflow: visible;
   text-overflow: clip;
   line-break: anywhere;
+  letter-spacing: -0.01em;
 }
 
 .launch-card-actions {

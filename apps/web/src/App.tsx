@@ -125,7 +125,7 @@ function compactNumber(value: number) {
     { limit: 1e12, suffix: "T" },
     { limit: 1e9, suffix: "B" },
     { limit: 1e6, suffix: "M" },
-    { limit: 1e3, suffix: "K" }
+    { limit: 1e3, suffix: "k" }
   ];
   for (const unit of units) {
     if (abs >= unit.limit) {
@@ -176,6 +176,19 @@ function formatUsdMicroPrice(value: number | null) {
   const leadingZeros = decimals.match(/^0*/)?.[0].length ?? 0;
   if (leadingZeros >= 4) {
     const significant = decimals.slice(leadingZeros, leadingZeros + 3) || "0";
+    return `$0.0(${leadingZeros})${significant}`;
+  }
+  return formatUsdUnitPrice(value);
+}
+
+function formatUsdMicroPriceCompact(value: number | null) {
+  if (value === null || !Number.isFinite(value) || value <= 0) return "—";
+  if (value >= 0.01) return formatUsdUnitPrice(value);
+  const raw = value.toFixed(12).replace(/0+$/, "");
+  const [, decimals = ""] = raw.split(".");
+  const leadingZeros = decimals.match(/^0*/)?.[0].length ?? 0;
+  if (leadingZeros >= 4) {
+    const significant = decimals.slice(leadingZeros, leadingZeros + 2) || "0";
     return `$0.0(${leadingZeros})${significant}`;
   }
   return formatUsdUnitPrice(value);
@@ -308,6 +321,23 @@ function launchStateLabel(state: string) {
   if (state === "Bonding314") return t("stateBonding");
   if (state === "Migrating") return t("stateMigrating");
   if (state === "DEXOnly") return t("stateDexOnly");
+  return state;
+}
+
+function effectiveLaunchState(
+  state: string,
+  whitelistStatus: bigint,
+  whitelistSnapshot: TokenSnapshot["whitelistSnapshot"],
+  nowMs: number
+) {
+  if (
+    state === "WhitelistCommit" &&
+    whitelistStatus === 4n &&
+    whitelistSnapshot &&
+    nowMs >= Number(whitelistSnapshot.deadline) * 1000
+  ) {
+    return "Bonding314";
+  }
   return state;
 }
 
@@ -1899,16 +1929,17 @@ export function App() {
                       : null;
                   const launchPriceUsd =
                     nativeUsdPrice ? (Number(launch.currentPriceQuotePerToken) / 1e18) * nativeUsdPrice : null;
+                  const displayState = effectiveLaunchState(launch.state, launch.whitelistStatus, launch.whitelistSnapshot, nowMs);
                   const whitelistCountdownPending =
-                    launch.state === "WhitelistCommit" && launch.whitelistSnapshot
+                    displayState === "WhitelistCommit" && launch.whitelistSnapshot
                       ? nowMs < Number(launch.whitelistSnapshot.opensAt) * 1000
                       : false;
                   const whitelistCountdownLabel =
-                    launch.state === "WhitelistCommit" && launch.whitelistSnapshot
+                    displayState === "WhitelistCommit" && launch.whitelistSnapshot
                       ? `${whitelistCountdownPending ? t("whitelistOpensLabel") : t("whitelistEndsLabel")} ${formatCountdownLabel(whitelistCountdownPending ? Number(launch.whitelistSnapshot.opensAt) * 1000 : Number(launch.whitelistSnapshot.deadline) * 1000, nowMs)}`
                       : "";
                   const cardSecondaryMetric =
-                    launch.state === "WhitelistCommit" && whitelistCountdownLabel
+                    displayState === "WhitelistCommit" && whitelistCountdownLabel
                       ? formatCountdownLabel(
                           whitelistCountdownPending
                             ? Number(launch.whitelistSnapshot!.opensAt) * 1000
@@ -1916,7 +1947,7 @@ export function App() {
                           nowMs
                         )
                       : launchPriceUsd
-                        ? formatUsdMicroPrice(launchPriceUsd)
+                        ? formatUsdMicroPriceCompact(launchPriceUsd)
                         : "—";
 
                   return (
@@ -1927,8 +1958,8 @@ export function App() {
                         ) : (
                           <div className="launch-card-placeholder">{(metadata?.symbol || launch.symbol).slice(0, 6)}</div>
                         )}
-                        <span className={`stage-pill ${launch.state === "Bonding314" ? "live" : launch.state === "DEXOnly" ? "done" : ""}`}>
-                          {launchStateLabel(launch.state)}
+                        <span className={`stage-pill ${displayState === "Bonding314" ? "live" : displayState === "DEXOnly" ? "done" : ""}`}>
+                          {launchStateLabel(displayState)}
                         </span>
                       </div>
                       <div className="launch-card-body">
@@ -1941,7 +1972,7 @@ export function App() {
                             </div>
                           </div>
                         <p className="launch-card-description">
-                          {metadata?.description || launchCardFallbackDescription(launch.state)}
+                          {metadata?.description || launchCardFallbackDescription(displayState)}
                         </p>
                         <div className="launch-card-stats launch-card-stats-triple">
                           <div>
@@ -1953,7 +1984,7 @@ export function App() {
                             <strong className="launch-card-metric-value">{formatPercentFromBps(launch.graduationProgressBps)}</strong>
                           </div>
                           <div>
-                            <span className="metric-label">{launch.state === "WhitelistCommit" ? (whitelistCountdownPending ? t("whitelistOpensLabelShort") : t("whitelistEndsLabelShort")) : t("price")}</span>
+                            <span className="metric-label">{displayState === "WhitelistCommit" ? (whitelistCountdownPending ? t("whitelistOpensLabelShort") : t("whitelistEndsLabelShort")) : t("price")}</span>
                             <strong className="launch-card-metric-value compact">{cardSecondaryMetric}</strong>
                           </div>
                         </div>

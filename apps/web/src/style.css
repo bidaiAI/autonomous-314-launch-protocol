@@ -727,7 +727,7 @@ a:hover { opacity: 0.8; }
   gap: 12px;
 }
 .launch-card-stats-triple {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.8fr) minmax(0, 1.15fr);
   gap: 10px;
 }
 .launch-card-stats > div {
@@ -738,10 +738,10 @@ a:hover { opacity: 0.8; }
   background: rgba(8, 15, 25, 0.46);
   border: 1px solid rgba(148, 163, 184, 0.08);
   align-content: start;
-  min-height: 94px;
+  min-height: 82px;
 }
 .launch-card-stats strong {
-  font-size: clamp(0.88rem, 1.2vw, 0.98rem);
+  font-size: clamp(0.84rem, 1.1vw, 0.96rem);
   line-height: 1.15;
   white-space: nowrap;
   overflow: hidden;
@@ -750,7 +750,11 @@ a:hover { opacity: 0.8; }
 }
 
 .launch-card-metric-value.compact {
-  font-size: clamp(0.82rem, 1.05vw, 0.94rem);
+  font-size: clamp(0.72rem, 0.95vw, 0.88rem);
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  line-break: anywhere;
 }
 
 .launch-card-actions {
@@ -758,8 +762,21 @@ a:hover { opacity: 0.8; }
   justify-content: space-between;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
 }
-.launch-card-actions .list-item-meta { margin-left: auto; }
+.launch-card-primary-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.launch-card-copy {
+  margin-left: auto;
+}
+.launch-card-address {
+  font-size: 0.92rem;
+  color: var(--muted);
+  text-align: right;
+}
 
 /* ── Mode Suffix Badge ── */
 .mode-suffix-badge {

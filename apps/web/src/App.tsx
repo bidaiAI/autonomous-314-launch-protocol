@@ -120,10 +120,21 @@ function quoteMarketCap(totalSupply: bigint, priceQuotePerToken: bigint) {
 
 function compactNumber(value: number) {
   if (!Number.isFinite(value)) return "—";
-  return new Intl.NumberFormat(undefined, {
-    notation: "compact",
-    maximumFractionDigits: value >= 100 ? 0 : 1
-  }).format(value);
+  const abs = Math.abs(value);
+  const units = [
+    { limit: 1e12, suffix: "T" },
+    { limit: 1e9, suffix: "B" },
+    { limit: 1e6, suffix: "M" },
+    { limit: 1e3, suffix: "K" }
+  ];
+  for (const unit of units) {
+    if (abs >= unit.limit) {
+      const scaled = value / unit.limit;
+      const digits = Math.abs(scaled) >= 100 ? 0 : Math.abs(scaled) >= 10 ? 1 : 2;
+      return `${scaled.toFixed(digits).replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1")}${unit.suffix}`;
+    }
+  }
+  return value.toFixed(value >= 100 ? 0 : value >= 10 ? 1 : 2).replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1");
 }
 
 function formatUsdCompact(value: number | null) {
@@ -1958,14 +1969,19 @@ export function App() {
                           )}
                         </div>
                         <div className="button-row launch-card-actions">
-                          <button onClick={() => void handleQuickBuyLaunch(launch.address)}>
-                            {t('buyNow')}
+                          <div className="launch-card-primary-actions">
+                            <button onClick={() => void handleQuickBuyLaunch(launch.address)}>
+                              {t('buyNow')}
+                            </button>
+                            <button className="secondary-button" onClick={() => void handleSelectLaunch(launch.address)}>
+                              {t('openWorkspace')}
+                            </button>
+                          </div>
+                          <button className="secondary-button launch-card-copy" onClick={() => void handleCopyText(launch.address, t('copyContract'))}>
+                            {t('copyContract')}
                           </button>
-                          <button className="secondary-button" onClick={() => void handleSelectLaunch(launch.address)}>
-                            {t('openWorkspace')}
-                          </button>
-                          <span className="list-item-meta">{shortAddress(launch.address)}</span>
                         </div>
+                        <div className="launch-card-address">{shortAddress(launch.address)}</div>
                       </div>
                     </article>
                   );

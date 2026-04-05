@@ -445,6 +445,7 @@ export function App() {
   const [sellPreviewState, setSellPreviewState] = useState<SellPreview | null>(null);
   const [status, setStatus] = useState<string>(() => t("ready"));
   const [showCreateConfirm, setShowCreateConfirm] = useState(false);
+  const [copiedLaunchAddress, setCopiedLaunchAddress] = useState<string | null>(null);
   const configuredSocialCount = [createWebsite, createTwitter, createTelegram, createDiscord].filter((value) => value.trim()).length;
 
   async function handleCopyText(value: string, label: string) {
@@ -453,6 +454,19 @@ export function App() {
       setStatus(tf("statusCopiedAddress", { label }));
     } catch {
       setStatus(tf("statusCopyFailed", { label }));
+    }
+  }
+
+  async function handleCopyLaunchAddress(address: string) {
+    try {
+      await navigator.clipboard.writeText(address);
+      setCopiedLaunchAddress(address);
+      setStatus(tf("statusCopiedAddress", { label: t("copyContract") }));
+      window.setTimeout(() => {
+        setCopiedLaunchAddress((current) => (current === address ? null : current));
+      }, 1600);
+    } catch {
+      setStatus(tf("statusCopyFailed", { label: t("copyContract") }));
     }
   }
   const [loading, setLoading] = useState(false);
@@ -2023,11 +2037,19 @@ export function App() {
                               {t('openWorkspace')}
                             </button>
                           </div>
-                          <button className="secondary-button launch-card-copy" onClick={() => void handleCopyText(launch.address, t('copyContract'))}>
-                            {t('copyContract')}
+                        </div>
+                        <div className="launch-card-contract-row">
+                          <span className="launch-card-address">{shortAddress(launch.address)}</span>
+                          <button
+                            type="button"
+                            className="copy-chip launch-card-copy-chip"
+                            aria-label={copiedLaunchAddress === launch.address ? t('copied') : t('copyContract')}
+                            title={copiedLaunchAddress === launch.address ? t('copied') : t('copyContract')}
+                            onClick={() => void handleCopyLaunchAddress(launch.address)}
+                          >
+                            {copiedLaunchAddress === launch.address ? '✓' : '⧉'}
                           </button>
                         </div>
-                        <div className="launch-card-address">{shortAddress(launch.address)}</div>
                       </div>
                     </article>
                   );

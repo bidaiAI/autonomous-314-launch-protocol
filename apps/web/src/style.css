@@ -973,7 +973,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   margin-bottom: 18px;
 }
 .headline-metrics > div { display: grid; gap: 5px; }
-.headline-metrics strong { word-break: break-word; }
+.headline-metrics strong { font-size: clamp(1.05rem, 2vw, 1.5rem); line-height: 1.08; overflow-wrap: anywhere; word-break: break-word; }
 .metric-subtle {
   color: var(--text-muted);
   font-size: 0.8rem;

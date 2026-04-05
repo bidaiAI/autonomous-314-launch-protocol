@@ -2705,8 +2705,8 @@ export function App() {
                   <div className="headline-metrics">
                     <div>
                       <span className="metric-label">{t("currentPrice")}</span>
-                      <strong>{displayedPriceUsd ? formatUsdUnitPrice(displayedPriceUsd) : t("usdUnavailable")}</strong>
-                      <div className="metric-subtle">{tf("nativeQuoteLabel", { value: formatQuotePrice(tokenSnapshot.currentPriceQuotePerToken), symbol: activeProtocolProfile.nativeSymbol })}</div>
+                      <strong>{displayedPriceUsd ? formatUsdMicroPrice(displayedPriceUsd) : t("usdUnavailable")}</strong>
+                      <div className="metric-subtle">{t("priceUsdUnitNotice")}</div>
                     </div>
                     <div>
                       <span className="metric-label">{t("marketCapShort")}</span>

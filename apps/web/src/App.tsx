@@ -336,7 +336,10 @@ export function App() {
 
   const renderFieldLabel = (label: string, helpKey?: string, optional = false) => (
     <span className="label-row">
-      <span>{label} {optional ? <em className="field-badge optional">{t("optionalField")}</em> : null}</span>
+      <span>
+        {label}
+        {optional ? <em className="field-badge optional">{t("optionalField")}</em> : <em className="field-required-mark">*</em>}
+      </span>
       {helpKey ? (
         <button
           type="button"
@@ -350,6 +353,7 @@ export function App() {
     </span>
   );
   const [createMetadataUri, setCreateMetadataUri] = useState("");
+  const [createAtomicBuyEnabled, setCreateAtomicBuyEnabled] = useState(true);
   const [createAtomicBuyAmount, setCreateAtomicBuyAmount] = useState("1");
   const [createWhitelistThreshold, setCreateWhitelistThreshold] = useState("4");
   const [createWhitelistSlotSize, setCreateWhitelistSlotSize] = useState("0.2");
@@ -732,6 +736,7 @@ export function App() {
     Boolean(wallet) &&
     !walletWrongNetwork &&
     hasRequiredCreateIdentity &&
+    (!isTaxedFamily || treasurySharePercent === 0 || Boolean(createTreasuryWalletResolved)) &&
     (!requiresWhitelistCommit || whitelistAddressCountValid);
 
   function navigate(nextRoute: AppRoute, replace = false) {
@@ -1224,6 +1229,21 @@ export function App() {
       setStatus(t("errorTokenImageRequired"));
       return;
     }
+    if (isTaxedFamily && treasurySharePercent > 0 && !createTreasuryWalletResolved) {
+      setStatus(t("errorTreasuryRequired"));
+      return;
+    }
+    if (requiresAtomicBuy && createAtomicBuyEnabled) {
+      try {
+        if (parseEther(createAtomicBuyAmount || "0") <= 0n) {
+          setStatus(t("errorAtomicBuyPositive"));
+          return;
+        }
+      } catch {
+        setStatus(t("errorAtomicBuyPositive"));
+        return;
+      }
+    }
     setShowCreateConfirm(true);
   }
 
@@ -1277,7 +1297,7 @@ export function App() {
       const whitelistThreshold = requiresWhitelistCommit ? parseEther(createWhitelistThreshold) : undefined;
       const whitelistSlotSize = requiresWhitelistCommit ? parseEther(createWhitelistSlotSize) : undefined;
       const whitelistOpensAt = requiresWhitelistCommit ? createWhitelistOpensAtUnix : undefined;
-      const atomicBuyAmount = requiresAtomicBuy ? parseEther(createAtomicBuyAmount || "0") : 0n;
+      const atomicBuyAmount = requiresAtomicBuy && createAtomicBuyEnabled ? parseEther(createAtomicBuyAmount || "0") : 0n;
       const taxBps = isTaxedFamily ? Number.parseInt(createTaxBps || "1", 10) * 100 : undefined;
       const burnShareBps = isTaxedFamily ? Number.parseInt(createTaxBurnShareBps || "0", 10) : undefined;
       const treasuryShareBps = isTaxedFamily ? Number.parseInt(createTaxTreasuryShareBps || "0", 10) : undefined;
@@ -1311,7 +1331,7 @@ export function App() {
         }
       }
 
-      if (requiresAtomicBuy && atomicBuyAmount <= 0n) {
+      if (requiresAtomicBuy && createAtomicBuyEnabled && atomicBuyAmount <= 0n) {
         throw new Error(t("errorAtomicBuyPositive"));
       }
       const expectedSuffix =
@@ -1915,15 +1935,15 @@ export function App() {
                         <div className="launch-card-stats launch-card-stats-triple">
                           <div>
                             <span className="metric-label">{t("marketCapShort")}</span>
-                            <strong>{launchMarketCapUsd ? formatUsdCompact(launchMarketCapUsd) : t("marketCapUnavailable")}</strong>
+                            <strong className="launch-card-metric-value">{launchMarketCapUsd ? formatUsdCompact(launchMarketCapUsd) : t("marketCapUnavailable")}</strong>
                           </div>
                           <div>
                             <span className="metric-label">{t("progress")}</span>
-                            <strong>{formatPercentFromBps(launch.graduationProgressBps)}</strong>
+                            <strong className="launch-card-metric-value">{formatPercentFromBps(launch.graduationProgressBps)}</strong>
                           </div>
                           <div>
                             <span className="metric-label">{launch.state === "WhitelistCommit" ? (whitelistCountdownPending ? t("whitelistOpensLabelShort") : t("whitelistEndsLabelShort")) : t("price")}</span>
-                            <strong>{cardSecondaryMetric}</strong>
+                            <strong className="launch-card-metric-value compact">{cardSecondaryMetric}</strong>
                           </div>
                         </div>
                         <div className="metadata-links">
@@ -2221,19 +2241,38 @@ export function App() {
                       />
                     </label>
                     {requiresAtomicBuy && (
-                      <div className="metadata-two-column">
-                        <label className="field">
-                          <span>{`${t("atomicBuyAmount")} (${activeProtocolProfile.nativeSymbol})`}</span>
+                      <div className="creator-protection-block">
+                        <label className="toggle-row">
                           <input
-                            value={createAtomicBuyAmount}
-                            onChange={(e) => setCreateAtomicBuyAmount(e.target.value)}
-                            placeholder="1"
+                            type="checkbox"
+                            checked={createAtomicBuyEnabled}
+                            onChange={(e) => setCreateAtomicBuyEnabled(e.target.checked)}
                           />
+                          <span>{t("creatorProtectionToggle")}</span>
                         </label>
-                        <label className="field">
-                          <span>{t("creatorFlowLabel")}</span>
-                          <input value={t("creatorFlowAtomicBuy")} readOnly />
-                        </label>
+                        <small className="field-note">
+                          {createAtomicBuyEnabled ? t("creatorProtectionEnabledNote") : t("creatorProtectionOptionalNote")}
+                        </small>
+                        {createAtomicBuyEnabled ? (
+                          <div className="metadata-two-column">
+                            <label className="field">
+                              <span>{`${t("atomicBuyAmount")} (${activeProtocolProfile.nativeSymbol})`} <em className="field-badge optional">{t("optionalField")}</em></span>
+                              <input
+                                value={createAtomicBuyAmount}
+                                onChange={(e) => setCreateAtomicBuyAmount(e.target.value)}
+                                placeholder="1"
+                              />
+                            </label>
+                            <label className="field">
+                              <span>{t("creatorFlowLabel")}</span>
+                              <input value={t("creatorFlowAtomicBuy")} readOnly />
+                            </label>
+                          </div>
+                        ) : (
+                          <div className="callout compact-callout subtle-callout">
+                            <p>{t("creatorFlowManualBuyNote")}</p>
+                          </div>
+                        )}
                       </div>
                     )}
                     {requiresWhitelistCommit && (
@@ -2363,7 +2402,7 @@ export function App() {
                           </select>
                         </label>
                         <label className="field">
-                          {renderFieldLabel(t("treasuryWallet"), "treasuryWallet")}
+                          {renderFieldLabel(t("treasuryWallet"), "treasuryWallet", treasurySharePercent === 0)}
                           {createFieldHelp === "treasuryWallet" ? <small className="field-help-copy">{t("treasuryWalletHelp")}</small> : null}
                           <input
                             value={createTaxTreasuryWallet}
@@ -2538,7 +2577,7 @@ export function App() {
                   <div className="create-summary-grid">
                     <div><span>{t("summaryMode")}</span><strong>{selectedLaunchFamily.title}</strong></div>
                     <div><span>{t("summaryVanity")}</span><strong>{selectedLaunchFamily.suffix}</strong></div>
-                    <div><span>{t("summaryCreatorFlow")}</span><strong>{requiresAtomicBuy ? t("summaryAtomicBuy") : t("summaryAtomicSeat")}</strong></div>
+                    <div><span>{t("summaryCreatorFlow")}</span><strong>{requiresAtomicBuy ? (createAtomicBuyEnabled ? t("summaryAtomicBuy") : t("summaryManualBuy")) : t("summaryAtomicSeat")}</strong></div>
                     <div><span>{t("summaryFee")}</span><strong>{selectedCreateFee > 0n ? formatNative(selectedCreateFee) : t("loadFactory")}</strong></div>
                     <div><span>{t("summaryGraduation")}</span><strong>{factorySnapshot ? formatNative(factorySnapshot.graduationQuoteReserve) : `12 ${activeProtocolProfile.nativeSymbol}`}</strong></div>
                   </div>
@@ -3350,7 +3389,7 @@ export function App() {
               <div><span>{t("summaryMode")}</span><strong>{selectedLaunchFamily.title}</strong></div>
               <div><span>{t("summaryVanity")}</span><strong>{selectedLaunchFamily.suffix}</strong></div>
               <div><span>{t("summaryFee")}</span><strong>{selectedCreateFee > 0n ? formatNative(selectedCreateFee) : t("loadFactory")}</strong></div>
-              <div><span>{t("summaryCreatorFlow")}</span><strong>{requiresAtomicBuy ? t("summaryAtomicBuy") : isDelayedWhitelistOpen ? t("summaryScheduledSeat") : t("summaryAtomicSeat")}</strong></div>
+              <div><span>{t("summaryCreatorFlow")}</span><strong>{requiresAtomicBuy ? (createAtomicBuyEnabled ? t("summaryAtomicBuy") : t("summaryManualBuy")) : isDelayedWhitelistOpen ? t("summaryScheduledSeat") : t("summaryAtomicSeat")}</strong></div>
               <div><span>{t("createConfirmCreator")}</span><strong>{wallet ? shortAddress(wallet) : t("connectWallet")}</strong></div>
               <div><span>{t("summaryGraduation")}</span><strong>{factorySnapshot ? formatNative(factorySnapshot.graduationQuoteReserve) : `12 ${activeProtocolProfile.nativeSymbol}`}</strong></div>
             </div>
@@ -3364,7 +3403,7 @@ export function App() {
               </div>
             </div>
 
-            {requiresAtomicBuy && (
+            {requiresAtomicBuy && createAtomicBuyEnabled && (
               <div className="confirm-section">
                 <span className="section-kicker">{t("createConfirmCreatorActionKicker")}</span>
                 <div className="confirm-token-grid">

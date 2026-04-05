@@ -1582,16 +1582,15 @@ export async function createLaunch(
 
   let hash: `0x${string}`;
   if (family === "standard") {
-    if (atomicQuoteIn <= 0n) {
-      throw new Error("Standard launches require an atomic buy amount.");
-    }
     hash = await walletClient.writeContract({
       account,
       chain: appChain,
       address: normalizedFactoryAddress,
       abi: launchFactoryAbi,
-      functionName: "createLaunchAndBuyWithSalt",
-      args: [params.name, params.symbol, params.metadataURI, vanity.salt, minTokenOut],
+      functionName: atomicQuoteIn > 0n ? "createLaunchAndBuyWithSalt" : "createLaunchWithSalt",
+      args: atomicQuoteIn > 0n
+        ? [params.name, params.symbol, params.metadataURI, vanity.salt, minTokenOut]
+        : [params.name, params.symbol, params.metadataURI, vanity.salt],
       value: params.createFee + atomicQuoteIn
     });
   } else if (family === "whitelist") {
@@ -1618,26 +1617,34 @@ export async function createLaunch(
       value: delayedOpen ? params.createFee : params.createFee + whitelistSlotSize
     });
   } else if (family === "taxed") {
-    if (atomicQuoteIn <= 0n) {
-      throw new Error("Taxed launches require an atomic buy amount.");
-    }
     hash = await walletClient.writeContract({
       account,
       chain: appChain,
       address: normalizedFactoryAddress,
       abi: launchFactoryAbi,
-      functionName: "createTaxLaunchAndBuyWithSalt",
-      args: [
-        params.name,
-        params.symbol,
-        params.metadataURI,
-        taxBps,
-        burnShareBps,
-        treasuryShareBps,
-        treasuryWallet,
-        vanity.salt,
-        minTokenOut
-      ],
+      functionName: atomicQuoteIn > 0n ? "createTaxLaunchAndBuyWithSalt" : "createTaxLaunchWithSalt",
+      args: atomicQuoteIn > 0n
+        ? [
+            params.name,
+            params.symbol,
+            params.metadataURI,
+            taxBps,
+            burnShareBps,
+            treasuryShareBps,
+            treasuryWallet,
+            vanity.salt,
+            minTokenOut
+          ]
+        : [
+            params.name,
+            params.symbol,
+            params.metadataURI,
+            taxBps,
+            burnShareBps,
+            treasuryShareBps,
+            treasuryWallet,
+            vanity.salt
+          ],
       value: params.createFee + atomicQuoteIn
     });
   } else {

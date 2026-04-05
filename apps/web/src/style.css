@@ -1275,8 +1275,16 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.8rem;
-  line-height: 1;
+}
+
+.field-help-chevron {
+  width: 8px;
+  height: 8px;
+  border-right: 1.8px solid currentColor;
+  border-bottom: 1.8px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform var(--transition-fast), color var(--transition-fast), opacity var(--transition-fast);
+  opacity: 0.9;
 }
 
 .field-help-toggle:hover {
@@ -1285,6 +1293,10 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .field-help-toggle.active {
   color: #5eead4;
+}
+
+.field-help-toggle.active .field-help-chevron {
+  transform: rotate(45deg) translateY(-1px);
 }
 
 .field-help-copy {

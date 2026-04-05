@@ -344,7 +344,7 @@ export function App() {
           onClick={() => toggleCreateFieldHelp(helpKey)}
           aria-label={t("toggleHelp")}
         >
-          {createFieldHelp === helpKey ? "▾" : "▸"}
+          <span className="field-help-chevron" aria-hidden="true" />
         </button>
       ) : null}
     </span>

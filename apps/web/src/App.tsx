@@ -1740,23 +1740,37 @@ export function App() {
                     {t('verifyLoad')}
                   </button>
                 ) : null}
-                <label className="field compact-field market-select-field">
-                  <span>{t("sortBy")}</span>
-                  <select value={marketSort} onChange={(e) => setMarketSort(e.target.value as MarketSort)}>
-                    <option value="recent">{t("sortRecent")}</option>
-                    <option value="marketCap">{t("sortMarketCap")}</option>
-                    <option value="progress">{t("sortProgress")}</option>
-                    <option value="countdown">{t("sortCountdown")}</option>
-                  </select>
-                </label>
-                <label className="field compact-field market-select-field">
-                  <span>{t("showCount")}</span>
-                  <select value={marketLimit} onChange={(e) => setMarketLimit(e.target.value as MarketLimit)}>
-                    <option value="10">10</option>
-                    <option value="20">20</option>
-                    <option value="all">{t("showAll")}</option>
-                  </select>
-                </label>
+                <div className="market-filter-group">
+                  <span className="metric-label">{t("sortBy")}</span>
+                  <div className="segmented-filter" role="tablist" aria-label={t("sortBy")}>
+                    <button type="button" className={marketSort === "recent" ? "filter-pill active" : "filter-pill"} onClick={() => setMarketSort("recent")}>
+                      {t("sortRecent")}
+                    </button>
+                    <button type="button" className={marketSort === "marketCap" ? "filter-pill active" : "filter-pill"} onClick={() => setMarketSort("marketCap")}>
+                      {t("sortMarketCap")}
+                    </button>
+                    <button type="button" className={marketSort === "progress" ? "filter-pill active" : "filter-pill"} onClick={() => setMarketSort("progress")}>
+                      {t("sortProgress")}
+                    </button>
+                    <button type="button" className={marketSort === "countdown" ? "filter-pill active" : "filter-pill"} onClick={() => setMarketSort("countdown")}>
+                      {t("sortCountdown")}
+                    </button>
+                  </div>
+                </div>
+                <div className="market-filter-group">
+                  <span className="metric-label">{t("showCount")}</span>
+                  <div className="segmented-filter segmented-filter-compact" role="tablist" aria-label={t("showCount")}>
+                    <button type="button" className={marketLimit === "10" ? "filter-pill active" : "filter-pill"} onClick={() => setMarketLimit("10")}>
+                      10
+                    </button>
+                    <button type="button" className={marketLimit === "20" ? "filter-pill active" : "filter-pill"} onClick={() => setMarketLimit("20")}>
+                      20
+                    </button>
+                    <button type="button" className={marketLimit === "all" ? "filter-pill active" : "filter-pill"} onClick={() => setMarketLimit("all")}>
+                      {t("showAll")}
+                    </button>
+                  </div>
+                </div>
                 <span className="list-item-meta">
                   {visibleLaunchSnapshots.length} / {filteredLaunchSnapshots.length} / {recentLaunchSnapshots.length} {t('indexedLaunches')}
                 </span>

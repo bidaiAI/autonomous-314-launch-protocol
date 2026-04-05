@@ -601,6 +601,44 @@ a:hover { opacity: 0.8; }
 .search-field { min-width: min(380px, 100%); }
 .market-select-field { min-width: 120px; }
 .market-select-field select { min-width: 0; }
+.market-filter-group {
+  display: grid;
+  gap: 6px;
+}
+.segmented-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: rgba(8, 15, 25, 0.58);
+}
+.segmented-filter-compact .filter-pill {
+  min-width: 54px;
+}
+.filter-pill {
+  padding: 9px 14px;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid transparent;
+  font-size: 0.82rem;
+  font-weight: 600;
+  min-height: 38px;
+}
+.filter-pill:hover:not(:disabled) {
+  background: rgba(148, 163, 184, 0.08);
+  color: var(--text-primary);
+  transform: none;
+  filter: none;
+}
+.filter-pill.active {
+  background: rgba(94, 234, 212, 0.14);
+  color: var(--text-primary);
+  border-color: rgba(94, 234, 212, 0.18);
+  box-shadow: var(--shadow-accent);
+}
 
 /* ── Launch Cards ── */
 .launch-card-grid {

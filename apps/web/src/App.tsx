@@ -1985,15 +1985,15 @@ export function App() {
                                 {metadata?.symbol || launch.symbol} · {launch.launchSuffix || t("launchSuffixFallback")}
                               </div>
                             </div>
+                            <div className="launch-card-head-metric">
+                              <span className="metric-label">{t("marketCapShort")}</span>
+                              <strong>{launchMarketCapUsd ? formatUsdCompact(launchMarketCapUsd) : t("marketCapUnavailable")}</strong>
+                            </div>
                           </div>
                         <p className="launch-card-description">
                           {metadata?.description || launchCardFallbackDescription(displayState)}
                         </p>
-                        <div className="launch-card-stats launch-card-stats-triple">
-                          <div>
-                            <span className="metric-label">{t("marketCapShort")}</span>
-                            <strong className="launch-card-metric-value">{launchMarketCapUsd ? formatUsdCompact(launchMarketCapUsd) : t("marketCapUnavailable")}</strong>
-                          </div>
+                        <div className="launch-card-stats launch-card-stats-dual">
                           <div>
                             <span className="metric-label">{t("progress")}</span>
                             <strong className="launch-card-metric-value">{formatPercentFromBps(launch.graduationProgressBps)}</strong>

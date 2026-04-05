@@ -358,6 +358,14 @@ describe("LaunchFactory", function () {
           value: STANDARD_CREATE_FEE,
         })
     ).to.be.revertedWithCustomError(launchFactory, "InvalidTaxConfig");
+
+    await expect(
+      launchFactory
+        .connect(creator)
+        .createTaxLaunch("DeadTreasury", "BAD", "ipfs://bad-dead", 100, 5000, 5000, "0x000000000000000000000000000000000000dEaD", {
+          value: STANDARD_CREATE_FEE,
+        })
+    ).to.be.revertedWithCustomError(launchFactory, "InvalidTaxConfig");
   });
 
   it("creates a standard launch and atomically buys for the creator", async function () {
@@ -1002,6 +1010,40 @@ describe("LaunchFactory", function () {
     expect(await (await ethers.getContractAt("LaunchToken", tokenB)).protocolClaimable()).to.equal(0n);
   });
 
+  it("batch claim skips zero-claimable launches while still claiming valid ones", async function () {
+    const { creator, protocol, launchFactory } = await deployFixture();
+
+    const txA = await launchFactory.connect(creator).createLaunch("Alpha", "ALP", "ipfs://alpha", {
+      value: STANDARD_CREATE_FEE,
+    });
+    const txB = await launchFactory.connect(creator).createLaunch("Beta", "BET", "ipfs://beta", {
+      value: STANDARD_CREATE_FEE,
+    });
+
+    const receiptA = await txA.wait();
+    const receiptB = await txB.wait();
+    const tokenA = receiptA!.logs.find((log) => "fragment" in log && log.fragment?.name === "LaunchCreated")!.args
+      .token as string;
+    const tokenB = receiptB!.logs.find((log) => "fragment" in log && log.fragment?.name === "LaunchCreated")!.args
+      .token as string;
+
+    const launchA = await ethers.getContractAt("LaunchToken", tokenA);
+    const launchB = await ethers.getContractAt("LaunchToken", tokenB);
+    await launchA.connect(creator).buy(0, { value: ethers.parseEther("0.1") });
+
+    const [totalClaimed, claimedCount] = await launchFactory
+      .connect(protocol)
+      .batchClaimProtocolFees.staticCall([tokenA, tokenB], protocol.address);
+
+    expect(totalClaimed).to.be.gt(0n);
+    expect(claimedCount).to.equal(1n);
+
+    await launchFactory.connect(protocol).batchClaimProtocolFees([tokenA, tokenB], protocol.address);
+
+    expect(await launchA.protocolClaimable()).to.equal(0n);
+    expect(await launchB.protocolClaimable()).to.equal(0n);
+  });
+
   it("batch claim reverts the whole call when an unknown token is mixed into the array", async function () {
     const { creator, protocol, launchFactory } = await deployFixture();
 
@@ -1021,6 +1063,42 @@ describe("LaunchFactory", function () {
     ).to.be.revertedWithCustomError(launchFactory, "UnknownLaunch");
 
     expect(await token.protocolClaimable()).to.equal(claimableBefore);
+  });
+
+  it("batch claim reverts the whole call when a recipient mismatch launch is mixed into the array", async function () {
+    const { creator, owner, protocol, launchFactory } = await deployFixture();
+    const [, , , recipient] = await ethers.getSigners();
+
+    const oldTx = await launchFactory.connect(creator).createLaunch("Legacy", "LEG", "ipfs://legacy", {
+      value: STANDARD_CREATE_FEE,
+    });
+    const oldReceipt = await oldTx.wait();
+    const oldTokenAddr = oldReceipt!.logs.find((log) => "fragment" in log && log.fragment?.name === "LaunchCreated")!.args
+      .token as string;
+    const oldToken = await ethers.getContractAt("LaunchToken", oldTokenAddr);
+    await oldToken.connect(creator).buy(0, { value: ethers.parseEther("0.1") });
+
+    await launchFactory.connect(protocol).claimProtocolCreateFees();
+    await launchFactory.connect(owner).setProtocolFeeRecipient(recipient.address);
+
+    const newTx = await launchFactory.connect(creator).createLaunch("Fresh", "FRH", "ipfs://fresh", {
+      value: STANDARD_CREATE_FEE,
+    });
+    const newReceipt = await newTx.wait();
+    const newTokenAddr = newReceipt!.logs.find((log) => "fragment" in log && log.fragment?.name === "LaunchCreated")!.args
+      .token as string;
+    const newToken = await ethers.getContractAt("LaunchToken", newTokenAddr);
+    await newToken.connect(creator).buy(0, { value: ethers.parseEther("0.1") });
+
+    const newClaimableBefore = await newToken.protocolClaimable();
+    const oldClaimableBefore = await oldToken.protocolClaimable();
+
+    await expect(
+      launchFactory.connect(recipient).batchClaimProtocolFees([newTokenAddr, oldTokenAddr], recipient.address)
+    ).to.be.revertedWithCustomError(launchFactory, "ProtocolFeeRecipientMismatch");
+
+    expect(await newToken.protocolClaimable()).to.equal(newClaimableBefore);
+    expect(await oldToken.protocolClaimable()).to.equal(oldClaimableBefore);
   });
 
   it("batch sweeps abandoned creator fees from multiple launches", async function () {
@@ -1080,5 +1158,45 @@ describe("LaunchFactory", function () {
     ).to.be.revertedWithCustomError(launchFactory, "UnknownLaunch");
 
     expect(await token.creatorFeeSweepReady()).to.equal(true);
+  });
+
+  it("batch sweep skips launches that are not ready while still sweeping valid ones", async function () {
+    const { creator, launchFactory } = await deployFixture();
+
+    const txA = await launchFactory.connect(creator).createLaunch("Alpha", "ALP", "ipfs://alpha", {
+      value: STANDARD_CREATE_FEE,
+    });
+    const txB = await launchFactory.connect(creator).createLaunch("Beta", "BET", "ipfs://beta", {
+      value: STANDARD_CREATE_FEE,
+    });
+
+    const receiptA = await txA.wait();
+    const receiptB = await txB.wait();
+    const tokenAAddr = receiptA!.logs.find((log) => "fragment" in log && log.fragment?.name === "LaunchCreated")!.args
+      .token as string;
+    const tokenBAddr = receiptB!.logs.find((log) => "fragment" in log && log.fragment?.name === "LaunchCreated")!.args
+      .token as string;
+
+    const tokenA = await ethers.getContractAt("LaunchToken", tokenAAddr);
+    const tokenB = await ethers.getContractAt("LaunchToken", tokenBAddr);
+    await tokenA.connect(creator).buy(0, { value: ethers.parseEther("0.1") });
+    await tokenB.connect(creator).buy(0, { value: ethers.parseEther("0.1") });
+
+    await ethers.provider.send("evm_increaseTime", [180 * 24 * 60 * 60 + 31 * 24 * 60 * 60]);
+    await ethers.provider.send("evm_mine", []);
+
+    await tokenB.connect(creator).buy(0, { value: ethers.parseEther("0.01") });
+
+    expect(await tokenA.creatorFeeSweepReady()).to.equal(true);
+    expect(await tokenB.creatorFeeSweepReady()).to.equal(false);
+
+    const [totalSwept, sweptCount] = await launchFactory.batchSweepAbandonedCreatorFees.staticCall([tokenAAddr, tokenBAddr]);
+    expect(totalSwept).to.be.gt(0n);
+    expect(sweptCount).to.equal(1n);
+
+    await launchFactory.batchSweepAbandonedCreatorFees([tokenAAddr, tokenBAddr]);
+
+    expect(await tokenA.creatorFeeSweepReady()).to.equal(false);
+    expect(await tokenB.creatorFeeSweepReady()).to.equal(false);
   });
 });

@@ -236,4 +236,26 @@ describe("LaunchTokenWhitelistTaxed", function () {
     await token.connect(buyer).transfer(await pair.getAddress(), sellAmount);
     expect(await token.balanceOf(dead)).to.be.gt(deadBefore);
   });
+
+  it("auto-falls back to bonding on the first normal buy after whitelist expiry", async function () {
+    const { deployer, buyer, token } = await deployFixture();
+
+    await buyer.sendTransaction({ to: await token.getAddress(), value: SLOT });
+
+    expect(await token.state()).to.equal(4n);
+    expect(await token.whitelistStatus()).to.equal(2n);
+
+    await network.provider.send("evm_increaseTime", [24 * 60 * 60 + 1]);
+    await network.provider.send("evm_mine");
+
+    expect(await token.state()).to.equal(4n);
+    expect(await token.whitelistStatus()).to.equal(4n);
+
+    await token.connect(deployer).buy(0, { value: ethers.parseEther("0.5") });
+
+    expect(await token.state()).to.equal(1n);
+    expect(await token.whitelistExpiredWithoutFinalization()).to.equal(true);
+    expect(await token.balanceOf(deployer.address)).to.be.gt(0n);
+    expect(await token.canClaimWhitelistRefund(buyer.address)).to.equal(true);
+  });
 });

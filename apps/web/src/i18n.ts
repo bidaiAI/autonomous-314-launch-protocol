@@ -195,15 +195,17 @@ const strings = {
     mode0314Points: [
       "Creator uses create + atomic buy to secure the first position without being front-run.",
       "Pre-graduation: send native tokens to the contract to buy. 1-block sell cooldown applies.",
+      "After graduation, sending native tokens to the contract or transferring tokens back to the contract reverts instead of auto-refunding.",
       "Best for fully open launches. Cleanest audit surface."
     ],
 
     modeB314Title: "Whitelist Seats",
     modeB314Eyebrow: "Whitelist · No tax",
-    modeB314Desc: "Fixed-seat whitelist with a 24-hour commitment window. Once the threshold is met, every filled seat receives the same token allocation. If it fails, the launch falls back to normal 314 bonding.",
+    modeB314Desc: "Fixed-seat whitelist with a 24-hour commitment window. Once the threshold is met, every filled seat receives the same token allocation. If it fails, committed funds can be claimed back and the launch falls back to normal 314 bonding.",
     modeB314Points: [
       "Creator uses create + atomic seat commit instead of an immediate token buy.",
       "Thresholds: 4 / 6 / 8 BNB. Seat sizes: 0.1 / 0.2 / 0.5 / 1 BNB.",
+      "Whitelist commits are exact-amount only: any amount that does not exactly match the seat size is rejected by revert.",
       "Whitelist addresses are written at creation and cannot be changed.",
       "This is seat-based, not proportional: once the threshold is met, every filled seat gets the same token amount.",
       "If no seat threshold is reached within 24h, committed funds are refundable and the launch falls back to normal 314."
@@ -807,15 +809,17 @@ const strings = {
     mode0314Points: [
       "创建时自动完成原子买入，确保创建者拿到第一笔仓位，不被抢先。",
       "毕业前：向合约地址发送原生代币即可买入。卖出有 1 个区块的冷却期。",
+      "毕业后，再向合约地址发送原生代币或把 token 转回合约地址，都会直接 revert 失败，不会自动退回。",
       "适合完全开放的社区发射，审计面最小。"
     ],
 
     modeB314Title: "白名单席位",
     modeB314Eyebrow: "白名单 · 无税",
-    modeB314Desc: "固定席位白名单，24 小时承诺窗口。达到门槛后，每个已填充席位获得完全相同的代币额度；未达门槛则自动退款并回退到普通 314 联合曲线。",
+    modeB314Desc: "固定席位白名单，24 小时承诺窗口。达到门槛后，每个已填充席位获得完全相同的代币额度；未达门槛则可领取退款并回退到普通 314 联合曲线。",
     modeB314Points: [
       "创建时执行原子席位承诺而非直接买入代币。",
       "门槛可选 4 / 6 / 8 BNB，每席可选 0.1 / 0.2 / 0.5 / 1 BNB。",
+      "白名单承诺必须精确等于席位金额；其它任何金额都会被 revert 拒绝。",
       "白名单地址在创建时写入，之后不可修改。",
       "这不是按投入比例分配；一旦达到门槛，每个已填充席位拿到相同数量的代币。",
       "24 小时内未达到门槛，已承诺的资金可退款，发射回退为普通 314 模式。"
@@ -926,7 +930,7 @@ const strings = {
     wlAddressesPlaceholder: "每行一个地址，或用逗号分隔",
     wlCoverageValid: "白名单地址数量满足要求。",
     wlCoverageNeed: "还需要更多白名单地址。",
-    wlExplain: "每个合格地址发送一次与席位金额完全相同的 BNB 即可承诺。这不是按投入比例分配；达到门槛后白名单自动确认，每个已填充席位分到相同数量的代币。",
+    wlExplain: "每个合格地址只能发送一次与席位金额完全相同的 BNB 来承诺。其它任何金额都会被 revert 拒绝。这不是按投入比例分配；达到门槛后白名单自动确认，每个已填充席位分到相同数量的代币。",
     wlEstPerSeat: "预估每席代币数",
     wlStartTimeImmediateTitle: "白名单默认创建即开始，也可以改成定时开启。",
     wlStartTimeImmediateDesc: "留空时会立即开启白名单窗口，并允许创建者原子承诺席位。若要定时开启，请直接使用上方的本地时间选择器，下面会同步显示 UTC 对照时间。",
@@ -1214,7 +1218,7 @@ const strings = {
     wlRemainingShort: "剩余",
     wlApproved: "此钱包已在白名单中。",
     wlNotApproved: "此钱包不在白名单中。",
-    wlCommitExplain: "固定席位承诺模式。发送精确的席位金额；达到门槛后白名单自动确认，每个已填充席位可领取相同数量的代币。",
+    wlCommitExplain: "固定席位承诺模式。必须发送精确的席位金额；其它金额会被 revert 拒绝。达到门槛后白名单自动确认，每个已填充席位可领取相同数量的代币。",
     commitSeat: "承诺白名单席位",
     claimAllocation: "领取白名单分配",
     claimRefund: "领取白名单退款",

@@ -88,7 +88,7 @@ Important suffix rules:
 - `f314` only means **whitelist + tax family**; the actual tax rate must be read from `taxConfig()`
 - `b314` and `f314` can open immediately or at a configured `whitelistOpensAt` up to `3 days` after creation
 - whitelist families use **fixed seats**, not variable-size presale allocations
-- each approved address can commit **one exact seat amount once**
+- each approved address can commit **one exact seat amount once**; any other amount is rejected by revert, not auto-refunded
 - when the threshold is reached, the whitelist finalizes and **every filled seat receives the same token allocation per seat**
 - delayed-open whitelist families intentionally disable atomic creator seat commit
 - batch ops such as protocol fee sweeping and claiming are protocol tooling, not end-user UI features
@@ -304,9 +304,10 @@ Current design choices include:
 
 The protocol intentionally keeps **native transfer entrypoints** for the families that are meant to feel like 314:
 
-- `0314` and `1314..9314`: direct native transfer to the launch contract is a valid bonding-phase buy path
-- `b314` and `f314`: direct native transfer during the whitelist window is a valid fixed-seat commit path
+- `0314` and `1314..9314`: before graduation, direct native transfer to the launch contract is a valid bonding-phase buy path
+- `b314` and `f314`: direct native transfer during the whitelist window is a valid fixed-seat commit path, but only when the amount exactly matches the configured seat size
 - whitelist launches are **seat-based**, not proportional by contribution size: one approved seat equals one equal allocation once the threshold is met
+- after graduation, sending native tokens to the launch contract or transferring the token back to the launch contract will revert rather than auto-refund
 
 Reference UIs should still prefer explicit contract calls such as `buy(minTokenOut)` for everyday execution, but integrations must not assume `receive()` is disabled.
 

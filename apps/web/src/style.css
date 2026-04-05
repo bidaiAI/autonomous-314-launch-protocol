@@ -1316,9 +1316,9 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .social-trigger-head {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
-  gap: 16px;
+  grid-template-columns: 1fr;
+  align-items: stretch;
+  gap: 14px;
 }
 
 .social-trigger-copy {
@@ -1340,9 +1340,10 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 }
 
 .social-trigger-card .secondary-button {
-  min-width: 180px;
+  width: 100%;
+  min-width: 0;
   justify-content: center;
-  align-self: center;
+  align-self: stretch;
 }
 
 .social-dialog {

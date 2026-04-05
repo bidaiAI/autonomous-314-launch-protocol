@@ -328,7 +328,27 @@ export function App() {
   const [createTelegram, setCreateTelegram] = useState("");
   const [createDiscord, setCreateDiscord] = useState("");
   const [showSocialEditor, setShowSocialEditor] = useState(false);
-  const [createHelpSection, setCreateHelpSection] = useState<null | "identity" | "metadata" | "tax" | "whitelist">(null);
+  const [createFieldHelp, setCreateFieldHelp] = useState<null | string>(null);
+
+  const toggleCreateFieldHelp = (key: string) => {
+    setCreateFieldHelp((current) => (current === key ? null : key));
+  };
+
+  const renderFieldLabel = (label: string, helpKey?: string, optional = false) => (
+    <span className="label-row">
+      <span>{label} {optional ? <em className="field-badge optional">{t("optionalField")}</em> : null}</span>
+      {helpKey ? (
+        <button
+          type="button"
+          className={`field-help-toggle ${createFieldHelp === helpKey ? "active" : ""}`}
+          onClick={() => toggleCreateFieldHelp(helpKey)}
+          aria-label={t("toggleHelp")}
+        >
+          {createFieldHelp === helpKey ? "▾" : "▸"}
+        </button>
+      ) : null}
+    </span>
+  );
   const [createMetadataUri, setCreateMetadataUri] = useState("");
   const [createAtomicBuyAmount, setCreateAtomicBuyAmount] = useState("1");
   const [createWhitelistThreshold, setCreateWhitelistThreshold] = useState("4");
@@ -2177,34 +2197,26 @@ export function App() {
                         <h3>{t("identityTitle")}</h3>
                       </div>
                       <div className="section-head-actions">
-                        <button
-                          type="button"
-                          className={`help-dot ${createHelpSection === "identity" ? "active" : ""}`}
-                          onClick={() => setCreateHelpSection((current) => current === "identity" ? null : "identity")}
-                          aria-label={t("toggleHelp")}
-                        >
-                          ?
-                        </button>
                         <span className="status-pill success">{selectedLaunchFamily.suffix.toUpperCase()}</span>
                       </div>
                     </div>
-                    {createHelpSection === "identity" && (
-                      <div className="help-inline-box">{t("identityLead")}</div>
-                    )}
                     <div className="metadata-two-column identity-grid">
                       <label className="field prominent-field">
-                        <span>{t("tokenName")}</span>
+                        {renderFieldLabel(t("tokenName"), "tokenName")}
+                        {createFieldHelp === "tokenName" ? <small className="field-help-copy">{t("tokenNameHelp")}</small> : null}
                         <input value={createName} onChange={(e) => setCreateName(sanitizeUnicodeLabel(e.target.value, "name"))} placeholder={t("tokenNamePlaceholder")} />
                         <small className="field-note">{t("tokenNameNote")}</small>
                       </label>
                       <label className="field prominent-field">
-                        <span>{t("tokenSymbol")}</span>
+                        {renderFieldLabel(t("tokenSymbol"), "tokenSymbol")}
+                        {createFieldHelp === "tokenSymbol" ? <small className="field-help-copy">{t("tokenSymbolHelp")}</small> : null}
                         <input value={createSymbol} onChange={(e) => setCreateSymbol(sanitizeUnicodeLabel(e.target.value, "symbol"))} placeholder={t("tokenSymbolPlaceholder")} />
                         <small className="field-note">{t("tokenSymbolNote")}</small>
                       </label>
                     </div>
                     <label className="field">
-                      <span className="label-with-badge">{t("description")} <em className="field-badge optional">{t("optionalField")}</em></span>
+                      {renderFieldLabel(t("description"), "description", true)}
+                      {createFieldHelp === "description" ? <small className="field-help-copy">{t("descriptionHelp")}</small> : null}
                       <textarea
                         value={createDescription}
                         onChange={(e) => setCreateDescription(e.target.value)}
@@ -2242,32 +2254,17 @@ export function App() {
                         <span className="section-kicker">{t("metadataKicker")}</span>
                         <h3>{t("metadataTitle")}</h3>
                       </div>
-                      <div className="section-head-actions">
-                        <button
-                          type="button"
-                          className={`help-dot ${createHelpSection === "metadata" ? "active" : ""}`}
-                          onClick={() => setCreateHelpSection((current) => current === "metadata" ? null : "metadata")}
-                          aria-label={t("toggleHelp")}
-                        >
-                          ?
-                        </button>
-                      </div>
                     </div>
-                    {createHelpSection === "metadata" && (
-                      <div className="help-inline-box help-inline-stack">
-                        <strong>{t("localUploadNote")}</strong>
-                        <span>{t("localUploadExplain")}</span>
-                        <span>{t("referenceMetadataNote")}</span>
-                      </div>
-                    )}
                     <div className="metadata-two-column">
                       <label className="field">
-                        <span>{t("imageUrl")}</span>
+                        {renderFieldLabel(t("imageUrl"), "image")}
+                        {createFieldHelp === "image" ? <small className="field-help-copy">{t("imageHelp")}</small> : null}
                         <input value={createImageUrl} onChange={(e) => setCreateImageUrl(e.target.value)} placeholder={t("imageUrlPlaceholder")} />
                         <small className="field-note">{t("imageRequiredNote")}</small>
                       </label>
                       <label className="field">
-                        <span>{t("uploadImage")}</span>
+                        {renderFieldLabel(t("uploadImage"), "imageUpload")}
+                        {createFieldHelp === "imageUpload" ? <small className="field-help-copy">{t("imageUploadHelp")}</small> : null}
                         <input
                           type="file"
                           accept="image/*"
@@ -2321,7 +2318,8 @@ export function App() {
                       </div>
                     )}
                     <label className="field">
-                      <span className="label-with-badge">{t("metadataUri")} <em className="field-badge optional">{t("optionalField")}</em></span>
+                      {renderFieldLabel(t("metadataUri"), "metadataUri", true)}
+                      {createFieldHelp === "metadataUri" ? <small className="field-help-copy">{t("metadataUriHelp")}</small> : null}
                       <input
                         value={createMetadataUri}
                         onChange={(e) => setCreateMetadataUri(e.target.value)}
@@ -2349,26 +2347,13 @@ export function App() {
                           <h3>{t("taxTitle")}</h3>
                         </div>
                         <div className="section-head-actions">
-                          <button
-                            type="button"
-                            className={`help-dot ${createHelpSection === "tax" ? "active" : ""}`}
-                            onClick={() => setCreateHelpSection((current) => current === "tax" ? null : "tax")}
-                            aria-label={t("toggleHelp")}
-                          >
-                            ?
-                          </button>
                           <span className="status-pill warn">{createMode === "whitelistTaxed" ? "f314" : `${createTaxBps}314`}</span>
                         </div>
                       </div>
-                      {createHelpSection === "tax" && (
-                        <div className="help-inline-box help-inline-stack">
-                          <strong>{t("taxOnlyPostGrad")}</strong>
-                          <span>{t("taxWalletTransferFree")}</span>
-                        </div>
-                      )}
                       <div className="metadata-two-column">
                         <label className="field">
-                          <span>{t("taxRate")}</span>
+                          {renderFieldLabel(t("taxRate"), "taxRate")}
+                          {createFieldHelp === "taxRate" ? <small className="field-help-copy">{t("taxRateHelp")}</small> : null}
                           <select value={createTaxBps} onChange={(e) => setCreateTaxBps(e.target.value)}>
                             <option value="1">1%</option>
                             <option value="2">2%</option>
@@ -2382,7 +2367,8 @@ export function App() {
                           </select>
                         </label>
                         <label className="field">
-                          <span>{t("treasuryWallet")}</span>
+                          {renderFieldLabel(t("treasuryWallet"), "treasuryWallet")}
+                          {createFieldHelp === "treasuryWallet" ? <small className="field-help-copy">{t("treasuryWalletHelp")}</small> : null}
                           <input
                             value={createTaxTreasuryWallet}
                             onChange={(e) => setCreateTaxTreasuryWallet(e.target.value)}
@@ -2443,26 +2429,11 @@ export function App() {
                           <span className="section-kicker">{t("wlKicker")}</span>
                           <h3>{t("wlTitle")}</h3>
                         </div>
-                        <div className="section-head-actions">
-                          <button
-                            type="button"
-                            className={`help-dot ${createHelpSection === "whitelist" ? "active" : ""}`}
-                            onClick={() => setCreateHelpSection((current) => current === "whitelist" ? null : "whitelist")}
-                            aria-label={t("toggleHelp")}
-                          >
-                            ?
-                          </button>
-                        </div>
                       </div>
-                      {createHelpSection === "whitelist" && (
-                        <div className="help-inline-box help-inline-stack">
-                          <strong>{t("wlCoverageRule")}</strong>
-                          <span>{t("wlExplain")}</span>
-                        </div>
-                      )}
                       <div className="metadata-two-column">
                         <label className="field">
-                          <span>{`${t("wlThreshold")} (${activeProtocolProfile.nativeSymbol})`}</span>
+                          {renderFieldLabel(`${t("wlThreshold")} (${activeProtocolProfile.nativeSymbol})`, "wlThreshold")}
+                          {createFieldHelp === "wlThreshold" ? <small className="field-help-copy">{t("wlThresholdHelp")}</small> : null}
                           <select value={createWhitelistThreshold} onChange={(e) => setCreateWhitelistThreshold(e.target.value)}>
                             <option value="4">4 BNB</option>
                             <option value="6">6 BNB</option>
@@ -2470,7 +2441,8 @@ export function App() {
                           </select>
                         </label>
                         <label className="field">
-                          <span>{`${t("wlSlotSize")} (${activeProtocolProfile.nativeSymbol})`}</span>
+                          {renderFieldLabel(`${t("wlSlotSize")} (${activeProtocolProfile.nativeSymbol})`, "wlSlotSize")}
+                          {createFieldHelp === "wlSlotSize" ? <small className="field-help-copy">{t("wlSlotSizeHelp")}</small> : null}
                           <select value={createWhitelistSlotSize} onChange={(e) => setCreateWhitelistSlotSize(e.target.value)}>
                             <option value="0.1">0.1 BNB</option>
                             <option value="0.2">0.2 BNB</option>
@@ -2493,7 +2465,8 @@ export function App() {
                         <span>{t("wlScheduleToggle")}</span>
                       </label>
                       <label className="field">
-                        <span>{t("wlOpenTime")}</span>
+                        {renderFieldLabel(t("wlOpenTime"), "wlOpenTime")}
+                        {createFieldHelp === "wlOpenTime" ? <small className="field-help-copy">{t("wlOpenTimeHelp")}</small> : null}
                         <input
                           type="datetime-local"
                           value={createWhitelistOpensAt}
@@ -2516,7 +2489,8 @@ export function App() {
                         <p>{isDelayedWhitelistOpen ? t("wlStartTimeScheduledTitle") : t("wlStartTimeImmediateTitle")}</p>
                       </div>
                       <label className="field">
-                        <span>{t("wlAddresses")}</span>
+                        {renderFieldLabel(t("wlAddresses"), "wlAddresses")}
+                        {createFieldHelp === "wlAddresses" ? <small className="field-help-copy">{t("wlAddressesHelp")}</small> : null}
                         <textarea
                           value={createWhitelistAddresses}
                           onChange={(e) => setCreateWhitelistAddresses(e.target.value)}

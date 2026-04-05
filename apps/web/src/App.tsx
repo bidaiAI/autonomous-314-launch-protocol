@@ -326,6 +326,7 @@ export function App() {
   const [createTwitter, setCreateTwitter] = useState("");
   const [createTelegram, setCreateTelegram] = useState("");
   const [createDiscord, setCreateDiscord] = useState("");
+  const [showSocialEditor, setShowSocialEditor] = useState(false);
   const [createMetadataUri, setCreateMetadataUri] = useState("");
   const [createAtomicBuyAmount, setCreateAtomicBuyAmount] = useState("1");
   const [createWhitelistThreshold, setCreateWhitelistThreshold] = useState("4");
@@ -362,6 +363,7 @@ export function App() {
   const [sellPreviewState, setSellPreviewState] = useState<SellPreview | null>(null);
   const [status, setStatus] = useState<string>(() => t("ready"));
   const [showCreateConfirm, setShowCreateConfirm] = useState(false);
+  const configuredSocialCount = [createWebsite, createTwitter, createTelegram, createDiscord].filter((value) => value.trim()).length;
 
   async function handleCopyText(value: string, label: string) {
     try {
@@ -2162,7 +2164,7 @@ export function App() {
                       </label>
                     </div>
                     <label className="field">
-                      <span>{t("description")}</span>
+                      <span className="label-with-badge">{t("description")} <em className="field-badge optional">{t("optionalField")}</em></span>
                       <textarea
                         value={createDescription}
                         onChange={(e) => setCreateDescription(e.target.value)}
@@ -2219,25 +2221,15 @@ export function App() {
                         <small className="field-note">{t("imageRequiredNote")}</small>
                       </label>
                     </div>
-                    <div className="metadata-two-column">
-                      <label className="field">
-                        <span>{t("website")}</span>
-                        <input value={createWebsite} onChange={(e) => setCreateWebsite(e.target.value)} placeholder="https://..." />
-                      </label>
-                      <label className="field">
-                        <span>{t("twitter")}</span>
-                        <input value={createTwitter} onChange={(e) => setCreateTwitter(e.target.value)} placeholder="https://x.com/..." />
-                      </label>
-                    </div>
-                    <div className="metadata-two-column">
-                      <label className="field">
-                        <span>{t("telegram")}</span>
-                        <input value={createTelegram} onChange={(e) => setCreateTelegram(e.target.value)} placeholder="https://t.me/..." />
-                      </label>
-                      <label className="field">
-                        <span>{t("discord")}</span>
-                        <input value={createDiscord} onChange={(e) => setCreateDiscord(e.target.value)} placeholder="https://discord.gg/..." />
-                      </label>
+                    <div className="social-trigger-card">
+                      <div>
+                        <span className="section-kicker">{t("socialLinksLabel")} <em className="field-badge optional">{t("optionalField")}</em></span>
+                        <strong>{t("socialLinksTitle")}</strong>
+                        <p>{configuredSocialCount > 0 ? tf("socialLinksCount", { count: String(configuredSocialCount) }) : t("socialLinksEmptyHint")}</p>
+                      </div>
+                      <button type="button" className="secondary-button" onClick={() => setShowSocialEditor(true)}>
+                        {configuredSocialCount > 0 ? t("editSocialLinks") : t("addSocialLinks")}
+                      </button>
                     </div>
                     <div className="callout warn compact-callout">
                       <strong>{t("localUploadNote")}</strong>
@@ -2248,7 +2240,7 @@ export function App() {
                       {createImageFileName && <p>{t("selectedFile")} {createImageFileName}</p>}
                     </div>
                     <label className="field">
-                      <span>{t("metadataUri")}</span>
+                      <span className="label-with-badge">{t("metadataUri")} <em className="field-badge optional">{t("optionalField")}</em></span>
                       <input
                         value={createMetadataUri}
                         onChange={(e) => setCreateMetadataUri(e.target.value)}
@@ -3263,6 +3255,41 @@ export function App() {
           <button className="lang-toggle" onClick={toggleLocale}>{locale === "en" ? t("footerLangZh") : t("footerLangEn")}</button>
         </div>
       </footer>
+
+      {showSocialEditor && (
+        <div className="modal-overlay" onClick={() => setShowSocialEditor(false)}>
+          <div className="confirm-dialog panel social-dialog" onClick={(event) => event.stopPropagation()}>
+            <div className="confirm-dialog-head">
+              <div>
+                <span className="section-kicker">{t("socialLinksLabel")}</span>
+                <h3>{t("socialLinksTitle")}</h3>
+              </div>
+              <button type="button" className="secondary-button" onClick={() => setShowSocialEditor(false)}>{t("cancel")}</button>
+            </div>
+            <p className="confirm-dialog-copy">{t("socialLinksDialogDesc")}</p>
+            <div className="metadata-two-column">
+              <label className="field">
+                <span>{t("website")} <em className="field-badge optional">{t("optionalField")}</em></span>
+                <input value={createWebsite} onChange={(e) => setCreateWebsite(e.target.value)} placeholder="https://..." />
+              </label>
+              <label className="field">
+                <span>{t("twitter")} <em className="field-badge optional">{t("optionalField")}</em></span>
+                <input value={createTwitter} onChange={(e) => setCreateTwitter(e.target.value)} placeholder="https://x.com/..." />
+              </label>
+            </div>
+            <div className="metadata-two-column">
+              <label className="field">
+                <span>{t("telegram")} <em className="field-badge optional">{t("optionalField")}</em></span>
+                <input value={createTelegram} onChange={(e) => setCreateTelegram(e.target.value)} placeholder="https://t.me/..." />
+              </label>
+              <label className="field">
+                <span>{t("discord")} <em className="field-badge optional">{t("optionalField")}</em></span>
+                <input value={createDiscord} onChange={(e) => setCreateDiscord(e.target.value)} placeholder="https://discord.gg/..." />
+              </label>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showCreateConfirm && (
         <div className="modal-overlay" onClick={() => setShowCreateConfirm(false)}>

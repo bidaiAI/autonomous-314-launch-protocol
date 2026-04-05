@@ -1173,6 +1173,60 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   line-height: 1.5;
 }
 
+
+.label-with-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.field-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-style: normal;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.field-badge.optional {
+  color: var(--text-muted);
+  background: rgba(148, 163, 184, 0.12);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.social-trigger-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 18px;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: rgba(8, 16, 24, 0.4);
+}
+
+.social-trigger-card strong {
+  display: block;
+  margin-top: 6px;
+}
+
+.social-trigger-card p {
+  margin: 8px 0 0;
+  color: var(--text-secondary);
+  line-height: 1.55;
+  max-width: 50ch;
+}
+
+.social-dialog {
+  width: min(760px, 100%);
+}
+
 .checkbox-row {
   display: inline-flex;
   align-items: center;

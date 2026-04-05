@@ -599,6 +599,8 @@ a:hover { opacity: 0.8; }
 }
 
 .search-field { min-width: min(380px, 100%); }
+.market-select-field { min-width: 120px; }
+.market-select-field select { min-width: 0; }
 
 /* ── Launch Cards ── */
 .launch-card-grid {

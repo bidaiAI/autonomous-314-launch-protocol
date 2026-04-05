@@ -64,6 +64,8 @@ type DexPairEnrichment = {
   buys24h: number | null;
   sells24h: number | null;
 };
+type MarketSort = "recent" | "marketCap" | "progress" | "countdown";
+type MarketLimit = "10" | "20" | "all";
 
 function parseRoute(pathname: string): AppRoute {
   if (pathname === "/create") return { page: "create" };
@@ -336,6 +338,8 @@ export function App() {
   const [dexPairEnrichment, setDexPairEnrichment] = useState<DexPairEnrichment | null>(null);
   const [launchMetadataByToken, setLaunchMetadataByToken] = useState<Partial<Record<string, LaunchMetadata | null>>>({});
   const [marketQuery, setMarketQuery] = useState("");
+  const [marketSort, setMarketSort] = useState<MarketSort>("recent");
+  const [marketLimit, setMarketLimit] = useState<MarketLimit>("20");
   const [contractSearchInput, setContractSearchInput] = useState("");
   const [recentActivity, setRecentActivity] = useState<ActivityFeedItem[]>([]);
   const [bondingCandles, setBondingCandles] = useState<CandlePoint[]>([]);
@@ -371,6 +375,7 @@ export function App() {
   const workspaceRequestRef = useRef(0);
   const buyPreviewRequestRef = useRef(0);
   const sellPreviewRequestRef = useRef(0);
+  const marketBoardRef = useRef<HTMLElement | null>(null);
 
   const isBonding = tokenSnapshot?.state === "Bonding314";
   const isMigrating = tokenSnapshot?.state === "Migrating";
@@ -444,6 +449,41 @@ export function App() {
       );
     });
   }, [launchMetadataByToken, recentLaunchSnapshots, trimmedMarketQuery]);
+
+  const sortedLaunchSnapshots = useMemo(() => {
+    const launches = [...filteredLaunchSnapshots];
+    const marketCapOf = (launch: TokenSnapshot) =>
+      quoteMarketCap(launch.totalSupply > 0n ? launch.totalSupply : defaultTotalSupply, launch.currentPriceQuotePerToken);
+    const countdownTargetMs = (launch: TokenSnapshot) => {
+      if (launch.state !== "WhitelistCommit" || !launch.whitelistSnapshot) return Number.POSITIVE_INFINITY;
+      const opensAt = Number(launch.whitelistSnapshot.opensAt) * 1000;
+      const deadline = Number(launch.whitelistSnapshot.deadline) * 1000;
+      return nowMs < opensAt ? opensAt : deadline;
+    };
+
+    launches.sort((a, b) => {
+      if (marketSort === "marketCap") {
+        const diff = marketCapOf(b) - marketCapOf(a);
+        if (diff !== 0n) return diff > 0n ? 1 : -1;
+      } else if (marketSort === "progress") {
+        const diff = Number(b.graduationProgressBps - a.graduationProgressBps);
+        if (diff !== 0) return diff;
+      } else if (marketSort === "countdown") {
+        const diff = countdownTargetMs(a) - countdownTargetMs(b);
+        if (diff !== 0) return diff;
+      }
+      const createdDiff = Number(b.createdAt - a.createdAt);
+      if (createdDiff !== 0) return createdDiff;
+      return a.address.localeCompare(b.address);
+    });
+
+    return launches;
+  }, [defaultTotalSupply, filteredLaunchSnapshots, marketSort, nowMs]);
+
+  const visibleLaunchSnapshots = useMemo(() => {
+    if (marketLimit === "all") return sortedLaunchSnapshots;
+    return sortedLaunchSnapshots.slice(0, Number.parseInt(marketLimit, 10));
+  }, [marketLimit, sortedLaunchSnapshots]);
 
   const creatorLaunches = useMemo(() => {
     if (!wallet) return [];
@@ -1423,6 +1463,12 @@ export function App() {
   const selectedLaunchLinks = launchMetadataLinks(selectedLaunchMetadata);
   const latestLaunch = recentLaunchSnapshots[0] ?? null;
 
+  function handleJumpToLatestLaunches() {
+    setMarketSort("recent");
+    setMarketLimit("10");
+    marketBoardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   return (
     <main className="app-shell">
       <header className="topbar topbar-compact">
@@ -1495,7 +1541,7 @@ export function App() {
             <div className="button-row hero-actions">
               <button onClick={() => navigate({ page: "create" })}>{t('homeCreateBtn')}</button>
               {latestLaunch && (
-                <button className="secondary-button" onClick={() => void handleSelectLaunch(latestLaunch.address)}>
+                <button className="secondary-button" onClick={handleJumpToLatestLaunches}>
                   {t('homeLatestBtn')}
                 </button>
               )}
@@ -1674,7 +1720,7 @@ export function App() {
             </div>
           </section>
 
-          <section className="market-board">
+          <section className="market-board" ref={marketBoardRef}>
             <div className="section-header">
               <div>
                 <span className="section-kicker">{t('marketBoard')}</span>
@@ -1694,8 +1740,25 @@ export function App() {
                     {t('verifyLoad')}
                   </button>
                 ) : null}
+                <label className="field compact-field market-select-field">
+                  <span>{t("sortBy")}</span>
+                  <select value={marketSort} onChange={(e) => setMarketSort(e.target.value as MarketSort)}>
+                    <option value="recent">{t("sortRecent")}</option>
+                    <option value="marketCap">{t("sortMarketCap")}</option>
+                    <option value="progress">{t("sortProgress")}</option>
+                    <option value="countdown">{t("sortCountdown")}</option>
+                  </select>
+                </label>
+                <label className="field compact-field market-select-field">
+                  <span>{t("showCount")}</span>
+                  <select value={marketLimit} onChange={(e) => setMarketLimit(e.target.value as MarketLimit)}>
+                    <option value="10">10</option>
+                    <option value="20">20</option>
+                    <option value="all">{t("showAll")}</option>
+                  </select>
+                </label>
                 <span className="list-item-meta">
-                  {filteredLaunchSnapshots.length} / {recentLaunchSnapshots.length} {t('indexedLaunches')}
+                  {visibleLaunchSnapshots.length} / {filteredLaunchSnapshots.length} / {recentLaunchSnapshots.length} {t('indexedLaunches')}
                 </span>
               </div>
             </div>
@@ -1721,7 +1784,7 @@ export function App() {
               </div>
             ) : (
               <div className="launch-card-grid">
-                {filteredLaunchSnapshots.map((launch) => {
+                {visibleLaunchSnapshots.map((launch) => {
                   const metadataState = launchMetadataByToken[launch.address.toLowerCase()];
                   const metadata = metadataState ?? null;
                   const image = resolvePreviewImage(metadata?.image ?? "");

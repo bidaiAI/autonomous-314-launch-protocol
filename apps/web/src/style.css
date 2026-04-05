@@ -1203,6 +1203,8 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .identity-grid {
   margin-bottom: 12px;
+  grid-template-columns: 1fr;
+  gap: 14px;
 }
 
 .prominent-field span {

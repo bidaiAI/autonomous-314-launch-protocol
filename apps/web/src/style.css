@@ -1549,6 +1549,8 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .create-step-card {
   display: grid;
   grid-template-columns: 36px minmax(0, 1fr);
+  align-items: start;
+  align-self: start;
   gap: 12px;
   padding: 16px 18px;
   border-radius: var(--radius-lg);

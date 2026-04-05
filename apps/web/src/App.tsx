@@ -175,7 +175,7 @@ function formatUsdMicroPrice(value: number | null) {
   const [, decimals = ""] = raw.split(".");
   const leadingZeros = decimals.match(/^0*/)?.[0].length ?? 0;
   if (leadingZeros >= 4) {
-    const significant = decimals.slice(leadingZeros, leadingZeros + 3) || "0";
+    const significant = decimals.slice(leadingZeros, leadingZeros + 4) || "0";
     return `$0.0(${leadingZeros})${significant}`;
   }
   return formatUsdUnitPrice(value);
@@ -188,7 +188,7 @@ function formatUsdMicroPriceCompact(value: number | null) {
   const [, decimals = ""] = raw.split(".");
   const leadingZeros = decimals.match(/^0*/)?.[0].length ?? 0;
   if (leadingZeros >= 4) {
-    const significant = decimals.slice(leadingZeros, leadingZeros + 2) || "0";
+    const significant = decimals.slice(leadingZeros, leadingZeros + 4) || "0";
     return `$0.0(${leadingZeros})${significant}`;
   }
   return formatUsdUnitPrice(value);

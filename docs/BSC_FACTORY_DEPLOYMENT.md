@@ -5,30 +5,30 @@ This document describes the official BSC V2 deployment path for the open protoco
 ## Official BSC production profile
 
 - chain: **BSC Mainnet**
-- official V2 factory: `0x09261904bf6f7Ce23dee2058379A49DF53B80314`
+- official final factory: `0x709FeC578E1745bd8185188606848c0b2dCf0314`
 - router: `0x10ED43C718714eb63d5aA57B78B54704E256024E`
 - protocol fee recipient fallback: `0xC4187bE6b362DF625696d4a9ec5E6FA461CC0314`
 - standard/tax create fee: `0.01 BNB`
 - whitelist/f314 create fee: `0.03 BNB`
 - graduation target: `12 BNB`
 - desired factory suffix: `0314`
-- deployment block: `90349719`
+- deployment tx: `0xa652222e5e92d501ce3c670cc6da968711a5fc1cf76c3d62aa0addabbb707c55`
 
-## Official BSC V2 deployed addresses
+## Official BSC final deployed addresses
 
-- `LaunchTokenDeployer`: `0x502C1605B17E2c0B67Dd4C855E095989945aB3cc`
-- `LaunchTokenWhitelistDeployer`: `0xA45921Dc733188c8C68D017984224E0EC125b095`
-- `LaunchTokenTaxedDeployer`: `0xf0Ef9342fB2866580F4d428E6FF00E5394E15182`
-- `LaunchCreate2Deployer` (`f314`): `0x8Cb985D86eAdF6D92d9204338583332e2A8313F0`
+- `LaunchTokenDeployer`: `0x78624Da9AD4D40712fE60e0C79c33dea9332a04b`
+- `LaunchTokenWhitelistDeployer`: `0x9911BAd74700a0d0226477E3aD8DF014Eb77F015`
+- `LaunchTokenTaxedDeployer`: `0x572b5B62AFFd3aA1aaC1EB81d1DB05B07EA8B87D`
+- `LaunchCreate2Deployer` (`f314`): `0x7bfCD7FCACa202Bb14409C95d7E0d11F832e478B`
 
-## Official BSC V2 deployment transactions
+## Official BSC final deployment transactions
 
-- `LaunchTokenDeployer`: `0xf3db0561d4127f74fdbda277bdd791c3368d67e3d948f5ac101b262b9779be1c`
-- `LaunchTokenWhitelistDeployer`: `0x9cd44989e0c8d354b399484d8ac8b4f7ac4d171b5ffb53f3bde033cd5fb14b24`
-- `LaunchTokenTaxedDeployer`: `0x422185e15681df7b4dad4219f226f47dea52f4bc9acc836b6adec3185fc78292`
-- `LaunchCreate2Deployer` bind-capable deployer: `0xfba459d79375de614babf7718a6350da0d413834ce8c44a345ef9fd354102102`
-- `LaunchFactory` CREATE2 deployment: `0x0d214b1511a7266106cc15d7a425fb8dd6fed15d2a400906530d05cb23953645`
-- `LaunchCreate2Deployer.setFactory(...)`: `0xb8e852843553de0bbdb8f6ac8c632ab81d2ccb558848aa259e1362fd146e7518`
+- `LaunchTokenDeployer`: `0xdce17e0d3dae5839d3def47078d3b6f296998ce4ec09768554276a3af36f384a`
+- `LaunchTokenWhitelistDeployer`: `0x967fbe1ac90747c60a0261042d5ef893fc9b72848b521d3a719ff725af5349f7`
+- `LaunchTokenTaxedDeployer`: `0x0e121927338345fe794ae8bfcb68245aea2e68745be907888938ad0e1e093915`
+- `LaunchCreate2Deployer` bind-capable deployer: `0x9506177ccbfec43f885e5d94b52c1a82d21182dae5d2d5e71c7481f87c16e0d2`
+- `LaunchFactory` CREATE2 deployment: `0xa652222e5e92d501ce3c670cc6da968711a5fc1cf76c3d62aa0addabbb707c55`
+- `LaunchCreate2Deployer.setFactory(...)`: `0x6af61994ececaffb5e42c1dac3fbaa45a926f675c1e9227e222b5a9eece3d4b6`
 
 ## V2 deployment shape
 

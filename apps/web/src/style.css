@@ -702,32 +702,30 @@ a:hover { opacity: 0.8; }
 
 .launch-card-body { padding: 18px; display: grid; gap: 12px; }
 
-.launch-card-head {
-  display: flex;
-  align-items: start;
-  justify-content: space-between;
-  gap: 14px;
-}
-.launch-card-head > div:first-child {
-  min-width: 0;
-  flex: 1;
-}
-.launch-card-head h3 { font-size: 1.02rem; }
-
-.launch-card-head-metric {
+.launch-card-head { min-width: 0; }
+.launch-card-title-wrap {
   display: grid;
   gap: 4px;
-  justify-items: end;
-  text-align: right;
-  min-width: 72px;
-  flex-shrink: 0;
+  min-width: 0;
 }
-
-.launch-card-head-metric strong {
-  font-size: 1rem;
+.launch-card-title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+.launch-card-head h3 {
+  font-size: 1.02rem;
+  min-width: 0;
+}
+.launch-card-market-cap {
+  flex: 0 0 auto;
+  font-size: 0.95rem;
   line-height: 1.1;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  color: var(--accent);
 }
 
 .launch-card-symbol {
@@ -759,7 +757,7 @@ a:hover { opacity: 0.8; }
   gap: 10px;
 }
 .launch-card-stats-dual {
-  grid-template-columns: minmax(0, 0.72fr) minmax(0, 1.28fr);
+  grid-template-columns: minmax(0, 0.62fr) minmax(0, 1.38fr);
   gap: 10px;
 }
 .launch-card-stats > div {
@@ -773,7 +771,7 @@ a:hover { opacity: 0.8; }
   min-height: 64px;
 }
 .launch-card-stats strong {
-  font-size: clamp(0.84rem, 1.1vw, 0.96rem);
+  font-size: clamp(0.82rem, 1vw, 0.94rem);
   line-height: 1.15;
   white-space: nowrap;
   overflow: hidden;
@@ -782,7 +780,7 @@ a:hover { opacity: 0.8; }
 }
 
 .launch-card-metric-value.compact {
-  font-size: clamp(0.8rem, 0.95vw, 0.92rem);
+  font-size: clamp(0.76rem, 0.9vw, 0.88rem);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

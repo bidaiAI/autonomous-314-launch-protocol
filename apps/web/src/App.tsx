@@ -332,8 +332,8 @@ function effectiveLaunchState(
 ) {
   if (
     state === "WhitelistCommit" &&
-    whitelistStatus === 4n &&
     whitelistSnapshot &&
+    whitelistStatus !== 3n &&
     nowMs >= Number(whitelistSnapshot.deadline) * 1000
   ) {
     return "Bonding314";
@@ -1992,18 +1992,19 @@ export function App() {
                         </span>
                       </div>
                       <div className="launch-card-body">
-                          <div className="launch-card-head">
-                            <div>
+                        <div className="launch-card-head">
+                          <div className="launch-card-title-wrap">
+                            <div className="launch-card-title-row">
                               <h3>{metadata?.name || launch.name}</h3>
-                              <div className="launch-card-symbol">
-                                {metadata?.symbol || launch.symbol} · {launch.launchSuffix || t("launchSuffixFallback")}
-                              </div>
+                              <strong className="launch-card-market-cap">
+                                {launchMarketCapUsd ? formatUsdCompact(launchMarketCapUsd) : t("marketCapUnavailable")}
+                              </strong>
                             </div>
-                            <div className="launch-card-head-metric">
-                              <span className="metric-label">{t("marketCapShort")}</span>
-                              <strong>{launchMarketCapUsd ? formatUsdCompact(launchMarketCapUsd) : t("marketCapUnavailable")}</strong>
+                            <div className="launch-card-symbol">
+                              {metadata?.symbol || launch.symbol} · {launch.launchSuffix || t("launchSuffixFallback")}
                             </div>
                           </div>
+                        </div>
                         <p className="launch-card-description">
                           {metadata?.description || launchCardFallbackDescription(displayState)}
                         </p>
@@ -2036,18 +2037,16 @@ export function App() {
                             <button className="secondary-button" onClick={() => void handleSelectLaunch(launch.address)}>
                               {t('openWorkspace')}
                             </button>
-                            <div className="launch-card-contract-row">
-                              <span className="launch-card-address">{shortAddress(launch.address)}</span>
-                              <button
-                                type="button"
-                                className="copy-chip launch-card-copy-chip"
-                                aria-label={copiedLaunchAddress === launch.address ? t('copied') : t('copyContract')}
-                                title={copiedLaunchAddress === launch.address ? t('copied') : t('copyContract')}
-                                onClick={() => void handleCopyLaunchAddress(launch.address)}
-                              >
-                                {copiedLaunchAddress === launch.address ? '✓' : '⧉'}
-                              </button>
-                            </div>
+                            <span className="launch-card-address">{shortAddress(launch.address)}</span>
+                            <button
+                              type="button"
+                              className="copy-chip launch-card-copy-chip"
+                              aria-label={copiedLaunchAddress === launch.address ? t('copied') : t('copyContract')}
+                              title={copiedLaunchAddress === launch.address ? t('copied') : t('copyContract')}
+                              onClick={() => void handleCopyLaunchAddress(launch.address)}
+                            >
+                              {copiedLaunchAddress === launch.address ? '✓' : '⧉'}
+                            </button>
                           </div>
                         </div>
                       </div>

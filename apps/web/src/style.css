@@ -1285,6 +1285,21 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   width: min(760px, 100%);
 }
 
+.social-inline-editor {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: rgba(8, 16, 24, 0.32);
+}
+
+.social-inline-copy {
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
 .checkbox-row {
   display: inline-flex;
   align-items: center;

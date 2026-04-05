@@ -757,13 +757,13 @@ a:hover { opacity: 0.8; }
 }
 .launch-card-stats > div {
   display: grid;
-  gap: 4px;
-  padding: 10px 12px;
+  gap: 2px;
+  padding: 12px 14px;
   border-radius: 14px;
   background: rgba(8, 15, 25, 0.46);
   border: 1px solid rgba(148, 163, 184, 0.08);
   align-content: start;
-  min-height: 78px;
+  min-height: 64px;
 }
 .launch-card-stats strong {
   font-size: clamp(0.84rem, 1.1vw, 0.96rem);

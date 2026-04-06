@@ -46,6 +46,13 @@ const BRAND_MARK_URL = "/brand/logo-mark.svg";
 const BRAND_FULL_URL = "/brand/logo-full.svg";
 const OFFICIAL_FACTORY_ADDRESS = (import.meta.env.VITE_FACTORY_ADDRESS ?? "").trim();
 const DEX_SCREENER_CHAIN_ID = "bsc";
+const TOKEN_DECIMALS = 10n ** 18n;
+const TOTAL_SUPPLY_UNITS = 1_000_000_000n * TOKEN_DECIMALS;
+const LP_TOKEN_RESERVE_UNITS = 200_000_000n * TOKEN_DECIMALS;
+const SALE_TOKEN_RESERVE_UNITS = TOTAL_SUPPLY_UNITS - LP_TOKEN_RESERVE_UNITS;
+const VIRTUAL_QUOTE_DIVISOR = 3n;
+const BPS_DENOMINATOR = 10_000n;
+const TOTAL_FEE_BPS = 100n;
 
 function useLocale(): Locale {
   return useSyncExternalStore(onLocaleChange, getLocale, getLocale);
@@ -218,6 +225,51 @@ function formatNativeCompact(value: bigint) {
   const numeric = Number(value) / 1e18;
   if (!Number.isFinite(numeric) || numeric <= 0) return `0 ${activeProtocolProfile.nativeSymbol}`;
   return `${compactNumber(numeric)} ${activeProtocolProfile.nativeSymbol}`;
+}
+
+function ceilDiv(value: bigint, divisor: bigint) {
+  return (value + divisor - 1n) / divisor;
+}
+
+function splitTotalFee(grossAmount: bigint) {
+  return (grossAmount * TOTAL_FEE_BPS) / BPS_DENOMINATOR;
+}
+
+function estimateFreshLaunchTokenOut(grossQuoteIn: bigint, graduationQuoteReserve: bigint) {
+  if (grossQuoteIn <= 0n || graduationQuoteReserve <= 0n) return 0n;
+
+  const virtualQuoteReserve = graduationQuoteReserve / VIRTUAL_QUOTE_DIVISOR;
+  if (virtualQuoteReserve <= 0n) return 0n;
+
+  const virtualTokenReserve = (LP_TOKEN_RESERVE_UNITS * virtualQuoteReserve) / graduationQuoteReserve;
+  const remainingCapacity = graduationQuoteReserve;
+
+  let usedGross = grossQuoteIn;
+  let netQuoteIn = grossQuoteIn - splitTotalFee(grossQuoteIn);
+
+  if (netQuoteIn > remainingCapacity) {
+    usedGross = ceilDiv(remainingCapacity * BPS_DENOMINATOR, BPS_DENOMINATOR - TOTAL_FEE_BPS);
+    while (usedGross > 0n) {
+      const feeCheck = splitTotalFee(usedGross);
+      const netCheck = usedGross - feeCheck;
+      if (netCheck <= remainingCapacity) {
+        netQuoteIn = netCheck;
+        break;
+      }
+      usedGross -= 1n;
+    }
+  }
+
+  if (netQuoteIn <= 0n) return 0n;
+  if (netQuoteIn === graduationQuoteReserve) return SALE_TOKEN_RESERVE_UNITS;
+
+  const effectiveQuoteReserve = virtualQuoteReserve;
+  const effectiveTokenReserve = SALE_TOKEN_RESERVE_UNITS + LP_TOKEN_RESERVE_UNITS + virtualTokenReserve;
+  const invariant = effectiveQuoteReserve * effectiveTokenReserve;
+  const newEffectiveQuoteReserve = effectiveQuoteReserve + netQuoteIn;
+  const newEffectiveTokenReserve = invariant / newEffectiveQuoteReserve;
+
+  return effectiveTokenReserve - newEffectiveTokenReserve;
 }
 
 function formatQuotePrice(value: bigint) {
@@ -664,6 +716,18 @@ export function App() {
   const factorySupportsWhitelistTaxedMode = factorySnapshot?.supportsWhitelistTaxedMode ?? assumeOfficialFactoryCapabilities;
   const customFactorySelected = Boolean(factoryAddress.trim()) && !usingOfficialFactory;
   const factoryPanelExpanded = showFactorySettings || factoryInputMode === "custom";
+  const createAtomicBuyPreview = useMemo(() => {
+    if (!requiresAtomicBuy || !createAtomicBuyEnabled) return null;
+    const trimmed = createAtomicBuyAmount.trim();
+    if (!trimmed) return 0n;
+    try {
+      const grossQuoteIn = parseEther(trimmed);
+      const graduationTarget = factorySnapshot?.graduationQuoteReserve ?? parseEther("12");
+      return estimateFreshLaunchTokenOut(grossQuoteIn, graduationTarget);
+    } catch {
+      return null;
+    }
+  }, [requiresAtomicBuy, createAtomicBuyEnabled, createAtomicBuyAmount, factorySnapshot?.graduationQuoteReserve]);
   const whitelistModeUnsupported = Boolean(customFactorySelected && factorySnapshot && !factorySupportsWhitelistMode);
   const taxedModeUnsupported = Boolean(customFactorySelected && factorySnapshot && !factorySupportsTaxedMode);
   const whitelistTaxedModeUnsupported = Boolean(customFactorySelected && factorySnapshot && !factorySupportsWhitelistTaxedMode);
@@ -2354,19 +2418,22 @@ export function App() {
                           {createAtomicBuyEnabled ? t("creatorProtectionEnabledNote") : t("creatorProtectionOptionalNote")}
                         </small>
                         {createAtomicBuyEnabled ? (
-                          <div className="metadata-two-column">
+                          <div className="creator-buy-grid">
                             <label className="field">
-                              <span>{`${t("atomicBuyAmount")} (${activeProtocolProfile.nativeSymbol})`} <em className="field-badge optional">{t("optionalField")}</em></span>
+                              <span>{`${t("atomicBuyAmount")} (${activeProtocolProfile.nativeSymbol})`}</span>
                               <input
                                 value={createAtomicBuyAmount}
                                 onChange={(e) => setCreateAtomicBuyAmount(e.target.value)}
                                 placeholder="1"
                               />
                             </label>
-                            <label className="field">
-                              <span>{t("creatorFlowLabel")}</span>
-                              <input value={t("creatorFlowAtomicBuy")} readOnly />
-                            </label>
+                            <div className="field creator-estimate-card">
+                              <span>{t("creatorEstimateLabel")}</span>
+                              <div className="creator-estimate-value">
+                                <strong>{createAtomicBuyPreview === null ? "—" : formatToken(createAtomicBuyPreview)}</strong>
+                                <small>{t("creatorEstimateHint")}</small>
+                              </div>
+                            </div>
                           </div>
                         ) : (
                           <div className="callout compact-callout subtle-callout">
@@ -3515,7 +3582,7 @@ export function App() {
                 <span className="section-kicker">{t("createConfirmCreatorActionKicker")}</span>
                 <div className="confirm-token-grid">
                   <div><span>{t("atomicBuyAmount")}</span><strong>{createAtomicBuyAmount || "0"} {activeProtocolProfile.nativeSymbol}</strong></div>
-                  <div><span>{t("creatorFlowLabel")}</span><strong>{t("creatorFlowAtomicBuy")}</strong></div>
+                  <div><span>{t("creatorEstimateLabel")}</span><strong>{createAtomicBuyPreview === null ? "—" : formatToken(createAtomicBuyPreview)}</strong></div>
                 </div>
               </div>
             )}

@@ -51,9 +51,9 @@ const strings = {
   en: {
     // ── brand / global ──
     brand: "Autonomous 314",
-    tagline: "Creator-first open launch protocol",
+    tagline: "Open-source onchain launch protocol with a built-in bonding market",
     chainProfile: "official profile",
-    heroSubtitle: "A launch contract that is its own market, reserve system, and graduation engine. Create on-chain, trade inside the contract, and graduate directly into",
+    heroSubtitle: "A fully open-source, deplatformed onchain launch protocol with a built-in bonding market that returns launch and liquidity back to the market itself. Graduate directly into",
     connectWallet: "Connect Wallet",
     switchNetwork: "Switch Network",
     wrongNetwork: "Wrong network",
@@ -79,7 +79,7 @@ const strings = {
 
     // ── home ──
     homeHeroKicker: "Open Launch Market",
-    homeHeroTitle: "Creator-first launches that graduate into a canonical V2 market.",
+    homeHeroTitle: "Built-in bonding-market launches that graduate into a canonical V2 market.",
     homeHeroDesc: "Browse live launches, open a workspace to trade and inspect state, or create a new official launch.",
     homeCreateBtn: "Create a launch",
     homeLatestBtn: "Latest launch",
@@ -161,8 +161,8 @@ const strings = {
     selfSovereignDesc: "Each token IS its own market — no external AMM needed before graduation. The contract handles bonding curve pricing, trade execution, and fee distribution.",
     graduation2: "Graduation Engine",
     graduation2Desc: "When the bonding curve fills, the contract automatically seeds a canonical V2 pair, burns the LP, and permanently closes the 314 market.",
-    creatorFirst: "Creator-First Economics",
-    creatorFirstDesc: "1% total fee = 0.7% creator + 0.3% protocol, applied only during the internal pre-grad market. Creator fees are claimable after graduation. Anti-MEV atomic create ensures fair first position.",
+    creatorFirst: "Market-First Fee Model",
+    creatorFirstDesc: "1% total fee = 0.7% creator + 0.3% protocol, applied only during the built-in pre-grad bonding market. Creator fees become claimable after graduation, while the protocol stays open and replaceable instead of platform-locked.",
     openSource: "Fully Open Source",
     openSourceDesc: "All contracts, frontend, and indexer are open source. Anyone can deploy their own launchpad in 5 minutes. No vendor lock-in.",
 
@@ -682,9 +682,9 @@ const strings = {
   zh: {
     // ── 品牌 / 全局 ──
     brand: "Autonomous 314",
-    tagline: "创建者优先的开放发射协议",
+    tagline: "一个自带内盘、完全开源、去平台化的链上发射协议",
     chainProfile: "官方配置",
-    heroSubtitle: "智能合约即市场：自带定价引擎、交易执行、手续费分配，毕业后自动注入",
+    heroSubtitle: "让发射与流动性回归市场本身：自带内盘、链上执行、毕业后自动注入",
     connectWallet: "连接钱包",
     switchNetwork: "切换网络",
     wrongNetwork: "网络错误",
@@ -710,7 +710,7 @@ const strings = {
 
     // ── 首页 ──
     homeHeroKicker: "开放发射市场",
-    homeHeroTitle: "创建者优先的代币发射 — 毕业后直接进入标准 V2 市场。",
+    homeHeroTitle: "自带内盘的开放发射 — 毕业后直接进入标准 V2 市场。",
     homeHeroDesc: "浏览正在进行的发射、打开工作台查看交易和生命周期状态，或者创建一个新的官方发射。",
     homeCreateBtn: "创建发射",
     homeLatestBtn: "最新发射",
@@ -792,8 +792,8 @@ const strings = {
     selfSovereignDesc: "每个代币本身就是市场 — 毕业前不需要外部 AMM。合约自动处理联合曲线定价、交易执行和手续费分配。",
     graduation2: "毕业引擎",
     graduation2Desc: "联合曲线填满后，合约自动注入标准 V2 交易对、销毁 LP 代币，永久关闭 314 市场。",
-    creatorFirst: "创建者优先经济模型",
-    creatorFirstDesc: "总手续费 1% = 创建者 0.7% + 协议 0.3%，仅限内盘。创建者手续费毕业后可领取。Anti-MEV 原子创建确保公平的首笔交易。",
+    creatorFirst: "回归市场的手续费模型",
+    creatorFirstDesc: "总手续费 1% = 创建者 0.7% + 协议 0.3%，仅限内盘。手续费不再围绕平台抽取设计，而是让发射和流动性更多回到市场与项目本身。",
     openSource: "完全开源",
     openSourceDesc: "所有合约、前端和索引器均开源。任何人都能在 5 分钟内部署自己的发射平台，没有供应商锁定。",
 

@@ -8,7 +8,7 @@
 ![Creator First](https://img.shields.io/badge/fees-0.7%25%20creator%20%7C%200.3%25%20protocol-10b981.svg)
 ![Open Protocol](https://img.shields.io/badge/model-open%20protocol-7c3aed.svg)
 
-Open-source **EVM-native** launch protocol for creator-first, platform-independent token launches. Pre-graduation trading lives inside the launch contract itself, and graduation hands liquidity off to a canonical V2-style DEX without requiring a centralized launch platform to remain online.
+An open-source, deplatformed **EVM-native** onchain launch protocol with a built-in bonding market, designed to return token launches and liquidity back to the market itself. Pre-graduation trading lives inside the launch contract itself, and graduation hands liquidity off to a canonical V2-style DEX without requiring a centralized launch platform to remain online.
 
 **Official frontend:** [https://auto314.cc](https://auto314.cc)
 
@@ -32,8 +32,8 @@ Autonomous 314 is built with four concrete goals:
 
 1. **Make launches platform-independent**
    - a project should still be launchable and tradable even if the official frontend disappears
-2. **Shift launch economics toward creators**
-   - the protocol should be sustainable, but the majority of launch trading fees should stay on the project side
+2. **Return launch economics to the market and the project side**
+   - the protocol should be sustainable, but launch trading fees should not be designed around platform extraction
 3. **Reduce launch-stage fragility**
    - avoid the most obvious weaknesses of older 314-style markets, especially around fragmented markets and messy graduation handoffs
 4. **Publish a reusable open EVM primitive**
@@ -53,8 +53,8 @@ At a functional level, the protocol already provides:
   - 20% token reserve plus immutable quote target seeds the canonical pair
 - **post-grad hard cutover**
   - after graduation, 314 is permanently disabled and the token behaves like a normal transferable asset
-- **creator-first fee accounting**
-  - 1% total fee = 0.7% creator + 0.3% protocol, pre-grad only
+- **market-first fee accounting**
+  - 1% total fee = 0.7% creator + 0.3% protocol, applied only inside the built-in pre-grad market
 - **abandoned creator-fee resolution**
   - abandoned pre-grad launches can eventually sweep unclaimable creator fees into the protocol vault
 - **reference integration stack**
@@ -199,7 +199,7 @@ Autonomous 314 takes the opposite view:
 
 - the **launch contract itself** is the market, reserve system, and graduation state machine
 - the protocol is **open and composable**, so anyone can build their own frontend, wallet flow, or indexer on top
-- the economics are **creator-first**, with more of the fee staying with the project instead of being fully extracted by a platform
+- the economics are designed to return more of the fee surface to the project and the market, instead of being fully extracted by a platform
 - the official frontend is a **reference implementation**, not the gatekeeper
 
 ## What makes it different
@@ -208,7 +208,7 @@ Compared with a typical launchpad model, Autonomous 314 is intentionally opinion
 
 - **contract-native market before graduation** instead of forcing all discovery and execution through a platform-owned pool manager
 - **single-market pre-grad flow** instead of encouraging fragmented trading venues before the token is ready for a public DEX market
-- **creator-first fee split** instead of platform-first rent extraction
+- **market-first fee split** instead of platform-first rent extraction
 - **graduation as a contract state transition** instead of a platform-controlled operational step
 - **open integration surface** so wallets, bots, indexers, or white-label frontends can integrate the protocol without asking for permission
 
@@ -333,7 +333,7 @@ Very small dust-sized trades are also protected against fee bypass. In practice 
 - if a launch is abandoned and never graduates, creator fee does not remain stuck forever
 - after `180 days` of age and `30 days` of inactivity, anyone may sweep abandoned creator fees into the protocol fee vault
 
-This keeps the protocol creator-first while still giving dead launches a clean terminal state.
+This keeps the protocol market-first while still giving dead launches a clean terminal state.
 
 ## Trust and control assumptions
 
@@ -551,7 +551,7 @@ The aim is to make this protocol good enough that:
 - wallets can integrate launches directly
 - other platforms can adopt the protocol instead of owning the whole market flow
 
-If this succeeds, the value of the system comes from open adoption, composability, and credible creator-first economics — not from forcing every launch through a centralized funnel.
+If this succeeds, the value of the system comes from open adoption, composability, and credible market-first economics — not from forcing every launch through a centralized funnel.
 
 ## FAQ
 
@@ -569,7 +569,7 @@ Yes. That is one of the core design goals. The official frontend is a reference 
 
 ### Why give creators more than the protocol?
 
-Because this system is explicitly creator-first. The protocol should be sustainable, but it should not normalize the assumption that platforms deserve the majority of launch fees.
+Because this system is explicitly designed to return launches and liquidity to the market itself. The protocol should be sustainable, but it should not normalize the assumption that platforms deserve the majority of launch fees.
 
 ### Is this only for BSC?
 

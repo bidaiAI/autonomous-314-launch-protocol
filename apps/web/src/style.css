@@ -149,11 +149,11 @@ a:hover { opacity: 0.8; }
 }
 
 .topbar h1 {
-  font-size: clamp(1.8rem, 3.5vw, 2.8rem);
-  line-height: 1.06;
+  font-size: clamp(1.7rem, 3.25vw, 2.7rem);
+  line-height: 1.04;
   margin: 6px 0 8px;
-  max-width: 12ch;
-  text-wrap: balance;
+  max-width: none;
+  white-space: nowrap;
   background: var(--gradient-glow);
   background-size: 200% auto;
   -webkit-background-clip: text;
@@ -2664,6 +2664,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   .app-shell { padding: 14px 12px calc(64px + env(safe-area-inset-bottom)); }
   .topbar { margin-bottom: 20px; }
   .brand-lockup { align-items: center; gap: 14px; }
+  .topbar h1 { white-space: normal; }
   .brand-mark { width: 52px; height: 52px; border-radius: 16px; }
   .topbar-copy { font-size: 0.9rem; line-height: 1.65; }
   .topbar-actions { display: grid; grid-template-columns: 1fr; gap: 10px; align-items: stretch; }

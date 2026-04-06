@@ -681,7 +681,7 @@ const strings = {
 
   zh: {
     // ── 品牌 / 全局 ──
-    brand: "Autonomous 314（自主314）",
+    brand: "Autonomous 314 · 自主314",
     tagline: "一个自带内盘、完全开源、去平台化的链上发射协议",
     chainProfile: "官方配置",
     heroSubtitle: "让发射与流动性回归市场本身：自带内盘、链上执行、毕业后自动注入",

@@ -5,9 +5,12 @@
       <stop offset="0.5" stop-color="#0D1826"/>
       <stop offset="1" stop-color="#071018"/>
     </linearGradient>
-    <linearGradient id="accent" x1="182" y1="154" x2="310" y2="278" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#7CF9E8"/>
-      <stop offset="0.48" stop-color="#38BDF8"/>
+    <linearGradient id="accentL" x1="184" y1="154" x2="260" y2="252" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#77F7E8"/>
+      <stop offset="1" stop-color="#34B6FF"/>
+    </linearGradient>
+    <linearGradient id="accentR" x1="308" y1="154" x2="384" y2="252" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#55B7FF"/>
       <stop offset="1" stop-color="#8B5CF6"/>
     </linearGradient>
     <linearGradient id="word" x1="520" y1="154" x2="1048" y2="392" gradientUnits="userSpaceOnUse">
@@ -22,9 +25,11 @@
 
   <rect x="116" y="116" width="336" height="336" rx="92" fill="#060D14"/>
   <rect x="128" y="128" width="312" height="312" rx="80" fill="#0F1C29" stroke="#1B3345" stroke-width="4"/>
-  <path d="M182 164H226L276 270H232L182 164Z" fill="url(#accent)" opacity="0.92"/>
-  <path d="M224 150H270L320 258H274L224 150Z" fill="url(#accent)" opacity="0.82"/>
-  <text x="146" y="432" fill="#F8FBFF" font-size="158" font-weight="900" font-family="Inter, Arial, sans-serif" letter-spacing="-12">314</text>
+  <path d="M184 170H240L274 244H218L184 170Z" fill="url(#accentL)"/>
+  <path d="M240 170H280L300 220H260L240 170Z" fill="#8DEDF4" opacity="0.92"/>
+  <path d="M384 170H328L294 244H350L384 170Z" fill="url(#accentR)"/>
+  <path d="M328 170H288L268 220H308L328 170Z" fill="#63C5FF" opacity="0.94"/>
+  <text x="284" y="414" text-anchor="middle" fill="#F8FBFF" font-size="164" font-weight="900" font-family="Inter, Arial, sans-serif" letter-spacing="-10">314</text>
 
   <text x="504" y="224" fill="url(#word)" font-size="92" font-weight="800" font-family="Inter, Arial, sans-serif" letter-spacing="-3">AUTONOMOUS 314</text>
   <text x="508" y="292" fill="#91B7CC" font-size="30" font-weight="600" font-family="Inter, Arial, sans-serif" letter-spacing="6">OPEN MEME LAUNCH PROTOCOL</text>

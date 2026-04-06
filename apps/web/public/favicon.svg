@@ -1,18 +1,23 @@
 <svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="panel" x1="34" y1="28" x2="220" y2="228" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#122031"/>
+    <linearGradient id="panel" x1="32" y1="26" x2="224" y2="230" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#132336"/>
       <stop offset="1" stop-color="#09111A"/>
     </linearGradient>
-    <linearGradient id="accent" x1="70" y1="60" x2="132" y2="120" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#7CF9E8"/>
-      <stop offset="0.48" stop-color="#38BDF8"/>
+    <linearGradient id="accentL" x1="78" y1="62" x2="118" y2="118" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#77F7E8"/>
+      <stop offset="1" stop-color="#34B6FF"/>
+    </linearGradient>
+    <linearGradient id="accentR" x1="138" y1="62" x2="178" y2="118" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#55B7FF"/>
       <stop offset="1" stop-color="#8B5CF6"/>
     </linearGradient>
   </defs>
-  <rect x="16" y="16" width="224" height="224" rx="62" fill="#050B12"/>
-  <rect x="26" y="26" width="204" height="204" rx="54" fill="url(#panel)" stroke="#1B3345" stroke-width="3"/>
-  <path d="M72 70H100L132 136H104L72 70Z" fill="url(#accent)" opacity="0.92"/>
-  <path d="M96 62H126L158 128H128L96 62Z" fill="url(#accent)" opacity="0.82"/>
-  <text x="44" y="180" fill="#F8FBFF" font-size="74" font-weight="900" font-family="Inter, Arial, sans-serif" letter-spacing="-6">314</text>
+  <rect x="16" y="16" width="224" height="224" rx="64" fill="#040A12"/>
+  <rect x="26" y="26" width="204" height="204" rx="56" fill="url(#panel)" stroke="#1B3345" stroke-width="3"/>
+  <path d="M76 68H104L122 108H94L76 68Z" fill="url(#accentL)"/>
+  <path d="M104 68H128L138 94H114L104 68Z" fill="#8DEDF4" opacity="0.92"/>
+  <path d="M180 68H152L134 108H162L180 68Z" fill="url(#accentR)"/>
+  <path d="M152 68H128L118 94H142L152 68Z" fill="#63C5FF" opacity="0.94"/>
+  <text x="128" y="182" text-anchor="middle" fill="#F8FBFF" font-size="88" font-weight="900" font-family="Inter, Arial, sans-serif" letter-spacing="-5">314</text>
 </svg>

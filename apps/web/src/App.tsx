@@ -715,7 +715,7 @@ export function App() {
   const factorySupportsTaxedMode = factorySnapshot?.supportsTaxedMode ?? assumeOfficialFactoryCapabilities;
   const factorySupportsWhitelistTaxedMode = factorySnapshot?.supportsWhitelistTaxedMode ?? assumeOfficialFactoryCapabilities;
   const customFactorySelected = Boolean(factoryAddress.trim()) && !usingOfficialFactory;
-  const factoryPanelExpanded = showFactorySettings || factoryInputMode === "custom";
+  const factoryPanelExpanded = showFactorySettings;
   const createAtomicBuyPreview = useMemo(() => {
     if (!requiresAtomicBuy || !createAtomicBuyEnabled) return null;
     const trimmed = createAtomicBuyAmount.trim();
@@ -823,6 +823,15 @@ export function App() {
       setCustomFactoryInput(factoryAddress.trim());
     }
   }, [factoryAddress, usingOfficialFactory]);
+
+  useEffect(() => {
+    if (route.page !== "create") return;
+    setShowFactorySettings(false);
+    if (OFFICIAL_FACTORY_ADDRESS) {
+      setFactoryInputMode("official");
+      setFactoryAddress(OFFICIAL_FACTORY_ADDRESS);
+    }
+  }, [route.page]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNowMs(Date.now()), 30000);

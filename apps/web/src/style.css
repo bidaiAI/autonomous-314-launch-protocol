@@ -1772,7 +1772,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .create-summary-grid.compact { padding: 0; border: 0; background: transparent; }
 .create-summary-grid > div { display: grid; gap: 3px; }
 .create-summary-grid span { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); font-weight: 600; }
-.create-summary-grid strong { font-size: 0.92rem; color: var(--text-primary); }
+.create-summary-grid strong { font-size: 0.92rem; color: var(--text-primary); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .tax-slider-card {
   display: grid;

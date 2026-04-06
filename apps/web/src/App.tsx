@@ -736,6 +736,20 @@ export function App() {
     }
   }, [requiresAtomicBuy, createAtomicBuyEnabled, createAtomicBuyAmount, factorySnapshot?.graduationQuoteReserve]);
   const createAtomicBuyPreviewLabel = useMemo(() => (createAtomicBuyPreview === null ? "—" : formatTokenCompact(createAtomicBuyPreview)), [createAtomicBuyPreview]);
+  const whitelistSeatEstimate = useMemo(() => {
+    if (!requiresWhitelistCommit || whitelistSeatTarget <= 0) return null;
+    try {
+      const grossThreshold = parseEther(createWhitelistThreshold || "0");
+      if (grossThreshold <= 0n) return null;
+      const graduationTarget = factorySnapshot?.graduationQuoteReserve ?? parseEther("12");
+      const totalWhitelistOut = estimateFreshLaunchTokenOut(grossThreshold, graduationTarget);
+      if (totalWhitelistOut <= 0n) return null;
+      return totalWhitelistOut / BigInt(whitelistSeatTarget);
+    } catch {
+      return null;
+    }
+  }, [requiresWhitelistCommit, whitelistSeatTarget, createWhitelistThreshold, factorySnapshot?.graduationQuoteReserve]);
+  const whitelistSeatEstimateLabel = useMemo(() => (whitelistSeatEstimate === null ? "—" : formatTokenCompact(whitelistSeatEstimate)), [whitelistSeatEstimate]);
   const whitelistModeUnsupported = Boolean(customFactorySelected && factorySnapshot && !factorySupportsWhitelistMode);
   const taxedModeUnsupported = Boolean(customFactorySelected && factorySnapshot && !factorySupportsTaxedMode);
   const whitelistTaxedModeUnsupported = Boolean(customFactorySelected && factorySnapshot && !factorySupportsWhitelistTaxedMode);
@@ -835,6 +849,7 @@ export function App() {
   useEffect(() => {
     if (route.page !== "create") return;
     setShowFactorySettings(false);
+    setCustomFactoryInput("");
     if (OFFICIAL_FACTORY_ADDRESS) {
       setFactoryInputMode("official");
       setFactoryAddress(OFFICIAL_FACTORY_ADDRESS);
@@ -2706,10 +2721,11 @@ export function App() {
                         </small>
                         {isDelayedWhitelistOpen ? <small className="field-note">{tf("wlUtcPreview", { utc: whitelistOpensAtUtcText })}</small> : null}
                       </label>
-                      <div className="create-summary-grid compact">
-                          <div><span>{t("wlSeatTarget")}</span><strong>{whitelistSeatTarget || "—"}</strong></div>
+                      <div className="create-summary-grid compact whitelist-summary-grid">
+                        <div><span>{t("wlSeatTarget")}</span><strong>{whitelistSeatTarget || "—"}</strong></div>
                         <div><span>{t("wlAddressCount")}</span><strong>{whitelistAddressCount}</strong></div>
                         <div><span>{t("wlWindow")}</span><strong>{isDelayedWhitelistOpen ? t("wlScheduled24h") : "24h"}</strong></div>
+                        <div><span>{t("wlEstPerSeat")}</span><strong>{whitelistSeatEstimateLabel}</strong></div>
                       </div>
                       <div className={`callout ${isDelayedWhitelistOpen ? "success" : "warn"} compact-callout`}>
                         <p>{isDelayedWhitelistOpen ? t("wlStartTimeScheduledTitle") : t("wlStartTimeImmediateTitle")}</p>
@@ -3612,6 +3628,7 @@ export function App() {
                   <div><span>{t("wlSlotSize")}</span><strong>{createWhitelistSlotSize} {activeProtocolProfile.nativeSymbol}</strong></div>
                   <div><span>{t("wlSeatTarget")}</span><strong>{whitelistSeatTarget || "—"}</strong></div>
                   <div><span>{t("wlAddressCount")}</span><strong>{whitelistAddressCount}</strong></div>
+                  <div><span>{t("wlEstPerSeat")}</span><strong>{whitelistSeatEstimateLabel}</strong></div>
                   <div><span>{t("wlOpenTime")}</span><strong>{isDelayedWhitelistOpen ? createWhitelistOpensAt : t("wlStartsImmediately")}</strong></div>
                   <div><span>{t("wlTimezoneLabel")}</span><strong>{isDelayedWhitelistOpen ? whitelistLocalTimezone : t("wlImmediateLabel")}</strong></div>
                   {isDelayedWhitelistOpen ? (

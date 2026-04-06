@@ -266,6 +266,154 @@ describe("LaunchTokenWhitelist", function () {
     expect(await token.canClaimWhitelistRefund(buyer.address)).to.equal(true);
   });
 
+  it("does not let outsiders claim another user's allocation or refund", async function () {
+    const { token, buyer, buyer2, whitelistCommitters, deployer } = await deployFixture();
+    const tokenAddr = await token.getAddress();
+    const outsider = ethers.Wallet.createRandom().connect(ethers.provider);
+    await deployer.sendTransaction({ to: outsider.address, value: ethers.parseEther("1") });
+
+    for (const committer of whitelistCommitters) {
+      await committer.sendTransaction({ to: tokenAddr, value: SLOT });
+    }
+
+    await expect(token.connect(outsider).claimWhitelistAllocation()).to.be.revertedWithCustomError(
+      token,
+      "WhitelistAllocationUnavailable"
+    );
+
+    const refundFixture = await deployFixture();
+    const refundOutsider = ethers.Wallet.createRandom().connect(ethers.provider);
+    await refundFixture.deployer.sendTransaction({ to: refundOutsider.address, value: ethers.parseEther("1") });
+    await refundFixture.buyer.sendTransaction({ to: await refundFixture.token.getAddress(), value: SLOT });
+    await increaseTime(24 * 60 * 60 + 1);
+    await refundFixture.token.advanceWhitelistPhase();
+    await expect(refundFixture.token.connect(refundOutsider).claimWhitelistRefund()).to.be.revertedWithCustomError(
+      refundFixture.token,
+      "WhitelistRefundUnavailable"
+    );
+
+    expect(await token.balanceOf(buyer2.address)).to.equal(0n);
+  });
+
+  it("keeps fee vaults and accounted balances exact when whitelist finalizes", async function () {
+    const { token, whitelistCommitters } = await deployFixture();
+    const tokenAddr = await token.getAddress();
+
+    for (const committer of whitelistCommitters) {
+      await committer.sendTransaction({ to: tokenAddr, value: SLOT });
+    }
+
+    const protocolFee = (THRESHOLD * 30n) / 10_000n;
+    const creatorFee = (THRESHOLD * 70n) / 10_000n;
+    const netQuote = THRESHOLD - protocolFee - creatorFee;
+
+    expect(await token.state()).to.equal(1n);
+    expect(await token.whitelistFinalized()).to.equal(true);
+    expect(await token.whitelistExpiredWithoutFinalization()).to.equal(false);
+    expect(await token.whitelistCommitVault()).to.equal(0n);
+    expect(await token.protocolFeeVault()).to.equal(protocolFee);
+    expect(await token.creatorFeeVault()).to.equal(creatorFee);
+    expect(await token.curveQuoteReserve()).to.equal(netQuote);
+    expect(await ethers.provider.getBalance(tokenAddr)).to.equal(THRESHOLD);
+    expect(
+      (await token.curveQuoteReserve()) +
+        (await token.protocolFeeVault()) +
+        (await token.creatorFeeVault()) +
+        (await token.whitelistCommitVault())
+    ).to.equal(THRESHOLD);
+    expect(await token.whitelistAllocationTokenReserve()).to.equal(
+      (await token.whitelistTokensPerSeat()) * (await token.whitelistSeatsFilled())
+    );
+  });
+
+  it("keeps finalize and fallback mutually exclusive under repeated phase advances", async function () {
+    const finalized = await deployFixture();
+    const finalizedAddr = await finalized.token.getAddress();
+    for (const committer of finalized.whitelistCommitters) {
+      await committer.sendTransaction({ to: finalizedAddr, value: SLOT });
+    }
+    await increaseTime(24 * 60 * 60 + 1);
+    await finalized.token.advanceWhitelistPhase();
+    expect(await finalized.token.whitelistFinalized()).to.equal(true);
+    expect(await finalized.token.whitelistExpiredWithoutFinalization()).to.equal(false);
+    expect(await finalized.token.state()).to.equal(1n);
+    await expect(finalized.token.connect(finalized.buyer).claimWhitelistRefund()).to.be.revertedWithCustomError(
+      finalized.token,
+      "WhitelistRefundUnavailable"
+    );
+
+    const expired = await deployFixture();
+    await expired.buyer.sendTransaction({ to: await expired.token.getAddress(), value: SLOT });
+    await increaseTime(24 * 60 * 60 + 1);
+    await expired.token.advanceWhitelistPhase();
+    await expired.token.advanceWhitelistPhase();
+    expect(await expired.token.whitelistFinalized()).to.equal(false);
+    expect(await expired.token.whitelistExpiredWithoutFinalization()).to.equal(true);
+    expect(await expired.token.state()).to.equal(1n);
+    await expect(expired.token.connect(expired.buyer).claimWhitelistAllocation()).to.be.revertedWithCustomError(
+      expired.token,
+      "WhitelistAllocationUnavailable"
+    );
+  });
+
+  it("blocks refund reentrancy and only releases one seat refund", async function () {
+    const [deployer, creator, protocol, filler] = await ethers.getSigners();
+
+    const MockWNATIVE = await ethers.getContractFactory("MockERC20");
+    const wbnb = await MockWNATIVE.deploy("Wrapped Native", "WNATIVE");
+    await wbnb.waitForDeployment();
+
+    const MockFactory = await ethers.getContractFactory("MockDexV2Factory");
+    const mockFactory = await MockFactory.deploy();
+    await mockFactory.waitForDeployment();
+
+    const MockRouter = await ethers.getContractFactory("MockDexV2Router");
+    const mockRouter = await MockRouter.deploy(await mockFactory.getAddress(), await wbnb.getAddress());
+    await mockRouter.waitForDeployment();
+
+    const Attacker = await ethers.getContractFactory("WhitelistRefundReentrancyAttacker");
+    const attacker = await Attacker.deploy();
+    await attacker.waitForDeployment();
+
+    const whitelist = [await attacker.getAddress(), ...Array.from({ length: 19 }, () => ethers.Wallet.createRandom().address)];
+
+    const LaunchTokenWhitelist = await ethers.getContractFactory("LaunchTokenWhitelist");
+    const token = await LaunchTokenWhitelist.deploy({
+      name: "Whitelist314",
+      symbol: "B314",
+      metadataURI: "ipfs://b314",
+      creator: creator.address,
+      factory: deployer.address,
+      protocolFeeRecipient: protocol.address,
+      router: await mockRouter.getAddress(),
+      graduationQuoteReserve: GRADUATION_TARGET,
+      whitelistThreshold: THRESHOLD,
+      whitelistSlotSize: SLOT,
+      whitelistOpensAt: 0,
+      whitelistAddresses: whitelist,
+      launchModeId: 2,
+    });
+    await token.waitForDeployment();
+    await attacker.setToken(await token.getAddress());
+
+    await deployer.sendTransaction({ to: await attacker.getAddress(), value: ethers.parseEther("1") });
+    await attacker.commitSeat({ value: SLOT });
+
+    const attackerBalanceBefore = await ethers.provider.getBalance(await attacker.getAddress());
+    await increaseTime(24 * 60 * 60 + 1);
+    await token.advanceWhitelistPhase();
+    await attacker.attackRefund();
+    const attackerBalanceAfter = await ethers.provider.getBalance(await attacker.getAddress());
+
+    expect(await attacker.reentryAttempted()).to.equal(true);
+    expect(await attacker.reentrySucceeded()).to.equal(false);
+    expect(attackerBalanceAfter - attackerBalanceBefore).to.equal(SLOT);
+    expect(await token.whitelistCommitVault()).to.equal(0n);
+    await expect(attacker.attackRefund()).to.be.reverted;
+    expect(await token.whitelistRefundClaimed(await attacker.getAddress())).to.equal(true);
+    expect(await filler.getAddress()).to.not.equal(await attacker.getAddress());
+  });
+
   it("keeps whitelist accounting coherent under same-block seat crowding", async function () {
     const { token, whitelistCommitters } = await deployFixture({ whitelistCount: 20 });
     const tokenAddr = await token.getAddress();

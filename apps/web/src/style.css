@@ -1272,7 +1272,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   align-items: start;
 }
 .create-grid { grid-template-columns: 300px minmax(0, 1fr); }
-.create-grid.create-grid-collapsed { grid-template-columns: 176px minmax(0, 1fr); }
+.create-grid.create-grid-collapsed { grid-template-columns: 156px minmax(0, 1fr); }
 
 /* ── Create Page ── */
 .create-hero-card {
@@ -2885,6 +2885,12 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   .footer-brand-mark { height: 24px; }
 }
 
+
+@media (max-width: 1400px) {
+  .create-grid, .create-grid.create-grid-collapsed { grid-template-columns: 1fr; }
+  .create-factory-rail { position: static; margin-top: 4px; }
+  .factory-panel.collapsed { padding: 14px 14px; }
+}
 
 @media (max-width: 1180px) {
   .factory-summary { grid-template-columns: 1fr; }

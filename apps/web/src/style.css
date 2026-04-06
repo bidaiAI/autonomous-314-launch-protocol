@@ -644,7 +644,15 @@ a:hover { opacity: 0.8; }
   align-items: end;
   gap: 16px;
 }
-.section-header h2 { margin: 6px 0 0; font-size: 1.28rem; }
+.section-header > div:first-child {
+  min-width: 0;
+}
+.section-header h2 {
+  margin: 6px 0 0;
+  font-size: 1.28rem;
+  line-height: 1.1;
+  white-space: nowrap;
+}
 
 .market-toolbar {
   display: flex;
@@ -2647,6 +2655,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   .detail-grid { grid-template-columns: 1fr; }
   .launch-hero { grid-template-columns: 1fr; }
   .launch-hero-head, .page-heading { flex-direction: column; align-items: flex-start; }
+  .section-header h2 { white-space: normal; }
   .create-hero-top { grid-template-columns: 1fr; align-items: flex-start; }
   .create-hero-intro { max-width: none; }
   .create-hero-control { width: 100%; }

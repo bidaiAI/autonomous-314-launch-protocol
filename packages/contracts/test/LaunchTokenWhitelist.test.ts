@@ -6,9 +6,12 @@ describe("LaunchTokenWhitelist", function () {
   const THRESHOLD = ethers.parseEther("4");
   const SLOT = ethers.parseEther("0.2");
 
-  async function deployFixture() {
+  async function deployFixture(options?: { whitelistCount?: number }) {
     const [deployer, creator, protocol] = await ethers.getSigners();
-    const whitelistCommitters = Array.from({ length: 20 }, () => ethers.Wallet.createRandom().connect(ethers.provider));
+    const whitelistCount = options?.whitelistCount ?? 20;
+    const whitelistCommitters = Array.from({ length: whitelistCount }, () =>
+      ethers.Wallet.createRandom().connect(ethers.provider)
+    );
 
     for (const wallet of whitelistCommitters) {
       await deployer.sendTransaction({ to: wallet.address, value: ethers.parseEther("1") });
@@ -103,6 +106,34 @@ describe("LaunchTokenWhitelist", function () {
     await expect(token.connect(buyer2).claimWhitelistAllocation())
       .to.emit(token, "WhitelistAllocationClaimed")
       .withArgs(buyer2.address, tokensPerSeat);
+  });
+
+  it("rejects duplicate allocation and refund claims after the first successful claim", async function () {
+    const { token, buyer, buyer2, whitelistCommitters } = await deployFixture();
+    const tokenAddr = await token.getAddress();
+
+    for (const committer of whitelistCommitters) {
+      await committer.sendTransaction({ to: tokenAddr, value: SLOT });
+    }
+
+    await token.connect(buyer).claimWhitelistAllocation();
+    await expect(token.connect(buyer).claimWhitelistAllocation()).to.be.revertedWithCustomError(
+      token,
+      "WhitelistAllocationUnavailable"
+    );
+
+    const refundFixture = await deployFixture();
+    await refundFixture.buyer.sendTransaction({ to: await refundFixture.token.getAddress(), value: SLOT });
+    await increaseTime(24 * 60 * 60 + 1);
+
+    await refundFixture.token.advanceWhitelistPhase();
+    await refundFixture.token.connect(refundFixture.buyer).claimWhitelistRefund();
+    await expect(refundFixture.token.connect(refundFixture.buyer).claimWhitelistRefund()).to.be.revertedWithCustomError(
+      refundFixture.token,
+      "WhitelistRefundUnavailable"
+    );
+
+    expect(await token.balanceOf(buyer2.address)).to.equal(0n);
   });
 
   it("expires after 24h, enables refunds, and falls back to bonding314", async function () {
@@ -233,5 +264,89 @@ describe("LaunchTokenWhitelist", function () {
     expect(await token.whitelistExpiredWithoutFinalization()).to.equal(true);
     expect(await token.balanceOf(outsider.address)).to.be.gt(0n);
     expect(await token.canClaimWhitelistRefund(buyer.address)).to.equal(true);
+  });
+
+  it("keeps whitelist accounting coherent under same-block seat crowding", async function () {
+    const { token, whitelistCommitters } = await deployFixture({ whitelistCount: 20 });
+    const tokenAddr = await token.getAddress();
+    const committers = whitelistCommitters.slice(0, 20);
+
+    await ethers.provider.send("evm_setAutomine", [false]);
+
+    try {
+      const txPromises = committers.map((committer) => committer.sendTransaction({ to: tokenAddr, value: SLOT }));
+      const txs = await Promise.all(txPromises);
+      await ethers.provider.send("evm_mine", []);
+      const receipts = await Promise.all(
+        txs.map(async (tx) => {
+          try {
+            return await tx.wait();
+          } catch (error) {
+            return null;
+          }
+        })
+      );
+
+      const seatsFilled = await token.whitelistSeatsFilled();
+      const committedTotal = await token.whitelistCommittedTotal();
+      const finalized = await token.whitelistFinalized();
+      const state = await token.state();
+      const revertedCount = receipts.filter((receipt) => receipt === null).length;
+      const successfulCount = receipts.filter((receipt) => receipt?.status === 1).length;
+
+      expect(successfulCount + revertedCount).to.equal(20);
+      expect(seatsFilled).to.be.oneOf([19n, 20n]);
+      expect(committedTotal).to.equal(seatsFilled * SLOT);
+      expect(successfulCount).to.equal(Number(seatsFilled));
+
+      if (seatsFilled === 20n) {
+        expect(finalized).to.equal(true);
+        expect(state).to.equal(1n);
+        expect(committedTotal).to.equal(THRESHOLD);
+      } else {
+        expect(finalized).to.equal(false);
+        expect(state).to.equal(4n);
+        expect(committedTotal).to.equal(THRESHOLD - SLOT);
+      }
+    } finally {
+      await ethers.provider.send("evm_setAutomine", [true]);
+    }
+  });
+
+  it("reports representative gas for whitelist commit, finalize, allocation claim, and refund", async function () {
+    const finalized = await deployFixture();
+    const tokenAddr = await finalized.token.getAddress();
+
+    const firstCommitReceipt = await (
+      await finalized.whitelistCommitters[0].sendTransaction({ to: tokenAddr, value: SLOT })
+    ).wait();
+
+    for (const committer of finalized.whitelistCommitters.slice(1, -1)) {
+      await committer.sendTransaction({ to: tokenAddr, value: SLOT });
+    }
+
+    const finalizingReceipt = await (
+      await finalized.whitelistCommitters[finalized.whitelistCommitters.length - 1].sendTransaction({
+        to: tokenAddr,
+        value: SLOT,
+      })
+    ).wait();
+    const allocationReceipt = await (await finalized.token.connect(finalized.buyer).claimWhitelistAllocation()).wait();
+
+    const refundFixture = await deployFixture();
+    await refundFixture.buyer.sendTransaction({ to: await refundFixture.token.getAddress(), value: SLOT });
+    await increaseTime(24 * 60 * 60 + 1);
+    await refundFixture.token.advanceWhitelistPhase();
+    const refundReceipt = await (await refundFixture.token.connect(refundFixture.buyer).claimWhitelistRefund()).wait();
+
+    console.log("      Whitelist commit gas:", firstCommitReceipt!.gasUsed.toString());
+    console.log("      Whitelist finalize gas:", finalizingReceipt!.gasUsed.toString());
+    console.log("      Whitelist allocation claim gas:", allocationReceipt!.gasUsed.toString());
+    console.log("      Whitelist refund claim gas:", refundReceipt!.gasUsed.toString());
+
+    expect(firstCommitReceipt!.gasUsed).to.be.lte(250_000n);
+    expect(finalizingReceipt!.gasUsed).to.be.lte(350_000n);
+    expect(allocationReceipt!.gasUsed).to.be.lte(150_000n);
+    expect(refundReceipt!.gasUsed).to.be.lte(150_000n);
   });
 });

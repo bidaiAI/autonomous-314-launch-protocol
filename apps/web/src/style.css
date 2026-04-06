@@ -1584,6 +1584,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .creator-estimate-card {
   display: grid;
   align-content: stretch;
+  min-width: 0;
 }
 
 .creator-estimate-value {
@@ -1595,11 +1596,15 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   display: grid;
   align-content: center;
   gap: 4px;
+  min-width: 0;
 }
 
 .creator-estimate-value strong {
-  font-size: 1.08rem;
+  font-size: clamp(1rem, 2vw, 1.08rem);
   line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .creator-estimate-value small {

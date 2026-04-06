@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { getAddress, parseEther } from "viem";
+import { formatUnits, getAddress, parseEther } from "viem";
 import { getLocale, onLocaleChange, t, ta, tf, toggleLocale, type Locale } from "./i18n";
 import {
   applySlippageBps,
@@ -186,6 +186,13 @@ function formatUsdMicroPrice(value: number | null) {
     return `$0.0(${leadingZeros})${significant}`;
   }
   return formatUsdUnitPrice(value);
+}
+
+function formatTokenCompact(value: bigint, decimals = 18) {
+  const numeric = Number(formatUnits(value, decimals));
+  if (!Number.isFinite(numeric)) return "—";
+  if (Math.abs(numeric) >= 10000) return compactNumber(numeric);
+  return numeric.toLocaleString(undefined, { maximumFractionDigits: 4 });
 }
 
 function formatUsdMicroPriceCompact(value: number | null) {
@@ -728,6 +735,7 @@ export function App() {
       return null;
     }
   }, [requiresAtomicBuy, createAtomicBuyEnabled, createAtomicBuyAmount, factorySnapshot?.graduationQuoteReserve]);
+  const createAtomicBuyPreviewLabel = useMemo(() => (createAtomicBuyPreview === null ? "—" : formatTokenCompact(createAtomicBuyPreview)), [createAtomicBuyPreview]);
   const whitelistModeUnsupported = Boolean(customFactorySelected && factorySnapshot && !factorySupportsWhitelistMode);
   const taxedModeUnsupported = Boolean(customFactorySelected && factorySnapshot && !factorySupportsTaxedMode);
   const whitelistTaxedModeUnsupported = Boolean(customFactorySelected && factorySnapshot && !factorySupportsWhitelistTaxedMode);
@@ -2439,7 +2447,7 @@ export function App() {
                             <div className="field creator-estimate-card">
                               <span>{t("creatorEstimateLabel")}</span>
                               <div className="creator-estimate-value">
-                                <strong>{createAtomicBuyPreview === null ? "—" : formatToken(createAtomicBuyPreview)}</strong>
+                                <strong>{createAtomicBuyPreviewLabel}</strong>
                                 <small>{t("creatorEstimateHint")}</small>
                               </div>
                             </div>
@@ -3591,7 +3599,7 @@ export function App() {
                 <span className="section-kicker">{t("createConfirmCreatorActionKicker")}</span>
                 <div className="confirm-token-grid">
                   <div><span>{t("atomicBuyAmount")}</span><strong>{createAtomicBuyAmount || "0"} {activeProtocolProfile.nativeSymbol}</strong></div>
-                  <div><span>{t("creatorEstimateLabel")}</span><strong>{createAtomicBuyPreview === null ? "—" : formatToken(createAtomicBuyPreview)}</strong></div>
+                  <div><span>{t("creatorEstimateLabel")}</span><strong>{createAtomicBuyPreviewLabel}</strong></div>
                 </div>
               </div>
             )}

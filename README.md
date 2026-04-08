@@ -16,6 +16,7 @@ An open-source, deplatformed **EVM-native** onchain launch protocol with a built
 
 If you are reading this repo for integration work, start here:
 
+- **Official runtime / deployment parameters:** [`docs/OFFICIAL_PARAMETERS.md`](docs/OFFICIAL_PARAMETERS.md)
 - **Protocol integration:** [`docs/INTEGRATION.md`](docs/INTEGRATION.md)
 - **Metadata / socials / images:** [`docs/LAUNCH_METADATA.md`](docs/LAUNCH_METADATA.md)
 
@@ -509,19 +510,12 @@ This starts a local Hardhat chain, deploys a demo factory with a `0.2 native` gr
 
 ## Official BSC deployment
 
+- **Canonical public reference:** [`docs/OFFICIAL_PARAMETERS.md`](./docs/OFFICIAL_PARAMETERS.md)
 - **Factory:** `0xa5d62930AA7CDD332B6bF1A32dB0cC7095FC0314`
-- **Chain:** BNB Smart Chain
-- **Router:** PancakeSwap V2 Router `0x10ED43C718714eb63d5aA57B78B54704E256024E`
 - **Modes:** `0314 / b314 / 1314..9314 / f314`
-- **Support deployers:** `0x8FcAf0Fe7e49245d3f28f04e7b91978aBdD38A71` / `0x6E70b0eCcF42D2d8358daD89Fe37cfA1F8c8a9F2` / `0x9a5CD709C9B0a18bD7BD5C8a2f637cbE5087D1B9` / `0xcDc3D935b2349CF282e5517a8126B0fA890631e5`
-- **Support deployer txs:** `0xe7bf7a28e85e222a5387ef4ae520262217ff65be75d023fa8534c497f4119d36` / `0xcd77bf0e98327158f16c1645a9c2f0bc8b6c5589862ecc8344ef831723856140` / `0x29e4824246581158804daa1d86aaba675f04f1e497166eac9961872f394bdd82` / `0x18bc4724f5275a3fc4fd2e4c476c9e8c1d140b5a4d3eceffbdec8e8d5e024260`
-- **Factory deployment tx / block:** `0xf77b68c21d31c51f0dbbffb5756f233c9a6718d49f549c262220d92a875afc06` @ `91258253`
-- **Whitelist-taxed deployer bind tx / block:** `0xa61eb496afb880fda09cb5f5915905cb72a912eb1f1dc78fd4c4908a460a4ab1` @ `91258260`
-- **Deployment salt:** `0xdda123f499c5f7f6d817abb3686e99857361bf6990923787dd4d8c5aef555afd`
-- **Create fees:** standard/tax `0.01 BNB`, whitelist/f314 `0.03 BNB`
 - **Graduation target:** `12 BNB`
-- **Curve profile:** `virtualTokenReserve = 107,036,752` and `virtualQuoteReserve ≈ 4.60555128 BNB` under the official 12 BNB profile
-- **Source verification:** the production indexer bootstraps official factory/deployer verification and auto-submits every new launch to Sourcify; that already surfaces verified source on BscScan, while explorer API keys remain optional as an extra verification path.
+
+Use the official parameters page above for the current factory, deployers, deployment txs/blocks, curve profile, channels, and verification status.
 
 The reference web app is intended to be deployed from the monorepo root on Vercel using [`vercel.json`](./vercel.json). The reference indexer/API is intended to be deployed from the monorepo root on Railway using [`railway.json`](./railway.json).
 

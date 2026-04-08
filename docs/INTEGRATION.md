@@ -10,6 +10,8 @@ This document describes how third-party frontends, wallets, bots, and indexers s
   - Read this file first for state rules, execution surfaces, and launch-family handling.
 - **Frontends / indexers**
   - This file is the main integration reference.
+- **Current official deployment values**
+  - Use [`docs/OFFICIAL_PARAMETERS.md`](./OFFICIAL_PARAMETERS.md) for the current public factory, deployers, blocks, and runtime profile.
 - **Metadata / social-link hydration**
   - Use [`docs/LAUNCH_METADATA.md`](./LAUNCH_METADATA.md) when you need images and social links.
 

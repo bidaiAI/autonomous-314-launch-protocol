@@ -654,8 +654,17 @@ export function App() {
   const isDexOnly = tokenSnapshot?.state === "DEXOnly";
   const connectedAsCreator =
     wallet && tokenSnapshot ? wallet.toLowerCase() === tokenSnapshot.creator.toLowerCase() : false;
+  const selectedFactoryAddressNormalized =
+    /^0x[a-fA-F0-9]{40}$/.test(factoryAddress.trim()) ? factoryAddress.trim().toLowerCase() : null;
+  const activeFactorySnapshot =
+    factorySnapshot && selectedFactoryAddressNormalized && factorySnapshot.address.toLowerCase() === selectedFactoryAddressNormalized
+      ? factorySnapshot
+      : null;
+  const launchSnapshotsForSelectedFactory = activeFactorySnapshot
+    ? recentLaunchSnapshots.filter((launch) => launch.factory.toLowerCase() === activeFactorySnapshot.address.toLowerCase())
+    : [];
   const connectedAsProtocolRecipient =
-    wallet && factorySnapshot ? wallet.toLowerCase() === factorySnapshot.protocolFeeRecipient.toLowerCase() : false;
+    wallet && activeFactorySnapshot ? wallet.toLowerCase() === activeFactorySnapshot.protocolFeeRecipient.toLowerCase() : false;
   const connectedAsTokenProtocolRecipient =
     wallet && tokenSnapshot ? wallet.toLowerCase() === tokenSnapshot.protocolFeeRecipient.toLowerCase() : false;
   const creatorFeeSweepReady = tokenSnapshot?.creatorFeeSweepReady ?? false;
@@ -795,7 +804,7 @@ export function App() {
   const searchLooksLikeAddress = /^0x[a-fA-F0-9]{40}$/.test(trimmedMarketQuery);
   const filteredLaunchSnapshots = useMemo(() => {
     const lower = trimmedMarketQuery.toLowerCase();
-    return recentLaunchSnapshots.filter((launch) => {
+    return launchSnapshotsForSelectedFactory.filter((launch) => {
       if (!marketModeFilterMatch(launch, marketModeFilter)) return false;
       if (!trimmedMarketQuery) return true;
       const metadata = launchMetadataByToken[launch.address.toLowerCase()] ?? null;
@@ -809,7 +818,7 @@ export function App() {
         (metadata?.description ?? "").toLowerCase().includes(lower)
       );
     });
-  }, [launchMetadataByToken, marketModeFilter, recentLaunchSnapshots, trimmedMarketQuery]);
+  }, [launchMetadataByToken, launchSnapshotsForSelectedFactory, marketModeFilter, trimmedMarketQuery]);
 
   const sortedLaunchSnapshots = useMemo(() => {
     const launches = [...filteredLaunchSnapshots];
@@ -851,15 +860,15 @@ export function App() {
 
   const creatorLaunches = useMemo(() => {
     if (!wallet) return [];
-    return recentLaunchSnapshots.filter(
+    return launchSnapshotsForSelectedFactory.filter(
       (launch) => launch.creator.toLowerCase() === wallet.toLowerCase()
     );
-  }, [recentLaunchSnapshots, wallet]);
+  }, [launchSnapshotsForSelectedFactory, wallet]);
 
   const displayedGraduationTarget =
     tokenSnapshot?.graduationQuoteReserve && tokenSnapshot.graduationQuoteReserve > 0n
       ? tokenSnapshot.graduationQuoteReserve
-      : factorySnapshot?.graduationQuoteReserve ?? 0n;
+      : activeFactorySnapshot?.graduationQuoteReserve ?? 0n;
   const runtimeChainLabel = activeProtocolProfile.chainLabel;
   const locale = useLocale();
   const walletWrongNetwork = Boolean(wallet) && walletChainId !== null && !walletOnExpectedChain;
@@ -960,16 +969,16 @@ export function App() {
   const officialFactoryAddress = OFFICIAL_FACTORY_ADDRESS.toLowerCase();
   const usingOfficialFactory = Boolean(factoryAddress && officialFactoryAddress && factoryAddress.trim().toLowerCase() === officialFactoryAddress);
   const assumeOfficialFactoryCapabilities = Boolean(officialFactoryAddress && (usingOfficialFactory || factoryAddress.trim().length === 0));
-  const factorySupportsWhitelistMode = factorySnapshot?.supportsWhitelistMode ?? assumeOfficialFactoryCapabilities;
-  const factorySupportsTaxedMode = factorySnapshot?.supportsTaxedMode ?? assumeOfficialFactoryCapabilities;
-  const factorySupportsWhitelistTaxedMode = factorySnapshot?.supportsWhitelistTaxedMode ?? assumeOfficialFactoryCapabilities;
+  const factorySupportsWhitelistMode = activeFactorySnapshot?.supportsWhitelistMode ?? assumeOfficialFactoryCapabilities;
+  const factorySupportsTaxedMode = activeFactorySnapshot?.supportsTaxedMode ?? assumeOfficialFactoryCapabilities;
+  const factorySupportsWhitelistTaxedMode = activeFactorySnapshot?.supportsWhitelistTaxedMode ?? assumeOfficialFactoryCapabilities;
   const customFactorySelected = Boolean(factoryAddress.trim()) && !usingOfficialFactory;
   const factoryPanelExpanded = showFactorySettings;
-  const resolvedGraduationTarget = factorySnapshot?.graduationQuoteReserve ?? (usingOfficialFactory ? parseEther("12") : null);
-  const factoryStandardCreateFeeDisplay = factorySnapshot?.standardCreateFee ?? (usingOfficialFactory ? parseEther("0.01") : 0n);
-  const factoryWhitelistCreateFeeDisplay = factorySnapshot?.whitelistCreateFee ?? (usingOfficialFactory ? parseEther("0.03") : 0n);
-  const graduationTargetDisplay = factorySnapshot
-    ? formatNative(factorySnapshot.graduationQuoteReserve)
+  const resolvedGraduationTarget = activeFactorySnapshot?.graduationQuoteReserve ?? (usingOfficialFactory ? parseEther("12") : null);
+  const factoryStandardCreateFeeDisplay = activeFactorySnapshot?.standardCreateFee ?? (usingOfficialFactory ? parseEther("0.01") : 0n);
+  const factoryWhitelistCreateFeeDisplay = activeFactorySnapshot?.whitelistCreateFee ?? (usingOfficialFactory ? parseEther("0.03") : 0n);
+  const graduationTargetDisplay = activeFactorySnapshot
+    ? formatNative(activeFactorySnapshot.graduationQuoteReserve)
     : usingOfficialFactory
       ? `12 ${activeProtocolProfile.nativeSymbol}`
       : t("loadFactory");
@@ -1002,13 +1011,13 @@ export function App() {
     }
   }, [requiresWhitelistCommit, whitelistSeatTarget, createWhitelistThreshold, resolvedGraduationTarget]);
   const whitelistSeatEstimateLabel = useMemo(() => (whitelistSeatEstimate === null ? "—" : formatTokenCompact(whitelistSeatEstimate)), [whitelistSeatEstimate]);
-  const whitelistModeUnsupported = Boolean(customFactorySelected && factorySnapshot && !factorySupportsWhitelistMode);
-  const taxedModeUnsupported = Boolean(customFactorySelected && factorySnapshot && !factorySupportsTaxedMode);
-  const whitelistTaxedModeUnsupported = Boolean(customFactorySelected && factorySnapshot && !factorySupportsWhitelistTaxedMode);
+  const whitelistModeUnsupported = Boolean(customFactorySelected && activeFactorySnapshot && !factorySupportsWhitelistMode);
+  const taxedModeUnsupported = Boolean(customFactorySelected && activeFactorySnapshot && !factorySupportsTaxedMode);
+  const whitelistTaxedModeUnsupported = Boolean(customFactorySelected && activeFactorySnapshot && !factorySupportsWhitelistTaxedMode);
   const selectedCreateFee =
     isWhitelistFamily
-      ? factorySnapshot?.whitelistCreateFee ?? (usingOfficialFactory ? parseEther('0.03') : 0n)
-      : factorySnapshot?.standardCreateFee ?? factorySnapshot?.createFee ?? (usingOfficialFactory ? parseEther('0.01') : 0n);
+      ? activeFactorySnapshot?.whitelistCreateFee ?? (usingOfficialFactory ? parseEther('0.03') : 0n)
+      : activeFactorySnapshot?.standardCreateFee ?? activeFactorySnapshot?.createFee ?? (usingOfficialFactory ? parseEther('0.01') : 0n);
   const createTreasuryWalletResolved =
     isTaxedFamily
       ? treasurySharePercent === 0
@@ -2056,7 +2065,7 @@ export function App() {
   }
 
   const selectedLaunchLinks = launchMetadataLinks(selectedLaunchMetadata);
-  const latestLaunch = recentLaunchSnapshots[0] ?? null;
+  const latestLaunch = launchSnapshotsForSelectedFactory[0] ?? null;
 
   function handleJumpToLatestLaunches() {
     setMarketSort("recent");
@@ -2390,7 +2399,7 @@ export function App() {
                   </div>
                 </div>
                 <span className="list-item-meta">
-                  {visibleLaunchSnapshots.length} / {filteredLaunchSnapshots.length} / {recentLaunchSnapshots.length} {t('indexedLaunches')}
+                  {visibleLaunchSnapshots.length} / {filteredLaunchSnapshots.length} / {launchSnapshotsForSelectedFactory.length} {t('indexedLaunches')}
                 </span>
               </div>
             </div>
@@ -2639,25 +2648,25 @@ export function App() {
                     <button
                       className="secondary-button"
                       onClick={handleClaimFactoryFees}
-                      disabled={!factorySnapshot || !connectedAsProtocolRecipient || walletWrongNetwork}
+                      disabled={!activeFactorySnapshot || !connectedAsProtocolRecipient || walletWrongNetwork}
                     >
                       {t('claimFactoryFees')}
                     </button>
                   </div>
-                  {factorySnapshot && (
+                  {activeFactorySnapshot && (
                     <>
                       <dl className="data-list compact">
-                        <div><dt>{t('graduationTarget')}</dt><dd>{formatNative(factorySnapshot.graduationQuoteReserve)}</dd></div>
-                        <div><dt>{t('totalLaunches')}</dt><dd>{factorySnapshot.totalLaunches.toString()}</dd></div>
-                        <div><dt>{t('protocolRecipient')}</dt><dd>{shortAddress(factorySnapshot.protocolFeeRecipient)}</dd></div>
-                        <div><dt>{t('accruedFees')}</dt><dd>{formatNative(factorySnapshot.accruedProtocolCreateFees)}</dd></div>
+                        <div><dt>{t('graduationTarget')}</dt><dd>{formatNative(activeFactorySnapshot.graduationQuoteReserve)}</dd></div>
+                        <div><dt>{t('totalLaunches')}</dt><dd>{activeFactorySnapshot.totalLaunches.toString()}</dd></div>
+                        <div><dt>{t('protocolRecipient')}</dt><dd>{shortAddress(activeFactorySnapshot.protocolFeeRecipient)}</dd></div>
+                        <div><dt>{t('accruedFees')}</dt><dd>{formatNative(activeFactorySnapshot.accruedProtocolCreateFees)}</dd></div>
                       </dl>
                       <div className="mini-list">
                         <div className="mini-list-title">{t('recentLaunches')}</div>
-                        {recentLaunchSnapshots.length === 0 ? (
+                        {launchSnapshotsForSelectedFactory.length === 0 ? (
                           <div className="mini-list-empty">{t('noLaunches')}</div>
                         ) : (
-                          recentLaunchSnapshots.slice(0, 8).map((launch) => (
+                          launchSnapshotsForSelectedFactory.slice(0, 8).map((launch) => (
                             <button key={launch.address} className="list-item" onClick={() => void handleSelectLaunch(launch.address)}>
                               <span className="list-item-main">
                                 <strong>{launch.symbol}</strong>
@@ -3271,23 +3280,23 @@ export function App() {
                     <button onClick={handleLoadFactory}>{t("loadFactoryBtn")}</button>
                     <button className="secondary-button" onClick={handleLoadToken}>{t("verifyLoadBtn")}</button>
                   </div>
-                  {factorySnapshot && (
+                  {activeFactorySnapshot && (
                     <dl className="data-list compact">
-                      <div><dt>{t("createFeeStandard")}</dt><dd>{formatNative(factorySnapshot.standardCreateFee)}</dd></div>
-                      <div><dt>{t("createFeeWhitelist")}</dt><dd>{formatNative(factorySnapshot.whitelistCreateFee)}</dd></div>
-                      <div><dt>{t("graduationTarget")}</dt><dd>{formatNative(factorySnapshot.graduationQuoteReserve)}</dd></div>
-                      <div><dt>{t("totalLaunches")}</dt><dd>{factorySnapshot.totalLaunches.toString()}</dd></div>
-                      <div><dt>{t("protocolRecipient")}</dt><dd>{shortAddress(factorySnapshot.protocolFeeRecipient)}</dd></div>
+                      <div><dt>{t("createFeeStandard")}</dt><dd>{formatNative(activeFactorySnapshot.standardCreateFee)}</dd></div>
+                      <div><dt>{t("createFeeWhitelist")}</dt><dd>{formatNative(activeFactorySnapshot.whitelistCreateFee)}</dd></div>
+                      <div><dt>{t("graduationTarget")}</dt><dd>{formatNative(activeFactorySnapshot.graduationQuoteReserve)}</dd></div>
+                      <div><dt>{t("totalLaunches")}</dt><dd>{activeFactorySnapshot.totalLaunches.toString()}</dd></div>
+                      <div><dt>{t("protocolRecipient")}</dt><dd>{shortAddress(activeFactorySnapshot.protocolFeeRecipient)}</dd></div>
                     </dl>
                   )}
                 </div>
               </details>
               <div className="mini-list">
                 <div className="mini-list-title">{t("recentLaunches")}</div>
-                {recentLaunchSnapshots.length === 0 ? (
+                {launchSnapshotsForSelectedFactory.length === 0 ? (
                   <div className="mini-list-empty">{t("noLaunches")}</div>
                 ) : (
-                  recentLaunchSnapshots.slice(0, 8).map((launch) => (
+                  launchSnapshotsForSelectedFactory.slice(0, 8).map((launch) => (
                     <button
                       key={launch.address}
                       className={`list-item ${tokenAddress.toLowerCase() === launch.address.toLowerCase() ? "active" : ""}`}

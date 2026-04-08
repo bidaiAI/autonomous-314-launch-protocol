@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { formatUnits, getAddress, parseEther } from "viem";
 import { getLocale, onLocaleChange, t, ta, tf, toggleLocale, type Locale } from "./i18n";
 import {
@@ -16,6 +16,7 @@ import {
   executeBuy,
   executeSell,
   executeWhitelistCommit,
+  fetchBondingCandles,
   fetchSegmentedChartSnapshot,
   fetchUnifiedActivity,
   formatNative,
@@ -38,10 +39,13 @@ import {
 } from "./protocol";
 import type { ActivityFeedItem, CandlePoint, FactorySnapshot, LaunchMetadata, ProtocolVerification, TokenSnapshot } from "./types";
 import type { LaunchCreationFamily } from "./types";
-import { SegmentedPhaseChart } from "./charts";
+import { BondingCandlestickChart } from "./charts";
 import { activeProtocolProfile } from "./profiles";
 
 const REPO_URL = "https://github.com/bidaiAI/autonomous-314-launch-protocol";
+const OFFICIAL_X_URL = "https://x.com/auto314cc";
+const OFFICIAL_CHANNEL_URL = "https://t.me/Autonomous314";
+const ALERTS_CHANNEL_URL = "https://t.me/auto314_Alert";
 const BRAND_MARK_URL = "/brand/logo-mark.svg";
 const BRAND_FULL_URL = "/brand/logo-full.svg";
 const OFFICIAL_FACTORY_ADDRESS = (import.meta.env.VITE_FACTORY_ADDRESS ?? "").trim();
@@ -50,9 +54,20 @@ const TOKEN_DECIMALS = 10n ** 18n;
 const TOTAL_SUPPLY_UNITS = 1_000_000_000n * TOKEN_DECIMALS;
 const LP_TOKEN_RESERVE_UNITS = 200_000_000n * TOKEN_DECIMALS;
 const SALE_TOKEN_RESERVE_UNITS = TOTAL_SUPPLY_UNITS - LP_TOKEN_RESERVE_UNITS;
-const VIRTUAL_QUOTE_DIVISOR = 3n;
+const CURVE_VIRTUAL_TOKEN_RESERVE_UNITS = 107_036_752n * TOKEN_DECIMALS;
 const BPS_DENOMINATOR = 10_000n;
 const TOTAL_FEE_BPS = 100n;
+const WHITELIST_MAX_DELAY_MS = 3 * 24 * 60 * 60 * 1000;
+const WHITELIST_SCHEDULE_MIN_LEAD_MS = 60 * 1000;
+const LAUNCH_AUTO_REFRESH_INTERVAL_MS = 45_000;
+const INTERNAL_CHART_TIMEFRAMES = {
+  "1m": { intervalMs: 60_000, lookbackBlocks: 4_000n },
+  "5m": { intervalMs: 5 * 60_000, lookbackBlocks: 18_000n },
+  "15m": { intervalMs: 15 * 60_000, lookbackBlocks: 54_000n },
+  "1h": { intervalMs: 60 * 60_000, lookbackBlocks: 72_000n },
+  "4h": { intervalMs: 4 * 60 * 60_000, lookbackBlocks: 288_000n },
+  "1d": { intervalMs: 24 * 60 * 60_000, lookbackBlocks: 1_008_000n }
+} as const;
 
 function useLocale(): Locale {
   return useSyncExternalStore(onLocaleChange, getLocale, getLocale);
@@ -61,6 +76,7 @@ function useLocale(): Locale {
 type BuyPreview = Awaited<ReturnType<typeof previewBuy>>;
 type SellPreview = Awaited<ReturnType<typeof previewSell>>;
 type AppRoute = { page: "home" } | { page: "create" } | { page: "launch"; token: string } | { page: "creator" };
+type ActivityFilter = "all" | "buys" | "sells" | "system";
 type DexPairEnrichment = {
   url: string | null;
   priceUsd: number | null;
@@ -71,7 +87,8 @@ type DexPairEnrichment = {
   buys24h: number | null;
   sells24h: number | null;
 };
-type MarketSort = "recent" | "marketCap" | "progress" | "countdown";
+type MarketSort = "recent" | "marketCap" | "change" | "progress" | "countdown";
+type MarketModeFilter = "all" | "standard" | "whitelist" | "taxed" | "whitelistTax";
 type MarketLimit = "10" | "20" | "all";
 
 function parseRoute(pathname: string): AppRoute {
@@ -99,6 +116,16 @@ function explorerAddressUrl(address: string) {
   return "";
 }
 
+function explorerTxUrl(txHash: string) {
+  if (activeProtocolProfile.chainId === 56) {
+    return `https://bscscan.com/tx/${txHash}`;
+  }
+  if (activeProtocolProfile.chainId === 1) {
+    return `https://etherscan.io/tx/${txHash}`;
+  }
+  return "";
+}
+
 function shortAddress(value: string) {
   if (!value) return "—";
   return `${value.slice(0, 6)}…${value.slice(-4)}`;
@@ -106,6 +133,14 @@ function shortAddress(value: string) {
 
 function formatPercentFromBps(value: bigint) {
   return `${(Number(value) / 100).toFixed(2)}%`;
+}
+
+function formatSignedPercent(value: number | null) {
+  if (value === null || !Number.isFinite(value)) return "—";
+  const sign = value > 0 ? "+" : value < 0 ? "−" : "";
+  const abs = Math.abs(value);
+  const digits = abs >= 1000 ? 0 : abs >= 100 ? 1 : 2;
+  return `${sign}${abs.toFixed(digits).replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1")}%`;
 }
 
 function parsePercentToBps(value: string) {
@@ -118,6 +153,16 @@ function formatPercentInput(value: string) {
   const numeric = Number.parseFloat(value || "0");
   if (!Number.isFinite(numeric) || numeric < 0) return "0";
   return `${numeric.toFixed(numeric >= 1 ? 2 : 3).replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1")}%`;
+}
+
+function formatDateTimeLocalInput(timestampMs: number) {
+  const date = new Date(timestampMs);
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  const hours = `${date.getHours()}`.padStart(2, "0");
+  const minutes = `${date.getMinutes()}`.padStart(2, "0");
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
 function quoteMarketCap(totalSupply: bigint, priceQuotePerToken: bigint) {
@@ -239,16 +284,21 @@ function ceilDiv(value: bigint, divisor: bigint) {
 }
 
 function splitTotalFee(grossAmount: bigint) {
-  return (grossAmount * TOTAL_FEE_BPS) / BPS_DENOMINATOR;
+  return ceilDiv(grossAmount * TOTAL_FEE_BPS, BPS_DENOMINATOR);
+}
+
+function virtualQuoteReserveForGraduation(graduationQuoteReserve: bigint) {
+  if (graduationQuoteReserve <= 0n) return 0n;
+  return (graduationQuoteReserve * (LP_TOKEN_RESERVE_UNITS + CURVE_VIRTUAL_TOKEN_RESERVE_UNITS)) / SALE_TOKEN_RESERVE_UNITS;
 }
 
 function estimateFreshLaunchTokenOut(grossQuoteIn: bigint, graduationQuoteReserve: bigint) {
   if (grossQuoteIn <= 0n || graduationQuoteReserve <= 0n) return 0n;
 
-  const virtualQuoteReserve = graduationQuoteReserve / VIRTUAL_QUOTE_DIVISOR;
+  const virtualQuoteReserve = virtualQuoteReserveForGraduation(graduationQuoteReserve);
   if (virtualQuoteReserve <= 0n) return 0n;
 
-  const virtualTokenReserve = (LP_TOKEN_RESERVE_UNITS * virtualQuoteReserve) / graduationQuoteReserve;
+  const virtualTokenReserve = CURVE_VIRTUAL_TOKEN_RESERVE_UNITS;
   const remainingCapacity = graduationQuoteReserve;
 
   let usedGross = grossQuoteIn;
@@ -279,6 +329,22 @@ function estimateFreshLaunchTokenOut(grossQuoteIn: bigint, graduationQuoteReserv
   return effectiveTokenReserve - newEffectiveTokenReserve;
 }
 
+function initialBondingPriceQuotePerToken(graduationQuoteReserve: bigint) {
+  const virtualQuoteReserve = virtualQuoteReserveForGraduation(graduationQuoteReserve);
+  const effectiveTokenReserve = SALE_TOKEN_RESERVE_UNITS + LP_TOKEN_RESERVE_UNITS + CURVE_VIRTUAL_TOKEN_RESERVE_UNITS;
+  if (virtualQuoteReserve <= 0n || effectiveTokenReserve <= 0n) return 0n;
+  return (virtualQuoteReserve * 10n ** 18n) / effectiveTokenReserve;
+}
+
+function launchSinceStartChangePct(launch: TokenSnapshot) {
+  const initialPrice = initialBondingPriceQuotePerToken(launch.graduationQuoteReserve);
+  if (initialPrice <= 0n || launch.currentPriceQuotePerToken <= 0n) return null;
+  const initial = Number(initialPrice);
+  const current = Number(launch.currentPriceQuotePerToken);
+  if (!Number.isFinite(initial) || !Number.isFinite(current) || initial <= 0) return null;
+  return ((current - initial) / initial) * 100;
+}
+
 function formatQuotePrice(value: bigint) {
   const numeric = Number(value) / 1e18;
   if (!Number.isFinite(numeric) || numeric <= 0) return `0 ${activeProtocolProfile.nativeSymbol}`;
@@ -307,6 +373,11 @@ function activityPhaseLabel(activity: ActivityFeedItem) {
   if (activity.phase === "bonding") return t("stateBonding");
   if (activity.phase === "migrating") return t("stateMigrating");
   return t("stateDexOnly");
+}
+
+function activityActor(activity: ActivityFeedItem) {
+  if (activity.kind === "graduated") return "";
+  return activity.actor ? shortAddress(activity.actor) : "—";
 }
 
 function formatUnixTimestamp(timestamp: bigint) {
@@ -408,6 +479,30 @@ function launchModeLabel(mode: string) {
   return mode;
 }
 
+function launchModeCardLabel(mode: string) {
+  if (mode === "Standard0314") return t("modeStandard");
+  if (mode === "WhitelistB314") return t("modeWhitelist");
+  if (mode === "WhitelistTaxF314") return t("modeWhitelistTax");
+  if (/^Taxed\d+314$/.test(mode)) return t("modeTaxed");
+  return mode;
+}
+
+function launchModeTone(mode: string) {
+  if (mode === "WhitelistTaxF314") return "whitelist-tax";
+  if (mode === "WhitelistB314") return "whitelist";
+  if (/^Taxed\d+314$/.test(mode)) return "taxed";
+  return "standard";
+}
+
+function marketModeFilterMatch(launch: TokenSnapshot, filter: MarketModeFilter) {
+  if (filter === "all") return true;
+  if (filter === "standard") return launch.launchMode === "Standard0314";
+  if (filter === "whitelist") return launch.launchMode === "WhitelistB314";
+  if (filter === "taxed") return /^Taxed\d+314$/.test(launch.launchMode);
+  if (filter === "whitelistTax") return launch.launchMode === "WhitelistTaxF314";
+  return true;
+}
+
 export function App() {
   const [route, setRoute] = useState<AppRoute>(() => parseRoute(window.location.pathname));
   const [wallet, setWallet] = useState<string>("");
@@ -489,13 +584,18 @@ export function App() {
   const [launchMetadataByToken, setLaunchMetadataByToken] = useState<Partial<Record<string, LaunchMetadata | null>>>({});
   const [marketQuery, setMarketQuery] = useState("");
   const [marketSort, setMarketSort] = useState<MarketSort>("recent");
+  const [marketModeFilter, setMarketModeFilter] = useState<MarketModeFilter>("all");
   const [marketLimit, setMarketLimit] = useState<MarketLimit>("20");
   const [contractSearchInput, setContractSearchInput] = useState("");
   const [recentActivity, setRecentActivity] = useState<ActivityFeedItem[]>([]);
   const [bondingCandles, setBondingCandles] = useState<CandlePoint[]>([]);
-  const [dexCandles, setDexCandles] = useState<CandlePoint[]>([]);
   const [graduationTimestampMs, setGraduationTimestampMs] = useState<number | null>(null);
+  const [bondingChartTimeframe, setBondingChartTimeframe] = useState<keyof typeof INTERNAL_CHART_TIMEFRAMES>("5m");
+  const [bondingChartLoading, setBondingChartLoading] = useState(false);
+  const [bondingChartError, setBondingChartError] = useState("");
+  const [bondingChartExpanded, setBondingChartExpanded] = useState(false);
   const [launchInfoTab, setLaunchInfoTab] = useState<"activity" | "details">("activity");
+  const [activityFilter, setActivityFilter] = useState<ActivityFilter>("all");
   const [tradeSide, setTradeSide] = useState<"buy" | "sell">("buy");
   const [buyInput, setBuyInput] = useState("1");
   const [sellInput, setSellInput] = useState("1");
@@ -538,9 +638,16 @@ export function App() {
     canClaimRefund: boolean;
   } | null>(null);
   const workspaceRequestRef = useRef(0);
+  const bondingChartRequestRef = useRef(0);
+  const launchAutoRefreshInFlightRef = useRef(false);
+  const latestTokenAddressRef = useRef(tokenAddress);
   const buyPreviewRequestRef = useRef(0);
   const sellPreviewRequestRef = useRef(0);
   const marketBoardRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    latestTokenAddressRef.current = tokenAddress;
+  }, [tokenAddress]);
 
   const isBonding = tokenSnapshot?.state === "Bonding314";
   const isMigrating = tokenSnapshot?.state === "Migrating";
@@ -581,6 +688,94 @@ export function App() {
     ? (Number(tokenSnapshot.currentPriceQuotePerToken) / 1e18) * nativeUsdPrice
     : null;
   const displayedPriceUsd = dexPairEnrichment?.priceUsd ?? bondingPriceUsd;
+  const tokenSinceLaunchChangePct = tokenSnapshot ? launchSinceStartChangePct(tokenSnapshot) : null;
+  const tokenModeTone = tokenSnapshot ? launchModeTone(tokenSnapshot.launchMode) : "standard";
+  const tokenTaxBadgeValue =
+    tokenSnapshot?.taxConfig?.enabled && tokenSnapshot.taxConfig.configuredTaxBps > 0n
+      ? formatPercentFromBps(tokenSnapshot.taxConfig.configuredTaxBps)
+      : null;
+  const tokenWhitelistSeatSummary =
+    tokenSnapshot?.whitelistSnapshot
+      ? tf("cardSeatSummary", {
+          filled: tokenSnapshot.whitelistSnapshot.seatsFilled.toString(),
+          total: tokenSnapshot.whitelistSnapshot.seatCount.toString()
+        })
+      : null;
+  const bondingChartStats = useMemo(() => {
+    if (bondingCandles.length === 0) return null;
+    const ordered = [...bondingCandles].sort((a, b) => a.bucketStart - b.bucketStart);
+    let rangeVolumeQuote = 0n;
+    let rangeTrades = 0;
+    let rangeHigh = ordered[0].high;
+    let rangeLow = ordered[0].low;
+
+    for (const candle of ordered) {
+      rangeVolumeQuote += candle.volumeQuote;
+      rangeTrades += candle.trades;
+      if (candle.high > rangeHigh) rangeHigh = candle.high;
+      if (candle.low < rangeLow) rangeLow = candle.low;
+    }
+
+    const lastPriceQuote = ordered[ordered.length - 1]?.close ?? 0n;
+    const totalSupply = tokenSnapshot?.totalSupply && tokenSnapshot.totalSupply > 0n
+      ? tokenSnapshot.totalSupply
+      : TOTAL_SUPPLY_UNITS;
+    const quotedMarketCap = quoteMarketCap(totalSupply, lastPriceQuote);
+
+    return {
+      fromMs: ordered[0].bucketStart,
+      toMs: ordered[ordered.length - 1].bucketStart,
+      rangeVolumeQuote,
+      rangeTrades,
+      rangeHigh,
+      rangeLow,
+      lastPriceQuote,
+      rangeVolumeUsd:
+        nativeUsdPrice && rangeVolumeQuote > 0n
+          ? (Number(rangeVolumeQuote) / 1e18) * nativeUsdPrice
+          : null,
+      marketCapUsd:
+        nativeUsdPrice && quotedMarketCap > 0n
+          ? (Number(quotedMarketCap) / 1e18) * nativeUsdPrice
+          : null
+    };
+  }, [bondingCandles, nativeUsdPrice, tokenSnapshot?.totalSupply]);
+  const filteredRecentActivity = useMemo(() => {
+    if (activityFilter === "all") return recentActivity;
+    if (activityFilter === "system") {
+      return recentActivity.filter((activity) => activity.kind === "graduated");
+    }
+    return recentActivity.filter(
+      (activity) => activity.kind === "trade" && activity.side === (activityFilter === "buys" ? "buy" : "sell")
+    );
+  }, [activityFilter, recentActivity]);
+  const activityStats = useMemo(() => {
+    let buyCount = 0;
+    let sellCount = 0;
+    let protocolVolume = 0n;
+    let tradeCount = 0;
+    for (const activity of recentActivity) {
+      if (activity.kind !== "trade") continue;
+      protocolVolume += activity.netQuote;
+      tradeCount += 1;
+      if (activity.side === "buy") buyCount += 1;
+      else sellCount += 1;
+    }
+    const averageTradeSize = tradeCount > 0 ? protocolVolume / BigInt(tradeCount) : 0n;
+    const latestTrade = recentActivity.find((activity) => activity.kind === "trade") ?? null;
+    return {
+      buyCount,
+      sellCount,
+      protocolVolume,
+      totalTrades: buyCount + sellCount,
+      averageTradeSize,
+      latestTrade
+    };
+  }, [recentActivity]);
+  const tickerTrades = useMemo(
+    () => recentActivity.filter((activity) => activity.kind === "trade").slice(0, 10),
+    [recentActivity]
+  );
   const verificationLabel = tokenVerification
     ? tokenVerification.status === "official"
       ? t("verifiedOfficial")
@@ -599,9 +794,10 @@ export function App() {
   const trimmedMarketQuery = marketQuery.trim();
   const searchLooksLikeAddress = /^0x[a-fA-F0-9]{40}$/.test(trimmedMarketQuery);
   const filteredLaunchSnapshots = useMemo(() => {
-    if (!trimmedMarketQuery) return recentLaunchSnapshots;
     const lower = trimmedMarketQuery.toLowerCase();
     return recentLaunchSnapshots.filter((launch) => {
+      if (!marketModeFilterMatch(launch, marketModeFilter)) return false;
+      if (!trimmedMarketQuery) return true;
       const metadata = launchMetadataByToken[launch.address.toLowerCase()] ?? null;
       return (
         launch.address.toLowerCase().includes(lower) ||
@@ -613,7 +809,7 @@ export function App() {
         (metadata?.description ?? "").toLowerCase().includes(lower)
       );
     });
-  }, [launchMetadataByToken, recentLaunchSnapshots, trimmedMarketQuery]);
+  }, [launchMetadataByToken, marketModeFilter, recentLaunchSnapshots, trimmedMarketQuery]);
 
   const sortedLaunchSnapshots = useMemo(() => {
     const launches = [...filteredLaunchSnapshots];
@@ -630,6 +826,9 @@ export function App() {
       if (marketSort === "marketCap") {
         const diff = marketCapOf(b) - marketCapOf(a);
         if (diff !== 0n) return diff > 0n ? 1 : -1;
+      } else if (marketSort === "change") {
+        const diff = (launchSinceStartChangePct(b) ?? Number.NEGATIVE_INFINITY) - (launchSinceStartChangePct(a) ?? Number.NEGATIVE_INFINITY);
+        if (diff !== 0) return diff;
       } else if (marketSort === "progress") {
         const diff = Number(b.graduationProgressBps - a.graduationProgressBps);
         if (diff !== 0) return diff;
@@ -705,6 +904,49 @@ export function App() {
   }, [createWhitelistOpensAt, createWhitelistScheduleEnabled]);
   const isDelayedWhitelistOpen = createWhitelistOpensAtUnix > 0n;
   const whitelistLocalTimezone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone || t('wlLocalTimeFallback'), [locale]);
+  const whitelistScheduleMinMs = useMemo(
+    () => Math.ceil((nowMs + WHITELIST_SCHEDULE_MIN_LEAD_MS) / 60_000) * 60_000,
+    [nowMs]
+  );
+  const whitelistScheduleMaxMs = useMemo(
+    () => nowMs + WHITELIST_MAX_DELAY_MS - WHITELIST_SCHEDULE_MIN_LEAD_MS,
+    [nowMs]
+  );
+  const whitelistScheduleMinValue = useMemo(
+    () => formatDateTimeLocalInput(whitelistScheduleMinMs),
+    [whitelistScheduleMinMs]
+  );
+  const whitelistScheduleMaxValue = useMemo(
+    () => formatDateTimeLocalInput(whitelistScheduleMaxMs),
+    [whitelistScheduleMaxMs]
+  );
+  const whitelistScheduleMaxLabel = useMemo(
+    () => formatDateTime(whitelistScheduleMaxMs),
+    [whitelistScheduleMaxMs]
+  );
+  const whitelistScheduleValidation = useMemo<"required" | "invalid" | "tooSoon" | "tooLate" | null>(() => {
+    if (!isWhitelistFamily || !createWhitelistScheduleEnabled) return null;
+    if (!createWhitelistOpensAt.trim()) return "required";
+    const ms = new Date(createWhitelistOpensAt).getTime();
+    if (!Number.isFinite(ms) || ms <= 0) return "invalid";
+    if (ms < whitelistScheduleMinMs) return "tooSoon";
+    if (ms > whitelistScheduleMaxMs) return "tooLate";
+    return null;
+  }, [
+    createWhitelistOpensAt,
+    createWhitelistScheduleEnabled,
+    isWhitelistFamily,
+    whitelistScheduleMaxMs,
+    whitelistScheduleMinMs
+  ]);
+  const whitelistScheduleError = useMemo(() => {
+    if (whitelistScheduleValidation === "required") return t("errorWhitelistOpenTimeRequired");
+    if (whitelistScheduleValidation === "invalid") return t("errorWhitelistOpenTimeInvalid");
+    if (whitelistScheduleValidation === "tooSoon") return t("errorWhitelistOpenTimeTooSoon");
+    if (whitelistScheduleValidation === "tooLate") return t("errorWhitelistOpenTimeTooLate");
+    return "";
+  }, [locale, whitelistScheduleValidation]);
+  const bondingChartTimeframeLabel = useMemo(() => bondingChartTimeframe, [bondingChartTimeframe]);
   const whitelistOpensAtUtcText = useMemo(() => {
     if (!isDelayedWhitelistOpen) return '';
     return new Date(Number(createWhitelistOpensAtUnix) * 1000).toUTCString().replace('GMT', 'UTC');
@@ -723,32 +965,42 @@ export function App() {
   const factorySupportsWhitelistTaxedMode = factorySnapshot?.supportsWhitelistTaxedMode ?? assumeOfficialFactoryCapabilities;
   const customFactorySelected = Boolean(factoryAddress.trim()) && !usingOfficialFactory;
   const factoryPanelExpanded = showFactorySettings;
+  const resolvedGraduationTarget = factorySnapshot?.graduationQuoteReserve ?? (usingOfficialFactory ? parseEther("12") : null);
+  const factoryStandardCreateFeeDisplay = factorySnapshot?.standardCreateFee ?? (usingOfficialFactory ? parseEther("0.01") : 0n);
+  const factoryWhitelistCreateFeeDisplay = factorySnapshot?.whitelistCreateFee ?? (usingOfficialFactory ? parseEther("0.03") : 0n);
+  const graduationTargetDisplay = factorySnapshot
+    ? formatNative(factorySnapshot.graduationQuoteReserve)
+    : usingOfficialFactory
+      ? `12 ${activeProtocolProfile.nativeSymbol}`
+      : t("loadFactory");
   const createAtomicBuyPreview = useMemo(() => {
     if (!requiresAtomicBuy || !createAtomicBuyEnabled) return null;
     const trimmed = createAtomicBuyAmount.trim();
     if (!trimmed) return 0n;
     try {
       const grossQuoteIn = parseEther(trimmed);
-      const graduationTarget = factorySnapshot?.graduationQuoteReserve ?? parseEther("12");
+      const graduationTarget = resolvedGraduationTarget;
+      if (graduationTarget === null) return null;
       return estimateFreshLaunchTokenOut(grossQuoteIn, graduationTarget);
     } catch {
       return null;
     }
-  }, [requiresAtomicBuy, createAtomicBuyEnabled, createAtomicBuyAmount, factorySnapshot?.graduationQuoteReserve]);
+  }, [requiresAtomicBuy, createAtomicBuyEnabled, createAtomicBuyAmount, resolvedGraduationTarget]);
   const createAtomicBuyPreviewLabel = useMemo(() => (createAtomicBuyPreview === null ? "—" : formatTokenCompact(createAtomicBuyPreview)), [createAtomicBuyPreview]);
   const whitelistSeatEstimate = useMemo(() => {
     if (!requiresWhitelistCommit || whitelistSeatTarget <= 0) return null;
     try {
       const grossThreshold = parseEther(createWhitelistThreshold || "0");
       if (grossThreshold <= 0n) return null;
-      const graduationTarget = factorySnapshot?.graduationQuoteReserve ?? parseEther("12");
+      const graduationTarget = resolvedGraduationTarget;
+      if (graduationTarget === null) return null;
       const totalWhitelistOut = estimateFreshLaunchTokenOut(grossThreshold, graduationTarget);
       if (totalWhitelistOut <= 0n) return null;
       return totalWhitelistOut / BigInt(whitelistSeatTarget);
     } catch {
       return null;
     }
-  }, [requiresWhitelistCommit, whitelistSeatTarget, createWhitelistThreshold, factorySnapshot?.graduationQuoteReserve]);
+  }, [requiresWhitelistCommit, whitelistSeatTarget, createWhitelistThreshold, resolvedGraduationTarget]);
   const whitelistSeatEstimateLabel = useMemo(() => (whitelistSeatEstimate === null ? "—" : formatTokenCompact(whitelistSeatEstimate)), [whitelistSeatEstimate]);
   const whitelistModeUnsupported = Boolean(customFactorySelected && factorySnapshot && !factorySupportsWhitelistMode);
   const taxedModeUnsupported = Boolean(customFactorySelected && factorySnapshot && !factorySupportsTaxedMode);
@@ -904,7 +1156,8 @@ export function App() {
     !walletWrongNetwork &&
     hasRequiredCreateIdentity &&
     (!isTaxedFamily || treasurySharePercent === 0 || Boolean(createTreasuryWalletResolved)) &&
-    (!requiresWhitelistCommit || whitelistAddressCountValid);
+    (!requiresWhitelistCommit || whitelistAddressCountValid) &&
+    (!requiresWhitelistCommit || !createWhitelistScheduleEnabled || whitelistScheduleValidation === null);
 
   function navigate(nextRoute: AppRoute, replace = false) {
     const href = routeHref(nextRoute);
@@ -1149,11 +1402,105 @@ export function App() {
     setTokenVerification(verification);
     setRecentActivity(activity);
     setBondingCandles(chart?.bondingCandles ?? []);
-    setDexCandles(chart?.dexCandles ?? []);
     setGraduationTimestampMs(chart?.graduationTimestampMs ?? null);
 
     return snapshot;
   }
+
+  const refreshLaunchSurfaceLive = useCallback(async () => {
+    if (!tokenAddress) return;
+    if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+    if (launchAutoRefreshInFlightRef.current) return;
+
+    launchAutoRefreshInFlightRef.current = true;
+    const activeAddress = tokenAddress;
+    const { intervalMs, lookbackBlocks } = INTERNAL_CHART_TIMEFRAMES[bondingChartTimeframe];
+
+    try {
+      const [snapshot, activity, candles] = await Promise.all([
+        readToken(activeAddress),
+        fetchUnifiedActivity(activeAddress),
+        fetchBondingCandles(activeAddress, lookbackBlocks, intervalMs)
+      ]);
+
+      if (activeAddress.toLowerCase() !== latestTokenAddressRef.current.toLowerCase()) return;
+
+      setTokenSnapshot(snapshot);
+      setRecentActivity(activity);
+      setBondingCandles(candles);
+      const latestGraduation = activity.find((item) => item.kind === "graduated");
+      if (latestGraduation) {
+        setGraduationTimestampMs(latestGraduation.timestampMs);
+      }
+
+      if (wallet) {
+        void readWhitelistAccountState(activeAddress, wallet)
+          .then((state) => {
+            if (activeAddress.toLowerCase() === latestTokenAddressRef.current.toLowerCase()) {
+              setWhitelistAccountState(state);
+            }
+          })
+          .catch(() => {
+            if (activeAddress.toLowerCase() === latestTokenAddressRef.current.toLowerCase()) {
+              setWhitelistAccountState(null);
+            }
+          });
+      }
+    } catch {
+      // quiet low-frequency refresh; keep existing UI state
+    } finally {
+      launchAutoRefreshInFlightRef.current = false;
+    }
+  }, [bondingChartTimeframe, tokenAddress, wallet]);
+
+  useEffect(() => {
+    if (!tokenAddress) {
+      setBondingChartLoading(false);
+      setBondingChartError("");
+      return;
+    }
+
+    const requestId = ++bondingChartRequestRef.current;
+    const { intervalMs, lookbackBlocks } = INTERNAL_CHART_TIMEFRAMES[bondingChartTimeframe];
+    setBondingChartLoading(true);
+    setBondingChartError("");
+
+    void fetchBondingCandles(tokenAddress, lookbackBlocks, intervalMs)
+      .then((candles) => {
+        if (bondingChartRequestRef.current !== requestId) return;
+        setBondingCandles(candles);
+      })
+      .catch((error) => {
+        if (bondingChartRequestRef.current !== requestId) return;
+        setBondingChartError(error instanceof Error ? error.message : t("chartLoadFailed"));
+      })
+      .finally(() => {
+        if (bondingChartRequestRef.current === requestId) {
+          setBondingChartLoading(false);
+        }
+      });
+  }, [bondingChartTimeframe, tokenAddress]);
+
+  useEffect(() => {
+    if (route.page !== "launch" || !tokenAddress) return;
+
+    const tick = () => {
+      void refreshLaunchSurfaceLive();
+    };
+
+    const intervalId = window.setInterval(tick, LAUNCH_AUTO_REFRESH_INTERVAL_MS);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        tick();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [refreshLaunchSurfaceLive, route.page, tokenAddress]);
 
   async function handleConnectWallet() {
     try {
@@ -1388,6 +1735,10 @@ export function App() {
       void handleConnectWallet();
       return;
     }
+    if (requiresWhitelistCommit && createWhitelistScheduleEnabled && whitelistScheduleValidation !== null) {
+      setStatus(whitelistScheduleError);
+      return;
+    }
     if (!sanitizedCreateName || !sanitizedCreateSymbol) {
       setStatus(t("errorTokenIdentityRequired"));
       return;
@@ -1478,6 +1829,9 @@ export function App() {
           : undefined;
 
       if (requiresWhitelistCommit) {
+        if (createWhitelistScheduleEnabled && whitelistScheduleValidation !== null) {
+          throw new Error(whitelistScheduleError);
+        }
         if (!parsedWhitelistAddresses || whitelistAddressCount < whitelistSeatTarget) {
           throw new Error(t("errorWhitelistCoverage"));
         }
@@ -1990,11 +2344,34 @@ export function App() {
                     <button type="button" className={marketSort === "marketCap" ? "filter-pill active" : "filter-pill"} onClick={() => setMarketSort("marketCap")}>
                       {t("sortMarketCap")}
                     </button>
+                    <button type="button" className={marketSort === "change" ? "filter-pill active" : "filter-pill"} onClick={() => setMarketSort("change")}>
+                      {t("sortChange")}
+                    </button>
                     <button type="button" className={marketSort === "progress" ? "filter-pill active" : "filter-pill"} onClick={() => setMarketSort("progress")}>
                       {t("sortProgress")}
                     </button>
                     <button type="button" className={marketSort === "countdown" ? "filter-pill active" : "filter-pill"} onClick={() => setMarketSort("countdown")}>
                       {t("sortCountdown")}
+                    </button>
+                  </div>
+                </div>
+                <div className="market-filter-group">
+                  <span className="metric-label">{t("filterMode")}</span>
+                  <div className="segmented-filter" role="tablist" aria-label={t("filterMode")}>
+                    <button type="button" className={marketModeFilter === "all" ? "filter-pill active" : "filter-pill"} onClick={() => setMarketModeFilter("all")}>
+                      {t("filterAllModes")}
+                    </button>
+                    <button type="button" className={marketModeFilter === "standard" ? "filter-pill active" : "filter-pill"} onClick={() => setMarketModeFilter("standard")}>
+                      {t("modeStandard")}
+                    </button>
+                    <button type="button" className={marketModeFilter === "whitelist" ? "filter-pill active" : "filter-pill"} onClick={() => setMarketModeFilter("whitelist")}>
+                      {t("modeWhitelist")}
+                    </button>
+                    <button type="button" className={marketModeFilter === "taxed" ? "filter-pill active" : "filter-pill"} onClick={() => setMarketModeFilter("taxed")}>
+                      {t("modeTaxed")}
+                    </button>
+                    <button type="button" className={marketModeFilter === "whitelistTax" ? "filter-pill active" : "filter-pill"} onClick={() => setMarketModeFilter("whitelistTax")}>
+                      {t("modeWhitelistTax")}
                     </button>
                   </div>
                 </div>
@@ -2056,10 +2433,23 @@ export function App() {
                   const launchPriceUsd =
                     nativeUsdPrice ? (Number(launch.currentPriceQuotePerToken) / 1e18) * nativeUsdPrice : null;
                   const displayState = effectiveLaunchState(launch.state, launch.whitelistStatus, launch.whitelistSnapshot, nowMs);
+                  const modeTone = launchModeTone(launch.launchMode);
+                  const launchChangePct = launchSinceStartChangePct(launch);
+                  const taxBadgeValue =
+                    launch.taxConfig?.enabled && launch.taxConfig.configuredTaxBps > 0n
+                      ? formatPercentFromBps(launch.taxConfig.configuredTaxBps)
+                      : null;
                   const whitelistCountdownPending =
                     displayState === "WhitelistCommit" && launch.whitelistSnapshot
                       ? nowMs < Number(launch.whitelistSnapshot.opensAt) * 1000
                       : false;
+                  const whitelistSeatSummary =
+                    displayState === "WhitelistCommit" && launch.whitelistSnapshot
+                      ? tf("cardSeatSummary", {
+                          filled: launch.whitelistSnapshot.seatsFilled.toString(),
+                          total: launch.whitelistSnapshot.seatCount.toString()
+                        })
+                      : null;
                   const whitelistCountdownLabel =
                     displayState === "WhitelistCommit" && launch.whitelistSnapshot
                       ? `${whitelistCountdownPending ? t("whitelistOpensLabel") : t("whitelistEndsLabel")} ${formatCountdownLabel(whitelistCountdownPending ? Number(launch.whitelistSnapshot.opensAt) * 1000 : Number(launch.whitelistSnapshot.deadline) * 1000, nowMs)}`
@@ -2098,21 +2488,35 @@ export function App() {
                               </strong>
                             </div>
                             <div className="launch-card-symbol">
-                              {metadata?.symbol || launch.symbol} · {launch.launchSuffix || t("launchSuffixFallback")}
+                              {metadata?.symbol || launch.symbol}
                             </div>
                           </div>
+                        </div>
+                        <div className="launch-card-chip-row">
+                          <span className={`mode-suffix-badge ${modeTone}`}>{launchModeCardLabel(launch.launchMode)}</span>
+                          <span className="launch-card-code-chip">{launch.launchSuffix || t("launchSuffixFallback")}</span>
+                          {taxBadgeValue ? <span className="launch-card-tax-chip">{t("taxRate")} {taxBadgeValue}</span> : null}
                         </div>
                         <p className="launch-card-description">
                           {metadata?.description || launchCardFallbackDescription(displayState)}
                         </p>
-                        <div className="launch-card-stats launch-card-stats-dual">
+                        <div className="launch-card-stats launch-card-stats-triple">
                           <div>
                             <span className="metric-label">{t("progress")}</span>
                             <strong className="launch-card-metric-value">{formatPercentFromBps(launch.graduationProgressBps)}</strong>
                           </div>
                           <div>
+                            <span className="metric-label">{t("changeSinceLaunchShort")}</span>
+                            <strong
+                              className={`launch-card-metric-value ${launchChangePct !== null ? (launchChangePct > 0 ? "positive" : launchChangePct < 0 ? "negative" : "neutral") : ""}`}
+                            >
+                              {formatSignedPercent(launchChangePct)}
+                            </strong>
+                          </div>
+                          <div>
                             <span className="metric-label">{displayState === "WhitelistCommit" ? (whitelistCountdownPending ? t("whitelistOpensLabelShort") : t("whitelistEndsLabelShort")) : t("price")}</span>
                             <strong className="launch-card-metric-value compact">{cardSecondaryMetric}</strong>
+                            {whitelistSeatSummary ? <span className="launch-card-metric-subtle">{whitelistSeatSummary}</span> : null}
                           </div>
                         </div>
                         <div className="metadata-links">
@@ -2204,11 +2608,11 @@ export function App() {
                   </div>
                   <div>
                     <span>{t('createFeeStandard')}</span>
-                    <strong>{formatNative(factorySnapshot?.standardCreateFee ?? parseEther('0.01'))}</strong>
+                    <strong>{factoryStandardCreateFeeDisplay > 0n ? formatNative(factoryStandardCreateFeeDisplay) : t("loadFactory")}</strong>
                   </div>
                   <div>
                     <span>{t('createFeeWhitelist')}</span>
-                    <strong>{formatNative(factorySnapshot?.whitelistCreateFee ?? parseEther('0.03'))}</strong>
+                    <strong>{factoryWhitelistCreateFeeDisplay > 0n ? formatNative(factoryWhitelistCreateFeeDisplay) : t("loadFactory")}</strong>
                   </div>
                 </div>
                 <div className="factory-expanded">
@@ -2274,9 +2678,10 @@ export function App() {
                 className="factory-collapsed-trigger"
                 onClick={() => setShowFactorySettings(true)}
                 aria-expanded={factoryPanelExpanded}
-                aria-label={t('showFactorySettings')}
+                aria-label={t('factorySettings')}
+                title={t('factorySettings')}
               >
-                {t('factorySettings')}
+                {t('showFactorySettings')}
               </button>
             )}
           </aside>
@@ -2700,6 +3105,9 @@ export function App() {
                           value={createWhitelistOpensAt}
                           onChange={(e) => setCreateWhitelistOpensAt(e.target.value)}
                           disabled={!createWhitelistScheduleEnabled}
+                          min={createWhitelistScheduleEnabled ? whitelistScheduleMinValue : undefined}
+                          max={createWhitelistScheduleEnabled ? whitelistScheduleMaxValue : undefined}
+                          step={60}
                         />
                         <small className="field-note">
                           {createWhitelistScheduleEnabled
@@ -2716,6 +3124,7 @@ export function App() {
                       </div>
                       <div className={`callout ${isDelayedWhitelistOpen ? "success" : "warn"} compact-callout`}>
                         <p>{isDelayedWhitelistOpen ? t("wlStartTimeScheduledTitle") : t("wlStartTimeImmediateTitle")}</p>
+                        <p>{isDelayedWhitelistOpen ? t("wlStartTimeScheduledDesc") : t("wlStartTimeImmediateDesc")}</p>
                       </div>
                       <label className="field">
                         {renderFieldLabel(t("wlAddresses"), "wlAddresses")}
@@ -2726,6 +3135,16 @@ export function App() {
                           placeholder={t("wlAddressesPlaceholder")}
                           rows={7}
                         />
+                        {createWhitelistScheduleEnabled ? (
+                          <small className="field-note">
+                            {tf("wlScheduleLimitNote", { latest: whitelistScheduleMaxLabel })}
+                          </small>
+                        ) : null}
+                        {createWhitelistScheduleEnabled && whitelistScheduleValidation !== null ? (
+                          <div className="callout danger compact-callout">
+                            <p>{whitelistScheduleError}</p>
+                          </div>
+                        ) : null}
                       </label>
                       <div className={`callout ${whitelistAddressCountValid ? "success" : "warn"} compact-callout`}>
                         <p>{whitelistAddressCountValid ? t("wlCoverageValid") : t("wlCoverageNeed")}</p>
@@ -2773,7 +3192,7 @@ export function App() {
                     <div><span>{t("summaryVanity")}</span><strong>{selectedLaunchFamily.suffix}</strong></div>
                     <div><span>{t("summaryCreatorFlow")}</span><strong>{requiresAtomicBuy ? (createAtomicBuyEnabled ? t("summaryAtomicBuy") : t("summaryManualBuy")) : t("summaryAtomicSeat")}</strong></div>
                     <div><span>{t("summaryFee")}</span><strong>{selectedCreateFee > 0n ? formatNative(selectedCreateFee) : t("loadFactory")}</strong></div>
-                    <div><span>{t("summaryGraduation")}</span><strong>{factorySnapshot ? formatNative(factorySnapshot.graduationQuoteReserve) : `12 ${activeProtocolProfile.nativeSymbol}`}</strong></div>
+                    <div><span>{t("summaryGraduation")}</span><strong>{graduationTargetDisplay}</strong></div>
                   </div>
 
                   <div className="mode-explainer">
@@ -2937,8 +3356,9 @@ export function App() {
 
                     <div className="launch-hero-side">
                       <div className="launch-meta-strip">
-                        <span className="status-pill">{tokenSnapshot.launchSuffix}</span>
-                        <span className="status-pill">{launchModeLabel(tokenSnapshot.launchMode)}</span>
+                        <span className={`mode-suffix-badge ${tokenModeTone}`}>{launchModeCardLabel(tokenSnapshot.launchMode)}</span>
+                        <span className="launch-card-code-chip">{tokenSnapshot.launchSuffix}</span>
+                        {tokenTaxBadgeValue ? <span className="launch-card-tax-chip">{t("taxRate")} {tokenTaxBadgeValue}</span> : null}
                         <span className="status-pill">{shortAddress(tokenSnapshot.creator)}</span>
                       </div>
                       <dl className="launch-hero-summary">
@@ -2958,6 +3378,24 @@ export function App() {
                           <dt>{t("suffix")}</dt>
                           <dd>{tokenSnapshot.launchSuffix}</dd>
                         </div>
+                        <div>
+                          <dt>{t("changeSinceLaunchShort")}</dt>
+                          <dd className={tokenSinceLaunchChangePct !== null ? (tokenSinceLaunchChangePct > 0 ? "metric-positive" : tokenSinceLaunchChangePct < 0 ? "metric-negative" : "") : ""}>
+                            {formatSignedPercent(tokenSinceLaunchChangePct)}
+                          </dd>
+                        </div>
+                        {tokenTaxBadgeValue ? (
+                          <div>
+                            <dt>{t("taxRate")}</dt>
+                            <dd>{tokenTaxBadgeValue}</dd>
+                          </div>
+                        ) : null}
+                        {tokenWhitelistSeatSummary ? (
+                          <div>
+                            <dt>{t("wlSeatSummaryLabel")}</dt>
+                            <dd>{tokenWhitelistSeatSummary}</dd>
+                          </div>
+                        ) : null}
                       </dl>
                       <div className="launch-utility-row">
                         <button type="button" className="copy-chip" onClick={() => void handleCopyText(tokenSnapshot.address, t("tokenAddressLabel"))}>
@@ -2987,6 +3425,13 @@ export function App() {
                       <div className="metric-subtle">{tf("raisedAgainstTarget", { raised: formatNativeCompact(heroRaised), target: formatNativeCompact(tokenSnapshot.graduationQuoteReserve) })}</div>
                     </div>
                     <div className="launch-status-card">
+                      <span className="metric-label">{t("changeSinceLaunchShort")}</span>
+                      <strong className={tokenSinceLaunchChangePct !== null ? (tokenSinceLaunchChangePct > 0 ? "metric-positive" : tokenSinceLaunchChangePct < 0 ? "metric-negative" : "") : ""}>
+                        {formatSignedPercent(tokenSinceLaunchChangePct)}
+                      </strong>
+                      <div className="metric-subtle">{displayedPriceUsd ? formatUsdMicroPrice(displayedPriceUsd) : t("usdUnavailable")}</div>
+                    </div>
+                    <div className="launch-status-card">
                       <span className="metric-label">{t("raisedLabel")}</span>
                       <strong>{formatNativeCompact(heroRaised)}</strong>
                       <div className="metric-subtle">{t("bondingActions")}</div>
@@ -2996,21 +3441,159 @@ export function App() {
                       <strong>{formatNativeCompact(tokenSnapshot.remainingQuoteCapacity)}</strong>
                       <div className="metric-subtle">{t("graduationTarget")}</div>
                     </div>
+                    {tokenTaxBadgeValue ? (
+                      <div className="launch-status-card">
+                        <span className="metric-label">{t("taxRate")}</span>
+                        <strong>{tokenTaxBadgeValue}</strong>
+                        <div className="metric-subtle">{t("taxOnlyPostGrad")}</div>
+                      </div>
+                    ) : tokenWhitelistSeatSummary ? (
+                      <div className="launch-status-card">
+                        <span className="metric-label">{t("wlSeatSummaryLabel")}</span>
+                        <strong>{tokenWhitelistSeatSummary}</strong>
+                        <div className="metric-subtle">
+                          {tokenSnapshot.whitelistSnapshot ? formatNative(tokenSnapshot.whitelistSnapshot.slotSize) : "—"}
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
 
                   <article className="subpanel chart-hero-panel">
                     <div className="subpanel-header">
-                      <h3>{t("priceTrajectory")}</h3>
-                      <span className="list-item-meta">
-                        {t("marketCap")}: {displayedMarketCapUsd ? formatUsdCompact(displayedMarketCapUsd) : t("marketCapUnavailable")}
-                      </span>
+                      <div>
+                        <h3>{t("internalMarketChart")}</h3>
+                        <span className="list-item-meta">
+                          {t("marketCap")}: {displayedMarketCapUsd ? formatUsdCompact(displayedMarketCapUsd) : t("marketCapUnavailable")}
+                        </span>
+                      </div>
+                      <div className="segmented-filter segmented-filter-compact" role="tablist" aria-label={t("chartTimeframe")}>
+                        {(Object.keys(INTERNAL_CHART_TIMEFRAMES) as Array<keyof typeof INTERNAL_CHART_TIMEFRAMES>).map((timeframe) => (
+                          <button
+                            key={timeframe}
+                            type="button"
+                            className={`filter-pill ${bondingChartTimeframe === timeframe ? "active" : ""}`}
+                            onClick={() => setBondingChartTimeframe(timeframe)}
+                          >
+                            {timeframe}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          className={`filter-pill ${bondingChartExpanded ? "active" : ""}`}
+                          onClick={() => setBondingChartExpanded((value) => !value)}
+                        >
+                          {bondingChartExpanded ? t("collapseChart") : t("expandChart")}
+                        </button>
+                      </div>
                     </div>
-                    {bondingCandles.length > 0 || dexCandles.length > 0 ? (
-                      <SegmentedPhaseChart bondingCandles={bondingCandles} dexCandles={dexCandles} graduationTimestampMs={graduationTimestampMs} />
+                    <div className="chart-panel-notes">
+                      <span>{t("internalMarketChartDesc")}</span>
+                      <span>{t("internalMarketChartSource")}</span>
+                      <span>{t("chartInspectHint")}</span>
+                      <span>{t("chartAutoRefreshHint")}</span>
+                      {bondingChartStats ? (
+                        <span>
+                          {tf("chartRangeWindow", {
+                            from: formatDateTime(bondingChartStats.fromMs),
+                            to: formatDateTime(bondingChartStats.toMs)
+                          })}
+                        </span>
+                      ) : null}
+                    </div>
+                    {tokenSnapshot ? (
+                      <div className="market-board-grid">
+                        <div className="market-board-card">
+                          <span className="metric-label">{t("currentPrice")}</span>
+                          <strong>{displayedPriceUsd ? formatUsdMicroPrice(displayedPriceUsd) : t("usdUnavailable")}</strong>
+                          <div className="metric-subtle">{formatNative(tokenSnapshot.currentPriceQuotePerToken)}</div>
+                        </div>
+                        <div className="market-board-card">
+                          <span className="metric-label">{t("marketCapShort")}</span>
+                          <strong>{displayedMarketCapUsd ? formatUsdCompact(displayedMarketCapUsd) : t("marketCapUnavailable")}</strong>
+                          <div className="metric-subtle">{t("marketCapQuoteNotice")}</div>
+                        </div>
+                        <div className="market-board-card">
+                          <span className="metric-label">{t("chartRangeVolume")}</span>
+                          <strong>{bondingChartStats ? formatNativeCompact(bondingChartStats.rangeVolumeQuote) : `0 ${activeProtocolProfile.nativeSymbol}`}</strong>
+                          <div className="metric-subtle">
+                            {bondingChartStats?.rangeVolumeUsd ? formatUsdCompact(bondingChartStats.rangeVolumeUsd) : t("usdUnavailable")}
+                          </div>
+                        </div>
+                        <div className="market-board-card">
+                          <span className="metric-label">{t("chartRangeTrades")}</span>
+                          <strong>{bondingChartStats ? compactNumber(bondingChartStats.rangeTrades) : "0"}</strong>
+                          <div className="metric-subtle">
+                            {bondingChartStats
+                              ? `${formatNative(bondingChartStats.rangeLow)} → ${formatNative(bondingChartStats.rangeHigh)}`
+                              : "—"}
+                          </div>
+                        </div>
+                        <div className="market-board-card">
+                          <span className="metric-label">{t("raisedLabel")}</span>
+                          <strong>{formatNativeCompact(heroRaised)}</strong>
+                          <div className="metric-subtle">
+                            {tf("raisedAgainstTarget", {
+                              raised: formatNativeCompact(heroRaised),
+                              target: formatNativeCompact(tokenSnapshot.graduationQuoteReserve)
+                            })}
+                          </div>
+                        </div>
+                        <div className="market-board-card">
+                          <span className="metric-label">{t("remainingCapacity")}</span>
+                          <strong>{formatNativeCompact(tokenSnapshot.remainingQuoteCapacity)}</strong>
+                          <div className="metric-subtle">{formatPercentFromBps(tokenSnapshot.graduationProgressBps)}</div>
+                        </div>
+                      </div>
+                    ) : null}
+                    {bondingChartLoading ? (
+                      <div className="empty-state">{t("chartLoading")}</div>
+                    ) : bondingCandles.length > 0 ? (
+                      <BondingCandlestickChart
+                        candles={bondingCandles}
+                        timeframeLabel={bondingChartTimeframeLabel}
+                        graduationTimestampMs={graduationTimestampMs}
+                        expanded={bondingChartExpanded}
+                      />
                     ) : (
-                      <div className="empty-state">{t("noChartData")}</div>
+                      <div className="empty-state">{bondingChartError || t("noInternalChartData")}</div>
                     )}
                   </article>
+
+                  {tickerTrades.length > 0 ? (
+                    <article className="subpanel trade-strip-panel">
+                      <div className="subpanel-header compact">
+                        <div>
+                          <h3>{t("liveTape")}</h3>
+                          <span className="list-item-meta">{t("liveTapeDesc")}</span>
+                        </div>
+                      </div>
+                      <div className="trade-strip" role="list" aria-label={t("liveTape")}>
+                        {tickerTrades.map((activity) => (
+                          <a
+                            key={`ticker-${activity.txHash}-${activity.logIndex}`}
+                            className={`trade-strip-item ${activityTone(activity)}`}
+                            href={explorerTxUrl(activity.txHash)}
+                            target="_blank"
+                            rel="noreferrer"
+                            role="listitem"
+                          >
+                            <div className="trade-strip-head">
+                              <strong>{activity.side === "buy" ? t("buyLabel") : t("sellLabel")}</strong>
+                              <span>{activity.source === "dex" ? t("dexSuffix") : t("protocolSuffix")}</span>
+                            </div>
+                            <div className="trade-strip-main">
+                              <span>{activityActor(activity)}</span>
+                              <strong>{formatNative(activity.netQuote)}</strong>
+                            </div>
+                            <div className="trade-strip-meta">
+                              <span>{formatToken(activity.tokenAmount)} {t("tokenUnit")}</span>
+                              <span>{formatDateTime(activity.timestampMs)}</span>
+                            </div>
+                          </a>
+                        ))}
+                      </div>
+                    </article>
+                  ) : null}
 
                   <div className="headline-metrics">
                     <div>
@@ -3139,27 +3722,117 @@ export function App() {
                     <div className="history-grid single-column-activity">
                       <article className="subpanel">
                         <div className="subpanel-header">
-                          <h3>{t("recentActivity")}</h3>
-                          <span className="list-item-meta">{recentActivity.length} {t("events")}</span>
+                          <div>
+                            <h3>{t("tradeTape")}</h3>
+                            <span className="list-item-meta">{t("tradeTapeDesc")}</span>
+                          </div>
+                          <div className="segmented-filter segmented-filter-compact" role="tablist" aria-label={t("activityFilter")}>
+                            {(["all", "buys", "sells", "system"] as ActivityFilter[]).map((filter) => (
+                              <button
+                                key={filter}
+                                type="button"
+                                className={`filter-pill ${activityFilter === filter ? "active" : ""}`}
+                                onClick={() => setActivityFilter(filter)}
+                              >
+                                {filter === "all"
+                                  ? t("allTrades")
+                                  : filter === "buys"
+                                    ? t("buysOnly")
+                                    : filter === "sells"
+                                      ? t("sellsOnly")
+                                      : t("systemOnly")}
+                              </button>
+                            ))}
+                          </div>
                         </div>
-                        {recentActivity.length === 0 ? (
+                        <div className="trade-tape-stats">
+                          <div className="trade-tape-stat">
+                            <span className="metric-label">{t("events")}</span>
+                            <strong>{compactNumber(filteredRecentActivity.length)}</strong>
+                          </div>
+                          <div className="trade-tape-stat">
+                            <span className="metric-label">{t("protocolVolume")}</span>
+                            <strong>{formatNativeCompact(activityStats.protocolVolume)}</strong>
+                          </div>
+                          <div className="trade-tape-stat">
+                            <span className="metric-label">{t("buysOnly")}</span>
+                            <strong className="chart-positive">{compactNumber(activityStats.buyCount)}</strong>
+                          </div>
+                          <div className="trade-tape-stat">
+                            <span className="metric-label">{t("sellsOnly")}</span>
+                            <strong className="chart-negative">{compactNumber(activityStats.sellCount)}</strong>
+                          </div>
+                          <div className="trade-tape-stat">
+                            <span className="metric-label">{t("avgTradeSize")}</span>
+                            <strong>{formatNativeCompact(activityStats.averageTradeSize)}</strong>
+                          </div>
+                          <div className="trade-tape-stat">
+                            <span className="metric-label">{t("lastTrade")}</span>
+                            <strong>
+                              {activityStats.latestTrade ? formatDateTime(activityStats.latestTrade.timestampMs) : "—"}
+                            </strong>
+                          </div>
+                        </div>
+                        {filteredRecentActivity.length === 0 ? (
                           <div className="empty-state">{t("noActivity")}</div>
                         ) : (
-                          <div className="trade-list">
-                            {recentActivity.map((activity) => (
+                          <div className="trade-list trade-tape-list">
+                            <div className="trade-tape-head">
+                              <span>{t("typeLabel")}</span>
+                              <span>{t("trader")}</span>
+                              <span>{t("tradeValue")}</span>
+                              <span>{t("tokenAmountLabel")}</span>
+                              <span>{t("priceLabel")}</span>
+                              <span>{t("timeLabel")}</span>
+                            </div>
+                            {filteredRecentActivity.map((activity) => (
                               <div
                                 key={`${activity.txHash}-${activity.blockNumber.toString()}-${activity.logIndex}`}
                                 className={`trade-row ${activityTone(activity)}`}
                               >
-                                <div className="trade-row-main">
-                                  <div className="trade-row-head">
+                                <div className="trade-row-main trade-row-main-terminal">
+                                  <div className="trade-row-head trade-row-head-terminal">
                                     <strong>{activityLabel(activity)}</strong>
                                     <div className="trade-badges">
                                       <span className="trade-badge">{activityPhaseLabel(activity)}</span>
                                       <span className="trade-badge subtle">{shortAddress(activity.txHash)}</span>
                                     </div>
                                   </div>
-                                  <div className="trade-meta">{formatDateTime(activity.timestampMs)}</div>
+                                  {activity.kind === "trade" ? (
+                                    <div className="trade-row-columns">
+                                      <div className="trade-col">
+                                        <span className="trade-col-mobile">{t("trader")}</span>
+                                        {activity.actor ? (
+                                          <a
+                                            className="trade-link"
+                                            href={explorerAddressUrl(activity.actor)}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                          >
+                                            {activityActor(activity)}
+                                          </a>
+                                        ) : (
+                                          <strong>{activityActor(activity)}</strong>
+                                        )}
+                                      </div>
+                                      <div className="trade-col">
+                                        <span className="trade-col-mobile">{t("tradeValue")}</span>
+                                        <strong>{formatNative(activity.netQuote)}</strong>
+                                      </div>
+                                      <div className="trade-col">
+                                        <span className="trade-col-mobile">{t("tokenAmountLabel")}</span>
+                                        <strong>{formatToken(activity.tokenAmount)} {t("tokenUnit")}</strong>
+                                      </div>
+                                      <div className="trade-col">
+                                        <span className="trade-col-mobile">{t("priceLabel")}</span>
+                                        <strong>{formatNative(activity.priceQuotePerToken)}</strong>
+                                      </div>
+                                      <div className="trade-col trade-col-end">
+                                        <span className="trade-col-mobile">{t("timeLabel")}</span>
+                                        <strong>{formatDateTime(activity.timestampMs)}</strong>
+                                      </div>
+                                    </div>
+                                  ) : null}
                                 </div>
                                 <div className="trade-row-value">
                                   {activity.kind === "graduated" ? (
@@ -3175,9 +3848,17 @@ export function App() {
                                     </>
                                   ) : (
                                     <>
-                                      <strong>{formatNative(activity.netQuote)}</strong>
-                                      <div className="trade-meta">{formatToken(activity.tokenAmount)} {t("tokenUnit")}</div>
-                                      <div className="trade-meta">{formatNative(activity.priceQuotePerToken)}</div>
+                                      <strong>{activity.source === "dex" ? t("dexSuffix") : t("protocolSuffix")}</strong>
+                                      <div className="trade-meta">
+                                        <a className="trade-link" href={explorerAddressUrl(activity.marketAddress)} target="_blank" rel="noreferrer">
+                                          {shortAddress(activity.marketAddress)}
+                                        </a>
+                                      </div>
+                                      <div className="trade-meta">
+                                        <a className="trade-link" href={explorerTxUrl(activity.txHash)} target="_blank" rel="noreferrer">
+                                          {shortAddress(activity.txHash)}
+                                        </a>
+                                      </div>
                                     </>
                                   )}
                                 </div>
@@ -3562,6 +4243,9 @@ export function App() {
         </div>
         <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
           <a href={REPO_URL} target="_blank" rel="noreferrer">{t('repoLink')}</a>
+          <a href={OFFICIAL_X_URL} target="_blank" rel="noreferrer">{t('officialXLink')}</a>
+          <a href={OFFICIAL_CHANNEL_URL} target="_blank" rel="noreferrer">{t('officialChannelLink')}</a>
+          <a href={ALERTS_CHANNEL_URL} target="_blank" rel="noreferrer">{t('alertsChannelLink')}</a>
           <button className="lang-toggle" onClick={toggleLocale}>{locale === "en" ? t("footerLangZh") : t("footerLangEn")}</button>
         </div>
       </footer>
@@ -3585,7 +4269,7 @@ export function App() {
               <div><span>{t("summaryFee")}</span><strong>{selectedCreateFee > 0n ? formatNative(selectedCreateFee) : t("loadFactory")}</strong></div>
               <div><span>{t("summaryCreatorFlow")}</span><strong>{requiresAtomicBuy ? (createAtomicBuyEnabled ? t("summaryAtomicBuy") : t("summaryManualBuy")) : isDelayedWhitelistOpen ? t("summaryScheduledSeat") : t("summaryAtomicSeat")}</strong></div>
               <div><span>{t("createConfirmCreator")}</span><strong>{wallet ? shortAddress(wallet) : t("connectWallet")}</strong></div>
-              <div><span>{t("summaryGraduation")}</span><strong>{factorySnapshot ? formatNative(factorySnapshot.graduationQuoteReserve) : `12 ${activeProtocolProfile.nativeSymbol}`}</strong></div>
+              <div><span>{t("summaryGraduation")}</span><strong>{graduationTargetDisplay}</strong></div>
             </div>
 
             <div className="confirm-section">

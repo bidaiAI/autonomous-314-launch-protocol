@@ -479,7 +479,7 @@ For the concrete bonding-curve shape used by the contracts and frontend estimate
 - `packages/contracts` — Solidity contracts, tests, scripts
 - `apps/web` — reference frontend
 - `apps/indexer` — bounded-cost reference indexer/API
-- `docs` — protocol, integration, and demo docs
+- `docs` — protocol and integration docs
 
 ## Third-party integration quick start
 

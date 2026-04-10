@@ -21,7 +21,6 @@ export type ProtocolChainProfile = {
 };
 
 const DEFAULT_CHAIN_ID = Number(import.meta.env.VITE_CHAIN_ID ?? 56);
-const STORAGE_KEY = "a314_chain_id";
 const selectableChainIds = [56, 8453] as const;
 const listeners = new Set<() => void>();
 
@@ -112,16 +111,12 @@ const profiles: Record<number, ProtocolChainProfile> = {
   }
 };
 
-function readStoredChainId() {
-  if (typeof window === "undefined") return DEFAULT_CHAIN_ID;
-  const stored = Number(window.localStorage.getItem(STORAGE_KEY) ?? DEFAULT_CHAIN_ID);
-  const resolved = Number.isFinite(stored) && stored > 0 ? stored : DEFAULT_CHAIN_ID;
-  const profile = resolveProtocolProfile(resolved);
-  if (profile.enabled) return profile.chainId;
-  return resolveProtocolProfile(DEFAULT_CHAIN_ID).enabled ? DEFAULT_CHAIN_ID : 56;
+function initialChainId() {
+  const defaultProfile = resolveProtocolProfile(DEFAULT_CHAIN_ID);
+  return defaultProfile.enabled ? defaultProfile.chainId : 56;
 }
 
-let currentChainId = readStoredChainId();
+let currentChainId = initialChainId();
 
 export function resolveProtocolProfile(chainId: number): ProtocolChainProfile {
   return profiles[chainId] ?? profiles[56];
@@ -137,9 +132,6 @@ export function setActiveProtocolChainId(chainId: number) {
   const resolved = targetProfile.enabled ? targetProfile.chainId : fallbackChainId;
   if (resolved === currentChainId) return;
   currentChainId = resolved;
-  if (typeof window !== "undefined") {
-    window.localStorage.setItem(STORAGE_KEY, String(resolved));
-  }
   listeners.forEach((listener) => listener());
 }
 

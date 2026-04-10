@@ -215,3 +215,45 @@ test("detects zero-arg bootstrap deployers correctly", () => {
     12
   );
 });
+
+test("uses the legacy 10-input LaunchFactory artifact for the official BSC bootstrap runtime", { concurrency: false }, () => {
+  const previousChainId = process.env.INDEXER_CHAIN_ID;
+  const previousFactoryAddress = process.env.INDEXER_FACTORY_ADDRESS;
+
+  process.env.INDEXER_CHAIN_ID = "56";
+  process.env.INDEXER_FACTORY_ADDRESS = "0xa5d62930AA7CDD332B6bF1A32dB0cC7095FC0314";
+
+  try {
+    assert.equal(
+      constructorInputCount("contracts/LaunchFactory.sol:LaunchFactory"),
+      10
+    );
+
+    const encoded = encodeConstructorArguments("contracts/LaunchFactory.sol:LaunchFactory", [
+      getAddress("0x9999999999999999999999999999999999999999"),
+      getAddress("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+      getAddress("0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
+      getAddress("0xcccccccccccccccccccccccccccccccccccccccc"),
+      getAddress("0xdddddddddddddddddddddddddddddddddddddddd"),
+      getAddress("0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"),
+      getAddress("0xffffffffffffffffffffffffffffffffffffffff"),
+      10n ** 16n,
+      3n * 10n ** 16n,
+      12n * 10n ** 18n
+    ]);
+
+    assert.match(encoded, /^0x[0-9a-f]+$/);
+  } finally {
+    if (previousChainId === undefined) {
+      delete process.env.INDEXER_CHAIN_ID;
+    } else {
+      process.env.INDEXER_CHAIN_ID = previousChainId;
+    }
+
+    if (previousFactoryAddress === undefined) {
+      delete process.env.INDEXER_FACTORY_ADDRESS;
+    } else {
+      process.env.INDEXER_FACTORY_ADDRESS = previousFactoryAddress;
+    }
+  }
+});

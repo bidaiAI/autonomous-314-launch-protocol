@@ -205,10 +205,10 @@ function resolveArtifactPaths(contractIdentifier: string) {
 }
 
 export function loadContractBuildSpec(contractIdentifier: string): ContractBuildSpec {
-  const cached = buildSpecCache.get(contractIdentifier);
-  if (cached) return cached;
-
   const { sourceName, contractName, artifactPath, debugArtifactPath } = resolveArtifactPaths(contractIdentifier);
+  const cacheKey = `${artifactPath}:${contractIdentifier}`;
+  const cached = buildSpecCache.get(cacheKey);
+  if (cached) return cached;
 
   const artifact = readJson<ArtifactJson>(artifactPath);
   const debugArtifact = readJson<DebugArtifactJson>(debugArtifactPath);
@@ -231,7 +231,7 @@ export function loadContractBuildSpec(contractIdentifier: string): ContractBuild
     metadata: JSON.parse(metadataRaw) as Record<string, unknown>
   };
 
-  buildSpecCache.set(contractIdentifier, spec);
+  buildSpecCache.set(cacheKey, spec);
   return spec;
 }
 

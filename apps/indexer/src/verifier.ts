@@ -249,27 +249,35 @@ class VerificationWorker {
         bigint,
         bigint
       ];
-      const whitelistPresets = officialFactoryWhitelistPresetsFor(indexerConfig.chainId);
-      if (!whitelistPresets) {
-        throw new Error(`Missing official factory whitelist presets for chain ${indexerConfig.chainId}`);
+      const factoryConstructorArgs: unknown[] = [
+        getAddress(owner),
+        getAddress(router),
+        getAddress(protocolFeeRecipient),
+        getAddress(standardDeployer),
+        getAddress(whitelistDeployer),
+        getAddress(taxedDeployer),
+        getAddress(whitelistTaxedDeployer),
+        standardCreateFee,
+        whitelistCreateFee,
+        graduationQuoteReserve
+      ];
+      const constructorInputs = constructorInputCount(target.contractIdentifier);
+      if (constructorInputs >= 12) {
+        const whitelistPresets = officialFactoryWhitelistPresetsFor(indexerConfig.chainId);
+        if (!whitelistPresets) {
+          throw new Error(`Missing official factory whitelist presets for chain ${indexerConfig.chainId}`);
+        }
+        factoryConstructorArgs.push(whitelistPresets.thresholds, whitelistPresets.slotSizes);
+      }
+      if (factoryConstructorArgs.length !== constructorInputs) {
+        throw new Error(
+          `Official factory bootstrap arg mismatch for chain ${indexerConfig.chainId}: expected ${constructorInputs}, built ${factoryConstructorArgs.length}`
+        );
       }
 
       return {
         ...target,
-        constructorArguments: encodeConstructorArguments(target.contractIdentifier, [
-          getAddress(owner),
-          getAddress(router),
-          getAddress(protocolFeeRecipient),
-          getAddress(standardDeployer),
-          getAddress(whitelistDeployer),
-          getAddress(taxedDeployer),
-          getAddress(whitelistTaxedDeployer),
-          standardCreateFee,
-          whitelistCreateFee,
-          graduationQuoteReserve,
-          whitelistPresets.thresholds,
-          whitelistPresets.slotSizes
-        ])
+        constructorArguments: encodeConstructorArguments(target.contractIdentifier, factoryConstructorArgs)
       };
     }
 

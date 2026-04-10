@@ -56,13 +56,8 @@ type DebugArtifactJson = {
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(moduleDir, "..", "..", "..", "..");
 const bundledArtifactsRoot = resolve(moduleDir, "..", "..", "verification-artifacts");
-const candidateArtifactsRoots = [
-  process.env.INDEXER_VERIFICATION_ARTIFACTS_ROOT
-    ? resolve(process.env.INDEXER_VERIFICATION_ARTIFACTS_ROOT)
-    : null,
-  join(repoRoot, "packages", "contracts", "artifacts"),
-  bundledArtifactsRoot
-].filter((root): root is string => Boolean(root));
+const bundledBscLegacyArtifactsRoot = resolve(moduleDir, "..", "..", "verification-artifacts-bsc-legacy");
+const officialBscFactoryAddress = getAddress("0xa5d62930AA7CDD332B6bF1A32dB0cC7095FC0314");
 
 const buildSpecCache = new Map<string, ContractBuildSpec>();
 const solidityMetadataMarkers = [
@@ -156,11 +151,40 @@ function readJson<T>(path: string): T {
   return JSON.parse(readFileSync(path, "utf-8")) as T;
 }
 
+export function shouldUseLegacyBscArtifactsFor(chainId?: number | null, factoryAddress?: string) {
+  if (chainId !== 56 || !factoryAddress) {
+    return false;
+  }
+
+  try {
+    return getAddress(factoryAddress) === officialBscFactoryAddress;
+  } catch {
+    return false;
+  }
+}
+
+function resolveCandidateArtifactsRoots() {
+  const runtimeChainId = process.env.INDEXER_CHAIN_ID ? Number(process.env.INDEXER_CHAIN_ID) : null;
+  const runtimeFactoryAddress = process.env.INDEXER_FACTORY_ADDRESS;
+  const roots = [
+    process.env.INDEXER_VERIFICATION_ARTIFACTS_ROOT
+      ? resolve(process.env.INDEXER_VERIFICATION_ARTIFACTS_ROOT)
+      : null,
+    shouldUseLegacyBscArtifactsFor(runtimeChainId, runtimeFactoryAddress) ? bundledBscLegacyArtifactsRoot : null,
+    join(repoRoot, "packages", "contracts", "artifacts"),
+    bundledArtifactsRoot
+  ].filter((root): root is string => Boolean(root));
+
+  return [...new Set(roots)];
+}
+
 function resolveArtifactPaths(contractIdentifier: string) {
   const [sourceName, contractName] = contractIdentifier.split(":");
   if (!sourceName || !contractName) {
     throw new Error(`Invalid contract identifier: ${contractIdentifier}`);
   }
+
+  const candidateArtifactsRoots = resolveCandidateArtifactsRoots();
 
   for (const artifactsRoot of candidateArtifactsRoots) {
     const artifactPath = join(artifactsRoot, sourceName, `${contractName}.json`);
@@ -219,6 +243,12 @@ export function encodeConstructorArguments(contractIdentifier: string, args: rea
     args
   });
   return (`0x${deployData.slice(spec.bytecode.length)}` || "0x") as Hex;
+}
+
+export function constructorInputCount(contractIdentifier: string) {
+  const spec = loadContractBuildSpec(contractIdentifier);
+  const constructorAbi = spec.abi.find((entry) => entry.type === "constructor");
+  return constructorAbi?.type === "constructor" ? constructorAbi.inputs.length : 0;
 }
 
 function findSolidityMetadataStart(bytecode: Hex) {

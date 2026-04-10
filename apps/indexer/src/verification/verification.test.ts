@@ -4,6 +4,7 @@ import { decodeFunctionData, encodeDeployData, encodeFunctionData, getAddress } 
 import { launchFactoryAbi } from "../abi";
 import { buildLaunchConstructorArguments } from "./launches";
 import {
+  constructorInputCount,
   encodeConstructorArguments,
   extractConstructorArgumentsFromCreationInput,
   findSolidityMetadataStartForTest,
@@ -197,5 +198,20 @@ test("still rejects creation input mismatches before the solidity metadata secti
       "contracts/LaunchTokenDeployer.sol:LaunchTokenDeployer",
       creationInput
     )
+  );
+});
+
+test("detects zero-arg bootstrap deployers correctly", () => {
+  assert.equal(
+    constructorInputCount("contracts/LaunchTokenDeployer.sol:LaunchTokenDeployer"),
+    0
+  );
+  assert.equal(
+    constructorInputCount("contracts/LaunchCreate2Deployer.sol:LaunchCreate2Deployer"),
+    0
+  );
+  assert.equal(
+    constructorInputCount("contracts/LaunchFactory.sol:LaunchFactory"),
+    12
   );
 });

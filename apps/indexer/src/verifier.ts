@@ -9,6 +9,7 @@ import {
 import { resolveIndexerProfile } from "./profiles";
 import { fetchLaunchVerificationIntents } from "./verification/launches";
 import {
+  constructorInputCount,
   encodeConstructorArguments,
   extractConstructorArgumentsFromCreationInput,
   loadContractBuildSpec,
@@ -269,6 +270,13 @@ class VerificationWorker {
           whitelistPresets.thresholds,
           whitelistPresets.slotSizes
         ])
+      };
+    }
+
+    if (constructorInputCount(target.contractIdentifier) === 0) {
+      return {
+        ...target,
+        constructorArguments: "0x"
       };
     }
 
@@ -614,6 +622,11 @@ class VerificationWorker {
       this.markChannelVerified(target, "etherscan", response.result);
       return response.result;
     }
+
+    if (await this.checkEtherscanVerified(target)) {
+      return target.lastMessage;
+    }
+
     return `Etherscan pending: ${response.result ?? response.message ?? "unknown response"}`;
   }
 

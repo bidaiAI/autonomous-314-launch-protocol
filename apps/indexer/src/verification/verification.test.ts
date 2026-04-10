@@ -6,6 +6,7 @@ import { buildLaunchConstructorArguments } from "./launches";
 import {
   encodeConstructorArguments,
   extractConstructorArgumentsFromCreationInput,
+  findSolidityMetadataStartForTest,
   loadContractBuildSpec
 } from "./specs";
 
@@ -154,4 +155,47 @@ test("extracts constructor args from top-level deployment input for official con
   );
 
   assert.equal(extracted, `0x${deployData.slice(spec.bytecode.length)}`);
+});
+
+test("extracts constructor args when only the solidity metadata hash differs", () => {
+  const spec = loadContractBuildSpec("contracts/LaunchTokenDeployer.sol:LaunchTokenDeployer");
+  const metadataStart = findSolidityMetadataStartForTest(spec.bytecode);
+  assert.notEqual(metadataStart, null);
+
+  const metadataIndex = (metadataStart ?? 0) + 20;
+  const current = spec.bytecode[metadataIndex];
+  assert.ok(current);
+  const replacement = current === "0" ? "1" : "0";
+  const creationInput = (
+    `${spec.bytecode.slice(0, metadataIndex)}${replacement}${spec.bytecode.slice(metadataIndex + 1)}`
+  ) as `0x${string}`;
+
+  const extracted = extractConstructorArgumentsFromCreationInput(
+    "contracts/LaunchTokenDeployer.sol:LaunchTokenDeployer",
+    creationInput
+  );
+
+  assert.equal(extracted, "0x");
+});
+
+test("still rejects creation input mismatches before the solidity metadata section", () => {
+  const spec = loadContractBuildSpec("contracts/LaunchTokenDeployer.sol:LaunchTokenDeployer");
+  const metadataStart = findSolidityMetadataStartForTest(spec.bytecode);
+  assert.notEqual(metadataStart, null);
+  assert.ok((metadataStart ?? 0) > 10);
+
+  const mismatchIndex = (metadataStart ?? 12) - 6;
+  const current = spec.bytecode[mismatchIndex];
+  assert.ok(current);
+  const replacement = current === "0" ? "1" : "0";
+  const creationInput = (
+    `${spec.bytecode.slice(0, mismatchIndex)}${replacement}${spec.bytecode.slice(mismatchIndex + 1)}`
+  ) as `0x${string}`;
+
+  assert.throws(() =>
+    extractConstructorArgumentsFromCreationInput(
+      "contracts/LaunchTokenDeployer.sol:LaunchTokenDeployer",
+      creationInput
+    )
+  );
 });

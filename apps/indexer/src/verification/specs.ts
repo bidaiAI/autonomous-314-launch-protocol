@@ -65,6 +65,11 @@ const candidateArtifactsRoots = [
 ].filter((root): root is string => Boolean(root));
 
 const buildSpecCache = new Map<string, ContractBuildSpec>();
+const solidityMetadataMarkers = [
+  "a264697066735822",
+  "a264697066735820",
+  "a165627a7a72305820"
+] as const;
 
 const officialBscBootstrapTargets: BootstrapVerificationTarget[] = [
   {
@@ -216,12 +221,44 @@ export function encodeConstructorArguments(contractIdentifier: string, args: rea
   return (`0x${deployData.slice(spec.bytecode.length)}` || "0x") as Hex;
 }
 
+function findSolidityMetadataStart(bytecode: Hex) {
+  const normalized = bytecode.toLowerCase();
+  let index = -1;
+  for (const marker of solidityMetadataMarkers) {
+    index = Math.max(index, normalized.lastIndexOf(marker));
+  }
+  return index >= 0 ? index : null;
+}
+
+function hasCompatibleCreationPrefix(bytecode: Hex, creationInput: Hex) {
+  if (creationInput.startsWith(bytecode)) {
+    return true;
+  }
+
+  if (creationInput.length < bytecode.length) {
+    return false;
+  }
+
+  const metadataStart = findSolidityMetadataStart(bytecode);
+  if (metadataStart === null) {
+    return false;
+  }
+
+  const expectedPrefix = bytecode.toLowerCase();
+  const actualPrefix = creationInput.slice(0, bytecode.length).toLowerCase();
+  return actualPrefix.slice(0, metadataStart) === expectedPrefix.slice(0, metadataStart);
+}
+
 export function extractConstructorArgumentsFromCreationInput(contractIdentifier: string, creationInput: Hex): Hex {
   const spec = loadContractBuildSpec(contractIdentifier);
-  if (!creationInput.startsWith(spec.bytecode)) {
+  if (!hasCompatibleCreationPrefix(spec.bytecode, creationInput)) {
     throw new Error(`Creation input for ${contractIdentifier} does not match artifact bytecode prefix`);
   }
   return (`0x${creationInput.slice(spec.bytecode.length)}` || "0x") as Hex;
+}
+
+export function findSolidityMetadataStartForTest(bytecode: Hex) {
+  return findSolidityMetadataStart(bytecode);
 }
 
 export function launchContractIdentifierForMode(mode: number) {

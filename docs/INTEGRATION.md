@@ -300,7 +300,7 @@ This event is the canonical handoff marker from bonding-phase indexing to pair-p
 
 Contains:
 
-- caller that triggered the sweep
+- caller that triggered the sweep (the caller does **not** receive the swept funds)
 - creator fee amount moved into the protocol fee vault
 
 This event only occurs while the launch is still in `Bonding314`, the launch is at least `180 days` old, and there have been no trades for at least `30 days`.

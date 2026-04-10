@@ -95,7 +95,7 @@ Autonomous 314 当前的目标很明确，主要有四个：
 - **回归市场的手续费记账**
   - 总费 1%，其中 0.7% 给 creator，0.3% 给 protocol，仅限内盘
 - **废弃 creator fee 处理**
-  - 长期不毕业且不活跃项目的 creator fee 可以最终回流 protocol vault
+  - 长期不毕业且不活跃项目的 creator fee 最终可被回收到 protocol vault；触发 sweep 的调用者不会拿到这笔钱
 - **参考实现栈**
   - 仓库内已经包含参考前端、低成本 indexer 和本地 demo 流程
 - **官方 vanity 创建流程**
@@ -107,7 +107,7 @@ Autonomous 314 当前的目标很明确，主要有四个：
 - **模式化 launch 家族**
   - `0314`、`b314`、`1314..9314` 和 `f314` 都是协议层一等公民，而不是前端临时拼出来的选项
 - **协议运维批量工具**
-  - Factory 可批量领取 protocol fee，也可批量 sweep 长期废弃项目的 creator fee
+  - Factory 可批量领取 protocol fee，也可批量把长期废弃项目的 creator fee 回收到 protocol vault
 
 推荐的 metadata 结构见 [`docs/LAUNCH_METADATA.md`](docs/LAUNCH_METADATA.md)。
 
@@ -285,7 +285,7 @@ Autonomous 314 主要适合这些对象：
 - **毕业后**：永久关闭 314，恢复标准 ERC-20 转账
 - **LP 处理**：直接 mint 到 dead 地址
 - **手续费**：总计 `1%` = `0.7%` 创建者 + `0.3%` 协议，仅限内盘
-- **废弃 creator fee 回收**：如果项目仍未毕业、创建已满 `180 天` 且最近 `30 天` 无交易，任何人都可将未可领取的 creator fee sweep 到 protocol fee vault
+- **废弃 creator fee 回收**：如果项目仍未毕业、创建已满 `180 天` 且最近 `30 天` 无交易，任何人都可以触发一次 sweep，将未可领取的 creator fee 回收到 protocol fee vault，但资金不会支付给触发者本人
 - **安全处理**：graduation pair 中预先注入的 wrapped native quote 不再被当成廉价 DOS 手段；协议会把这类情况明确标记为“非严格 canonical 开盘状态”
 - **部署能力**：工厂支持 `CREATE2` salt，可搜索 `0314` 等 vanity 尾号
 
@@ -379,7 +379,7 @@ flowchart LR
 
 - **creator fee** 会在毕业前累计，但只有毕业后才能领取
 - 如果项目长期不毕业，creator fee 也不会永久卡死
-- 当项目 **创建满 180 天** 且 **最近 30 天无交易** 时，任何人都可以把 abandoned creator fee sweep 到 protocol fee vault
+- 当项目 **创建满 180 天** 且 **最近 30 天无交易** 时，任何人都可以触发一次 sweep，将 abandoned creator fee 回收到 protocol fee vault，但被 sweep 的金额会记入 protocol vault，而不是给调用者
 
 这样做的目的，是在 **回归市场的手续费模型** 和 **死项目终局处理** 之间找到平衡。
 

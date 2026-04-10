@@ -95,7 +95,7 @@ At a functional level, the protocol already provides:
 - **market-first fee accounting**
   - 1% total fee = 0.7% creator + 0.3% protocol, applied only inside the built-in pre-grad market
 - **abandoned creator-fee resolution**
-  - abandoned pre-grad launches can eventually sweep unclaimable creator fees into the protocol vault
+  - abandoned pre-grad launches can eventually have unclaimable creator fees swept back into the protocol vault; the sweep caller does not receive those funds
 - **reference integration stack**
   - a reference frontend, a bounded-cost indexer, and a local demo flow are included
 - **official vanity create flow**
@@ -107,7 +107,7 @@ At a functional level, the protocol already provides:
 - **mode-based launch families**
   - `0314`, `b314`, `1314..9314`, and `f314` are first-class protocol families instead of ad hoc frontend presets
 - **protocol-ops batch tooling**
-  - the factory can batch-claim protocol fees and batch-sweep abandoned creator fees across many launches
+  - the factory can batch-claim protocol fees and batch-sweep abandoned creator fees back into the protocol vault across many launches
 
 See [`docs/LAUNCH_METADATA.md`](docs/LAUNCH_METADATA.md) for the recommended metadata schema.
 
@@ -289,7 +289,7 @@ Autonomous 314 is designed for:
 - **post-graduation**: 314 permanently disabled, standard ERC-20 transfers enabled
 - **LP handling**: minted directly to the dead address
 - **fees**: 1% total = 0.3% protocol + 0.7% creator, internal pre-grad market only
-- **abandoned creator fees**: if a launch is still pre-graduation after `180 days` and has had no trades for `30 days`, anyone may sweep the unclaimable creator fee vault into the protocol fee vault
+- **abandoned creator fees**: if a launch is still pre-graduation after `180 days` and has had no trades for `30 days`, anyone may trigger a sweep of the unclaimable creator fee vault into the protocol fee vault, but the sweep caller does not receive the funds
 - **safety**: quote-side wrapped-native preload is surfaced as a non-canonical opening-state warning rather than a cheap graduation DOS path
 - **deployment**: factory supports `CREATE2` salts for vanity suffix search such as `0314`
 
@@ -379,7 +379,7 @@ Very small dust-sized trades are also protected against fee bypass. In practice 
 
 - **creator fee** accrues during pre-grad but is only claimable after graduation
 - if a launch is abandoned and never graduates, creator fee does not remain stuck forever
-- after `180 days` of age and `30 days` of inactivity, anyone may sweep abandoned creator fees into the protocol fee vault
+- after `180 days` of age and `30 days` of inactivity, anyone may trigger a sweep of abandoned creator fees into the protocol fee vault, but the swept amount is credited to the protocol vault rather than paid to the caller
 
 This keeps the protocol market-first while still giving dead launches a clean terminal state.
 

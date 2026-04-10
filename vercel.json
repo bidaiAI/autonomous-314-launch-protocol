@@ -4,6 +4,26 @@
   "outputDirectory": "apps/web/dist",
   "rewrites": [
     {
+      "source": "/api/metadata",
+      "destination": "https://indexer-production-570f.up.railway.app/api/metadata"
+    },
+    {
+      "source": "/api/metadata/:path*",
+      "destination": "https://indexer-production-570f.up.railway.app/api/metadata/:path*"
+    },
+    {
+      "source": "/api/upload-image",
+      "destination": "https://indexer-production-570f.up.railway.app/api/upload-image"
+    },
+    {
+      "source": "/api/media/:path*",
+      "destination": "https://indexer-production-570f.up.railway.app/api/media/:path*"
+    },
+    {
+      "source": "/api/coingecko/:path*",
+      "destination": "https://api.coingecko.com/:path*"
+    },
+    {
       "source": "/((?!assets/|favicon.ico|robots.txt).*)",
       "destination": "/index.html"
     }

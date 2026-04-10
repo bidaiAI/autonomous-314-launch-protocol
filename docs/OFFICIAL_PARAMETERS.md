@@ -1,6 +1,6 @@
 # Autonomous 314 — Official Parameters
 
-Last updated: **2026-04-08**
+Last updated: **2026-04-10**
 
 This page is the **canonical public reference** for the current official Autonomous 314 deployment and runtime profile.
 
@@ -10,6 +10,7 @@ If any summary elsewhere differs from this page, treat **this file** as the sour
 
 - **Official frontend:** [https://auto314.cc](https://auto314.cc)
 - **Indexer health:** [https://indexer-production-570f.up.railway.app/health](https://indexer-production-570f.up.railway.app/health)
+- **Base indexer health:** [https://indexer-base-production.up.railway.app/health](https://indexer-base-production.up.railway.app/health)
 - **Repository:** [https://github.com/bidaiAI/autonomous-314-launch-protocol](https://github.com/bidaiAI/autonomous-314-launch-protocol)
 - **Official X:** [https://x.com/auto314cc](https://x.com/auto314cc)
 - **Official Telegram channel:** [https://t.me/Autonomous314](https://t.me/Autonomous314)
@@ -30,6 +31,47 @@ If any summary elsewhere differs from this page, treat **this file** as the sour
 - **LP token reserve:** `20%`
 - **Pre-grad fee split:** `1% total = 0.7% creator + 0.3% protocol`
 - **Protocol treasury fallback:** `0xC4187bE6b362DF625696d4a9ec5E6FA461CC0314`
+
+## Base runtime profile
+
+This is the Base-specific runtime profile for a **separate single-chain deployment**.
+It uses the same protocol families and integration surface, but with Base-native values.
+
+- **Chain:** Base
+- **Chain ID:** `8453`
+- **Native asset:** `ETH`
+- **Wrapped native asset:** `WETH`
+- **Canonical DEX:** QuickSwap V2
+- **Router:** `0x4a012af2b05616Fb390ED32452641C3F04633bb5`
+- **Launch families:** `0314 / b314 / 1314..9314 / f314`
+- **Create fee (standard / taxed):** `0.005 ETH`
+- **Create fee (whitelist / f314):** `0.01 ETH`
+- **Graduation target:** `4 ETH`
+- **Whitelist thresholds:** `1 / 2 / 3 ETH`
+- **Whitelist seat sizes:** `0.04 / 0.1 / 0.2 / 0.5 ETH`
+- **Whitelist max seats:** `80`
+- **Protocol treasury fallback:** `0xC4187bE6b362DF625696d4a9ec5E6FA461CC0314`
+
+## Official Base factory
+
+- **Factory:** `0x6fDE83bB814AC79D1267695d532e2Dd9d16A0314`
+- **Factory deployment tx:** `0x66f47b312f40ccff7c22f52bffc0b4610c0c091e42d5ea3409a3e4926b2f6814`
+- **Factory deployment block:** `44505311`
+- **Deployment salt:** `0x910c5bb21b8b4100fd60a57155745d3aefb496aa859fc088f8136be56ca8ef31`
+
+## Official Base support deployers
+
+| Contract | Address | Deployment tx | Block |
+|---|---|---|---|
+| LaunchTokenDeployer | `0xc6611f07a35222095A78Be7fa6e5f5E3B9585e83` | `0x971a8396501b0687b3cc3090c8e413fcc9df5fd0a57ff8d0355d27b2022863d4` | `44504892` |
+| LaunchTokenWhitelistDeployer | `0x502C1605B17E2c0B67Dd4C855E095989945aB3cc` | `0x34972b27827172cef5e3058da9f69a7f596f281412f6e18d4a87f95760e3c20f` | `44505296` |
+| LaunchTokenTaxedDeployer | `0xA45921Dc733188c8C68D017984224E0EC125b095` | `0xb6086624c3eaf66d3011caa02f30c3319c093fd2b932251e84aec202bb27f3e2` | `44505302` |
+| LaunchCreate2Deployer | `0xf0Ef9342fB2866580F4d428E6FF00E5394E15182` | `0xaf3eb01d437c08bea997c039492e1bb51e2c546988e2e02c7f16986526075920` | `44505306` |
+
+### Base Create2 bind
+
+- **Whitelist-taxed deployer bind tx:** `0xe51199a3da00cbd95c019c88f201ad390644f12393d4705bb3b2d4a3cdcc4341`
+- **Whitelist-taxed deployer bind block:** `44505314`
 
 ## Official factory
 
@@ -71,8 +113,11 @@ As of **2026-04-08**, the official factory and all four support deployers are ve
 - **Sourcify**
 - **BscScan / Etherscan-compatible explorer**
 
+Base uses the same indexer/verification model, with its own bootstrap target set tracked separately in [`./BASE_PROFILE.md`](./BASE_PROFILE.md) and the dedicated Base indexer deployment.
+
 ## Notes for integrators
 
 - Use this page for the **current official deployment values**
 - Use [`./INTEGRATION.md`](./INTEGRATION.md) for the **contract/API integration surface**
+- Use [`./BASE_PROFILE.md`](./BASE_PROFILE.md) for the **Base chain deployment profile**
 - Use [`./LAUNCH_METADATA.md`](./LAUNCH_METADATA.md) for the **metadata and social-link schema**

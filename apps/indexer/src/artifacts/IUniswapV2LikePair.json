@@ -1,4 +1,7 @@
 {
+  "_format": "hh-sol-artifact-1",
+  "contractName": "IUniswapV2LikePair",
+  "sourceName": "contracts/interfaces/IUniswapV2LikePair.sol",
   "abi": [
     {
       "inputs": [],
@@ -43,6 +46,19 @@
       "type": "function"
     },
     {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "to",
+          "type": "address"
+        }
+      ],
+      "name": "skim",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
       "inputs": [],
       "name": "token0",
       "outputs": [
@@ -81,5 +97,9 @@
       "stateMutability": "view",
       "type": "function"
     }
-  ]
+  ],
+  "bytecode": "0x",
+  "deployedBytecode": "0x",
+  "linkReferences": {},
+  "deployedLinkReferences": {}
 }

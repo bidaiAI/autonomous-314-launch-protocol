@@ -38,6 +38,9 @@ contract LaunchFactory is Ownable {
     uint256 public immutable standardCreateFee;
     uint256 public immutable whitelistCreateFee;
 
+    mapping(uint256 => bool) private allowedWhitelistThresholds;
+    mapping(uint256 => bool) private allowedWhitelistSlotSizes;
+
     address public protocolFeeRecipient;
     uint256 public accruedProtocolCreateFees;
 
@@ -55,11 +58,13 @@ contract LaunchFactory is Ownable {
         string metadataURI
     );
     event ProtocolFeeRecipientUpdated(address indexed previousRecipient, address indexed newRecipient);
+    event UnexpectedNativeReconciled(address indexed caller, uint256 amount);
     event ProtocolCreateFeesClaimed(address indexed recipient, uint256 amount);
 
     error InsufficientCreateFee();
     error ZeroAddress();
     error InvalidGraduationConfig();
+    error InvalidWhitelistPreset();
     error NothingToClaim();
     error PendingProtocolCreateFees();
     error Unauthorized();
@@ -111,7 +116,9 @@ contract LaunchFactory is Ownable {
         address whitelistTaxedDeployer_,
         uint256 standardCreateFee_,
         uint256 whitelistCreateFee_,
-        uint256 graduationQuoteReserve_
+        uint256 graduationQuoteReserve_,
+        uint256[] memory whitelistThresholdPresets_,
+        uint256[] memory whitelistSlotSizePresets_
     ) Ownable(owner_) {
         if (
             owner_ == address(0) || router_ == address(0) || standardDeployer_ == address(0)
@@ -119,6 +126,7 @@ contract LaunchFactory is Ownable {
                 || whitelistTaxedDeployer_ == address(0)
         ) revert ZeroAddress();
         if (graduationQuoteReserve_ == 0) revert InvalidGraduationConfig();
+        _configureWhitelistPresets(whitelistThresholdPresets_, whitelistSlotSizePresets_);
 
         router = router_;
         standardDeployer = standardDeployer_;
@@ -130,6 +138,14 @@ contract LaunchFactory is Ownable {
         standardCreateFee = standardCreateFee_;
         whitelistCreateFee = whitelistCreateFee_;
         graduationQuoteReserve = graduationQuoteReserve_;
+    }
+
+    function isAllowedWhitelistThreshold(uint256 threshold) external view returns (bool) {
+        return allowedWhitelistThresholds[threshold];
+    }
+
+    function isAllowedWhitelistSlotSize(uint256 slotSize) external view returns (bool) {
+        return allowedWhitelistSlotSizes[slotSize];
     }
 
     function createFee() external view returns (uint256) {
@@ -478,6 +494,15 @@ contract LaunchFactory is Ownable {
         amount = _claimProtocolCreateFees(recipient);
     }
 
+    function reconcileUnexpectedNative() external returns (uint256 amount) {
+        amount = _unexpectedNativeBalance();
+        if (amount == 0) revert NothingToClaim();
+
+        accruedProtocolCreateFees += amount;
+
+        emit UnexpectedNativeReconciled(msg.sender, amount);
+    }
+
     function batchClaimProtocolFees(address[] calldata tokens, address payable recipient)
         external
         returns (uint256 totalClaimed, uint256 claimedCount)
@@ -589,6 +614,7 @@ contract LaunchFactory is Ownable {
         address[] calldata whitelistAddresses,
         bytes32 salt
     ) internal returns (address token) {
+        _validateWhitelistPreset(whitelistThreshold, whitelistSlotSize);
         uint256 remainder = _collectCreateFee(whitelistCreateFee);
         if (remainder > 0) {
             payable(msg.sender).sendValue(remainder);
@@ -624,6 +650,7 @@ contract LaunchFactory is Ownable {
         bytes32 salt
     ) internal returns (address token) {
         if (whitelistOpensAt > block.timestamp) revert DelayedWhitelistAtomicCommitUnsupported();
+        _validateWhitelistPreset(whitelistThreshold, whitelistSlotSize);
         uint256 commitValue = _collectCreateFee(whitelistCreateFee);
         if (commitValue != whitelistSlotSize) revert InvalidWhitelistAtomicCommitAmount();
 
@@ -726,6 +753,7 @@ contract LaunchFactory is Ownable {
         returns (address token)
     {
         _validateTaxConfig(config.taxBps, config.burnShareBps, config.treasuryShareBps, config.treasuryWallet);
+        _validateWhitelistPreset(config.whitelistThreshold, config.whitelistSlotSize);
         uint256 remainder = _collectCreateFee(whitelistCreateFee);
         if (remainder > 0) {
             payable(msg.sender).sendValue(remainder);
@@ -739,6 +767,7 @@ contract LaunchFactory is Ownable {
         returns (address token)
     {
         _validateTaxConfig(config.taxBps, config.burnShareBps, config.treasuryShareBps, config.treasuryWallet);
+        _validateWhitelistPreset(config.whitelistThreshold, config.whitelistSlotSize);
         if (config.whitelistOpensAt > block.timestamp) revert DelayedWhitelistAtomicCommitUnsupported();
         uint256 commitValue = _collectCreateFee(whitelistCreateFee);
         if (commitValue != config.whitelistSlotSize) revert InvalidWhitelistAtomicCommitAmount();
@@ -808,6 +837,33 @@ contract LaunchFactory is Ownable {
         emit LaunchCreated(creator_, token, uint8(mode), name_, symbol_, metadataURI_);
     }
 
+    function _configureWhitelistPresets(
+        uint256[] memory whitelistThresholdPresets_,
+        uint256[] memory whitelistSlotSizePresets_
+    ) internal {
+        if (whitelistThresholdPresets_.length == 0 || whitelistSlotSizePresets_.length == 0) {
+            revert InvalidWhitelistPreset();
+        }
+
+        for (uint256 i = 0; i < whitelistThresholdPresets_.length; i++) {
+            uint256 preset = whitelistThresholdPresets_[i];
+            if (preset == 0) revert InvalidWhitelistPreset();
+            allowedWhitelistThresholds[preset] = true;
+        }
+
+        for (uint256 i = 0; i < whitelistSlotSizePresets_.length; i++) {
+            uint256 preset = whitelistSlotSizePresets_[i];
+            if (preset == 0) revert InvalidWhitelistPreset();
+            allowedWhitelistSlotSizes[preset] = true;
+        }
+    }
+
+    function _validateWhitelistPreset(uint256 whitelistThreshold, uint256 whitelistSlotSize) internal view {
+        if (!allowedWhitelistThresholds[whitelistThreshold] || !allowedWhitelistSlotSizes[whitelistSlotSize]) {
+            revert InvalidWhitelistPreset();
+        }
+    }
+
     function _claimProtocolCreateFees(address payable recipient) internal returns (uint256 amount) {
         if (msg.sender != protocolFeeRecipient) revert Unauthorized();
         if (recipient == address(0)) revert ZeroAddress();
@@ -818,6 +874,14 @@ contract LaunchFactory is Ownable {
         recipient.sendValue(amount);
 
         emit ProtocolCreateFeesClaimed(recipient, amount);
+    }
+
+    function _unexpectedNativeBalance() internal view returns (uint256 amount) {
+        uint256 actualBalance = address(this).balance;
+        if (actualBalance <= accruedProtocolCreateFees) {
+            return 0;
+        }
+        return actualBalance - accruedProtocolCreateFees;
     }
 
     function _standardTaxModeFor(uint16 taxBps) internal pure returns (LaunchMode) {

@@ -4,7 +4,7 @@ import {
   createWalletClient,
   custom,
   decodeEventLog,
-  encodeAbiParameters,
+  encodeDeployData,
   encodeEventTopics,
   formatEther,
   formatUnits,
@@ -28,7 +28,7 @@ import {
   launchTokenWhitelistTaxedBytecode,
   v2PairAbi
 } from "./abi";
-import { activeProtocolProfile } from "./profiles";
+import { getActiveProtocolProfile } from "./profiles";
 import type {
   ActivityFeedItem,
   CandlePoint,
@@ -59,15 +59,32 @@ const launchModes = [
   "Taxed9314",
   "WhitelistTaxF314"
 ] as const;
-const indexerApiBase = import.meta.env.VITE_INDEXER_API_URL?.replace(/\/$/, "");
-const snapshotUrl = import.meta.env.VITE_INDEXER_SNAPSHOT_URL ?? "/data/indexer-snapshot.json";
 const zeroAddress = getAddress("0x0000000000000000000000000000000000000000");
 const standardVanitySuffix = "0314";
 const whitelistVanitySuffix = "b314";
 const whitelistTaxVanitySuffix = "f314";
+const whitelistMaxDelaySeconds = 3n * 24n * 60n * 60n;
+function getRuntimeProtocolProfile() {
+  return getActiveProtocolProfile();
+}
 
-const appChain = activeProtocolProfile.chain;
-const appRpcUrl = import.meta.env.VITE_RPC_URL || activeProtocolProfile.defaultRpcUrl;
+function getRuntimeChain() {
+  return getRuntimeProtocolProfile().chain;
+}
+
+function getRuntimeRpcUrl() {
+  return getRuntimeProtocolProfile().defaultRpcUrl;
+}
+
+function getRuntimeIndexerApiBaseUrl() {
+  return getRuntimeProtocolProfile().indexerApiBaseUrl.trim();
+}
+
+function getRuntimeSnapshotUrl() {
+  return getRuntimeProtocolProfile().indexerSnapshotUrl;
+}
+
+
 const v2FactoryAbi = [
   {
     type: "function",
@@ -78,6 +95,15 @@ const v2FactoryAbi = [
       { name: "tokenB", type: "address" }
     ],
     outputs: [{ name: "pair", type: "address" }]
+  }
+] as const;
+const erc20BalanceOfAbi = [
+  {
+    type: "function",
+    name: "balanceOf",
+    stateMutability: "view",
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }]
   }
 ] as const;
 const legacyFactoryAbi = [
@@ -118,6 +144,91 @@ const legacyFactoryAbi = [
 const launchCreatedEventAbi = launchFactoryAbi.find(
   (entry) => entry.type === "event" && entry.name === "LaunchCreated"
 ) as (typeof launchFactoryAbi)[number] | undefined;
+
+function buildReferenceApiEndpoints(path: string) {
+  const endpoints: string[] = [];
+
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname.toLowerCase();
+    if (host === "auto314.cc" || host.endsWith(".vercel.app")) {
+      endpoints.push(`${window.location.origin}${path}`);
+    }
+  }
+
+  const indexerApiBase = getRuntimeIndexerApiBaseUrl();
+  if (indexerApiBase) {
+    endpoints.push(`${indexerApiBase}${path}`);
+  }
+
+  return endpoints.filter((value, index, array) => array.indexOf(value) === index);
+}
+
+function normalizeReferenceServiceUrl(rawUrl: string) {
+  if (typeof window === "undefined") {
+    return rawUrl;
+  }
+
+  const host = window.location.hostname.toLowerCase();
+  const preferredOrigin =
+    host === "auto314.cc" || host.endsWith(".vercel.app")
+      ? window.location.origin
+      : null;
+
+  if (!preferredOrigin) {
+    return rawUrl;
+  }
+
+  try {
+    const parsed = new URL(rawUrl, preferredOrigin);
+    if (parsed.pathname.startsWith("/api/media/") || parsed.pathname.startsWith("/api/metadata/")) {
+      return `${preferredOrigin}${parsed.pathname}`;
+    }
+    return rawUrl;
+  } catch {
+    return rawUrl;
+  }
+}
+
+async function postWithFallback<T>(
+  endpoints: string[],
+  initFactory: () => RequestInit,
+  parse: (response: Response) => Promise<T>
+) {
+  if (endpoints.length === 0) {
+    throw new Error("Reference metadata service is not configured.");
+  }
+
+  let lastError: Error | null = null;
+
+  for (const endpoint of endpoints) {
+    try {
+      const response = await fetch(endpoint, initFactory());
+      if (!response.ok) {
+        let detail = "";
+        try {
+          const data = await response.json();
+          detail = typeof data?.error === "string" ? data.error : "";
+        } catch {
+          // noop
+        }
+        const error = new Error(detail || `Reference metadata upload failed with ${response.status}.`);
+        if ((response.status === 502 || response.status === 503 || response.status === 504) && endpoint !== endpoints.at(-1)) {
+          lastError = error;
+          continue;
+        }
+        throw error;
+      }
+      return await parse(response);
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      if (endpoint !== endpoints.at(-1)) {
+        continue;
+      }
+    }
+  }
+
+  throw lastError ?? new Error("Reference metadata upload failed.");
+}
 
 export function buildLaunchMetadata(params: {
   name: string;
@@ -164,34 +275,46 @@ export function downloadLaunchMetadata(metadata: LaunchMetadata, filename = "met
 }
 
 export async function uploadReferenceMetadata(metadata: LaunchMetadata) {
-  if (!indexerApiBase) {
-    throw new Error("Reference metadata service is not configured.");
-  }
-
-  const response = await fetch(`${indexerApiBase}/api/metadata`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json"
-    },
-    body: JSON.stringify(metadata)
-  });
-
-  if (!response.ok) {
-    let detail = "";
-    try {
-      const data = await response.json();
-      detail = typeof data?.error === "string" ? data.error : "";
-    } catch {
-      // noop
+  const endpoints = buildReferenceApiEndpoints("/api/metadata");
+  return postWithFallback(
+    endpoints,
+    () => ({
+      method: "POST",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify(metadata)
+    }),
+    async (response) => {
+      const data = (await response.json()) as { url?: string };
+      if (!data?.url) {
+        throw new Error("Reference metadata service did not return a metadata URL.");
+      }
+      return normalizeReferenceServiceUrl(data.url);
     }
-    throw new Error(detail || `Reference metadata upload failed with ${response.status}.`);
-  }
+  );
+}
 
-  const data = (await response.json()) as { url?: string };
-  if (!data?.url) {
-    throw new Error("Reference metadata service did not return a metadata URL.");
-  }
-  return data.url;
+export async function uploadReferenceImage(blob: Blob, filename: string) {
+  const endpoints = buildReferenceApiEndpoints("/api/upload-image");
+  return postWithFallback(
+    endpoints,
+    () => {
+      const form = new FormData();
+      form.set("file", blob, filename);
+      return {
+        method: "POST",
+        body: form
+      };
+    },
+    async (response) => {
+      const data = (await response.json()) as { url?: string };
+      if (!data?.url) {
+        throw new Error("Reference image service did not return an image URL.");
+      }
+      return normalizeReferenceServiceUrl(data.url);
+    }
+  );
 }
 
 type SnapshotActivityJson =
@@ -199,6 +322,7 @@ type SnapshotActivityJson =
       kind: "trade";
       token: `0x${string}`;
       marketAddress: `0x${string}`;
+      actor?: `0x${string}` | null;
       txHash: `0x${string}`;
       blockNumber: string;
       logIndex: number;
@@ -255,6 +379,8 @@ type SnapshotLaunchJson = {
   pairPreloadedQuote: string;
   pairClean: boolean;
   pairGraduationCompatible: boolean;
+  protocolFeeAccrued?: string;
+  creatorFeeAccrued?: string;
   protocolClaimable: string;
   creatorClaimable: string;
   taxConfig?: {
@@ -302,6 +428,8 @@ type ApiLaunchSummaryJson = {
   currentPriceQuotePerToken: string;
   graduationProgressBps: number;
   pairPreloadedQuote: string;
+  protocolFeeAccrued?: string;
+  creatorFeeAccrued?: string;
   taxConfig?: SnapshotLaunchJson["taxConfig"];
   whitelistStatus?: string;
   whitelistSnapshot?: SnapshotLaunchJson["whitelistSnapshot"];
@@ -343,7 +471,7 @@ type IndexerSnapshotJson = {
   launches: SnapshotLaunchJson[];
 };
 
-let cachedIndexerSnapshot: Promise<IndexerSnapshotJson | null> | null = null;
+const cachedIndexerSnapshots = new Map<string, Promise<IndexerSnapshotJson | null>>();
 const metadataResolutionCache = new Map<string, Promise<LaunchMetadata | null>>();
 
 function launchModeFromId(modeId: number): LaunchMode {
@@ -370,19 +498,75 @@ function deployerForFamily(snapshot: FactorySnapshot, family: LaunchCreationFami
 
 export function getPublicClient() {
   return createPublicClient({
-    chain: appChain,
-    transport: http(appRpcUrl)
+    chain: getRuntimeChain(),
+    transport: http(getRuntimeRpcUrl())
   });
 }
 
-async function readIndexerSnapshot(): Promise<IndexerSnapshotJson | null> {
-  if (cachedIndexerSnapshot) {
-    return cachedIndexerSnapshot;
+async function readPairStatusFromChain(
+  tokenAddress: `0x${string}`,
+  pair: `0x${string}`,
+  wrappedNative: `0x${string}`
+) {
+  if (pair === zeroAddress) {
+    return {
+      pairPreloadedQuote: 0n,
+      pairClean: false,
+      pairGraduationCompatible: false
+    };
   }
 
-  cachedIndexerSnapshot = readJson<IndexerSnapshotJson>(snapshotUrl);
+  const client = getPublicClient();
+  const [pairSupply, reserves, token0, token1, tokenBalanceAtPair, quoteBalanceAtPair] = (await client.multicall({
+    allowFailure: false,
+    contracts: [
+      { address: pair, abi: v2PairAbi, functionName: "totalSupply" },
+      { address: pair, abi: v2PairAbi, functionName: "getReserves" },
+      { address: pair, abi: v2PairAbi, functionName: "token0" },
+      { address: pair, abi: v2PairAbi, functionName: "token1" },
+      { address: tokenAddress, abi: erc20BalanceOfAbi, functionName: "balanceOf", args: [pair] },
+      { address: wrappedNative, abi: erc20BalanceOfAbi, functionName: "balanceOf", args: [pair] }
+    ]
+  })) as unknown as [
+    bigint,
+    readonly [bigint, bigint, number],
+    `0x${string}`,
+    `0x${string}`,
+    bigint,
+    bigint
+  ];
 
-  return cachedIndexerSnapshot;
+  const tokenReserve =
+    token0.toLowerCase() === tokenAddress.toLowerCase()
+      ? reserves[0]
+      : token1.toLowerCase() === tokenAddress.toLowerCase()
+        ? reserves[1]
+        : 0n;
+  const quoteReserve =
+    token0.toLowerCase() === wrappedNative.toLowerCase()
+      ? reserves[0]
+      : token1.toLowerCase() === wrappedNative.toLowerCase()
+        ? reserves[1]
+        : 0n;
+
+  return {
+    pairPreloadedQuote: quoteBalanceAtPair,
+    pairClean: pairSupply === 0n && tokenReserve === 0n && quoteReserve === 0n && tokenBalanceAtPair === 0n && quoteBalanceAtPair === 0n,
+    pairGraduationCompatible: pairSupply === 0n && tokenReserve === 0n && tokenBalanceAtPair === 0n
+  };
+}
+
+async function readIndexerSnapshot(): Promise<IndexerSnapshotJson | null> {
+  const snapshotUrl = getRuntimeSnapshotUrl();
+  const cached = cachedIndexerSnapshots.get(snapshotUrl);
+  if (cached) {
+    return cached;
+  }
+
+  const next = readJson<IndexerSnapshotJson>(snapshotUrl);
+  cachedIndexerSnapshots.set(snapshotUrl, next);
+
+  return next;
 }
 
 async function readJson<T>(url: string): Promise<T | null> {
@@ -518,6 +702,7 @@ async function readApiLaunchSummaries(
   graduationQuoteReserve: bigint,
   limit = 5
 ): Promise<TokenSnapshot[] | null> {
+  const indexerApiBase = getRuntimeIndexerApiBaseUrl();
   if (!indexerApiBase) return null;
 
   const response = await readJson<ApiLaunchesJson>(`${indexerApiBase}/launches?limit=${limit}`);
@@ -533,6 +718,7 @@ async function readApiLaunchWorkspace(tokenAddress: `0x${string}`): Promise<{
   recentActivity: ActivityFeedItem[];
   segmentedChart: SegmentedChartSnapshot;
 } | null> {
+  const indexerApiBase = getRuntimeIndexerApiBaseUrl();
   if (!indexerApiBase) return null;
 
   const [activityResponse, chartResponse] = await Promise.all([
@@ -567,9 +753,10 @@ export async function connectWallet() {
   }
 
   const [account] = await window.ethereum.request({ method: "eth_requestAccounts" });
+  const chain = getRuntimeChain();
   const chainId = await getWalletChainId();
   const walletClient = createWalletClient({
-    chain: appChain,
+    chain,
     transport: custom(window.ethereum)
   });
 
@@ -577,8 +764,8 @@ export async function connectWallet() {
     account: getAddress(account),
     walletClient,
     chainId,
-    expectedChainId: appChain.id,
-    chainMatches: chainId === appChain.id
+    expectedChainId: chain.id,
+    chainMatches: chainId === chain.id
   };
 }
 
@@ -588,7 +775,7 @@ function getWalletClientOrThrow() {
   }
 
   return createWalletClient({
-    chain: appChain,
+    chain: getRuntimeChain(),
     transport: custom(window.ethereum)
   });
 }
@@ -604,7 +791,7 @@ export async function getWalletChainId() {
 
 export async function isWalletOnExpectedChain() {
   const chainId = await getWalletChainId();
-  return chainId === appChain.id;
+  return chainId === getRuntimeChain().id;
 }
 
 export async function switchWalletToExpectedChain() {
@@ -612,7 +799,9 @@ export async function switchWalletToExpectedChain() {
     throw new Error("No injected wallet found");
   }
 
-  const targetChainHex = `0x${appChain.id.toString(16)}`;
+  const chain = getRuntimeChain();
+  const explorerUrl = chain.blockExplorers?.default?.url;
+  const targetChainHex = `0x${chain.id.toString(16)}`;
 
   try {
     await window.ethereum.request({
@@ -632,10 +821,10 @@ export async function switchWalletToExpectedChain() {
     params: [
       {
         chainId: targetChainHex,
-        chainName: activeProtocolProfile.chainLabel,
-        nativeCurrency: appChain.nativeCurrency,
-        rpcUrls: [appRpcUrl],
-        blockExplorerUrls: appChain.blockExplorers?.default?.url ? [appChain.blockExplorers.default.url] : undefined
+        chainName: getRuntimeProtocolProfile().chainLabel,
+        nativeCurrency: chain.nativeCurrency,
+        rpcUrls: [getRuntimeRpcUrl()],
+        blockExplorerUrls: explorerUrl ? [explorerUrl] : undefined
       }
     ]
   });
@@ -643,8 +832,9 @@ export async function switchWalletToExpectedChain() {
 
 async function ensureWalletOnExpectedChain() {
   const chainId = await getWalletChainId();
-  if (chainId !== appChain.id) {
-    throw new Error(`Wrong network. Switch wallet to ${activeProtocolProfile.chainLabel} (chainId ${appChain.id}).`);
+  const chain = getRuntimeChain();
+  if (chainId !== chain.id) {
+    throw new Error(`Wrong network. Switch wallet to ${getRuntimeProtocolProfile().chainLabel} (chainId ${chain.id}).`);
   }
 }
 
@@ -682,31 +872,25 @@ function buildLaunchInitCode(params: {
   protocolFeeRecipient: `0x${string}`;
   router: `0x${string}`;
   graduationQuoteReserve: bigint;
+  launchModeId: number;
 }): Hex {
-  const encodedArgs = encodeAbiParameters(
-    [
-      { type: "string" },
-      { type: "string" },
-      { type: "string" },
-      { type: "address" },
-      { type: "address" },
-      { type: "address" },
-      { type: "address" },
-      { type: "uint256" }
-    ],
-    [
-      params.name,
-      params.symbol,
-      params.metadataURI,
-      params.creator,
-      params.factory,
-      params.protocolFeeRecipient,
-      params.router,
-      params.graduationQuoteReserve
+  return encodeDeployData({
+    abi: launchTokenAbi,
+    bytecode: launchTokenBytecode,
+    args: [
+      {
+        name: params.name,
+        symbol: params.symbol,
+        metadataURI: params.metadataURI,
+        creator: params.creator,
+        factory: params.factory,
+        protocolFeeRecipient: params.protocolFeeRecipient,
+        router: params.router,
+        graduationQuoteReserve: params.graduationQuoteReserve,
+        launchModeId: params.launchModeId
+      }
     ]
-  );
-
-  return concatHex([launchTokenBytecode, encodedArgs]);
+  });
 }
 
 function buildWhitelistLaunchInitCode(params: {
@@ -722,39 +906,29 @@ function buildWhitelistLaunchInitCode(params: {
   whitelistSlotSize: bigint;
   whitelistOpensAt: bigint;
   whitelistAddresses: readonly `0x${string}`[];
+  launchModeId: number;
 }): Hex {
-  const encodedArgs = encodeAbiParameters(
-    [
-      { type: "string" },
-      { type: "string" },
-      { type: "string" },
-      { type: "address" },
-      { type: "address" },
-      { type: "address" },
-      { type: "address" },
-      { type: "uint256" },
-      { type: "uint256" },
-      { type: "uint256" },
-      { type: "uint256" },
-      { type: "address[]" }
-    ],
-    [
-      params.name,
-      params.symbol,
-      params.metadataURI,
-      params.creator,
-      params.factory,
-      params.protocolFeeRecipient,
-      params.router,
-      params.graduationQuoteReserve,
-      params.whitelistThreshold,
-      params.whitelistSlotSize,
-      params.whitelistOpensAt,
-      params.whitelistAddresses
+  return encodeDeployData({
+    abi: launchTokenWhitelistAbi,
+    bytecode: launchTokenWhitelistBytecode,
+    args: [
+      {
+        name: params.name,
+        symbol: params.symbol,
+        metadataURI: params.metadataURI,
+        creator: params.creator,
+        factory: params.factory,
+        protocolFeeRecipient: params.protocolFeeRecipient,
+        router: params.router,
+        graduationQuoteReserve: params.graduationQuoteReserve,
+        whitelistThreshold: params.whitelistThreshold,
+        whitelistSlotSize: params.whitelistSlotSize,
+        whitelistOpensAt: params.whitelistOpensAt,
+        whitelistAddresses: params.whitelistAddresses,
+        launchModeId: params.launchModeId
+      }
     ]
-  );
-
-  return concatHex([launchTokenWhitelistBytecode, encodedArgs]);
+  });
 }
 
 function buildTaxedLaunchInitCode(params: {
@@ -772,40 +946,27 @@ function buildTaxedLaunchInitCode(params: {
   treasuryShareBps: number;
   treasuryWallet: `0x${string}`;
 }): Hex {
-  const encodedArgs = encodeAbiParameters(
-    [
-      { type: "string" },
-      { type: "string" },
-      { type: "string" },
-      { type: "address" },
-      { type: "address" },
-      { type: "address" },
-      { type: "address" },
-      { type: "uint256" },
-      { type: "uint8" },
-      { type: "uint16" },
-      { type: "uint16" },
-      { type: "uint16" },
-      { type: "address" }
-    ],
-    [
-      params.name,
-      params.symbol,
-      params.metadataURI,
-      params.creator,
-      params.factory,
-      params.protocolFeeRecipient,
-      params.router,
-      params.graduationQuoteReserve,
-      params.launchModeId,
-      params.taxBps,
-      params.burnShareBps,
-      params.treasuryShareBps,
-      params.treasuryWallet
+  return encodeDeployData({
+    abi: launchTokenTaxedAbi,
+    bytecode: launchTokenTaxedBytecode,
+    args: [
+      {
+        name: params.name,
+        symbol: params.symbol,
+        metadataURI: params.metadataURI,
+        creator: params.creator,
+        factory: params.factory,
+        protocolFeeRecipient: params.protocolFeeRecipient,
+        router: params.router,
+        graduationQuoteReserve: params.graduationQuoteReserve,
+        launchModeId: params.launchModeId,
+        taxBps: params.taxBps,
+        burnShareBps: params.burnShareBps,
+        treasuryShareBps: params.treasuryShareBps,
+        treasuryWallet: params.treasuryWallet
+      }
     ]
-  );
-
-  return concatHex([launchTokenTaxedBytecode, encodedArgs]);
+  });
 }
 
 function buildWhitelistTaxedLaunchInitCode(params: {
@@ -827,48 +988,31 @@ function buildWhitelistTaxedLaunchInitCode(params: {
   treasuryShareBps: number;
   treasuryWallet: `0x${string}`;
 }): Hex {
-  const encodedArgs = encodeAbiParameters(
-    [
-      { type: "string" },
-      { type: "string" },
-      { type: "string" },
-      { type: "address" },
-      { type: "address" },
-      { type: "address" },
-      { type: "address" },
-      { type: "uint256" },
-      { type: "uint256" },
-      { type: "uint256" },
-      { type: "uint256" },
-      { type: "address[]" },
-      { type: "uint8" },
-      { type: "uint16" },
-      { type: "uint16" },
-      { type: "uint16" },
-      { type: "address" }
-    ],
-    [
-      params.name,
-      params.symbol,
-      params.metadataURI,
-      params.creator,
-      params.factory,
-      params.protocolFeeRecipient,
-      params.router,
-      params.graduationQuoteReserve,
-      params.whitelistThreshold,
-      params.whitelistSlotSize,
-      params.whitelistOpensAt,
-      params.whitelistAddresses,
-      params.launchModeId,
-      params.taxBps,
-      params.burnShareBps,
-      params.treasuryShareBps,
-      params.treasuryWallet
+  return encodeDeployData({
+    abi: launchTokenWhitelistTaxedAbi,
+    bytecode: launchTokenWhitelistTaxedBytecode,
+    args: [
+      {
+        name: params.name,
+        symbol: params.symbol,
+        metadataURI: params.metadataURI,
+        creator: params.creator,
+        factory: params.factory,
+        protocolFeeRecipient: params.protocolFeeRecipient,
+        router: params.router,
+        graduationQuoteReserve: params.graduationQuoteReserve,
+        whitelistThreshold: params.whitelistThreshold,
+        whitelistSlotSize: params.whitelistSlotSize,
+        whitelistOpensAt: params.whitelistOpensAt,
+        whitelistAddresses: params.whitelistAddresses,
+        launchModeId: params.launchModeId,
+        taxBps: params.taxBps,
+        burnShareBps: params.burnShareBps,
+        treasuryShareBps: params.treasuryShareBps,
+        treasuryWallet: params.treasuryWallet
+      }
     ]
-  );
-
-  return concatHex([launchTokenWhitelistTaxedBytecode, encodedArgs]);
+  });
 }
 
 async function findVanityLaunchSalt(params: {
@@ -916,7 +1060,8 @@ async function findVanityLaunchSalt(params: {
           whitelistThreshold: params.whitelistThreshold ?? 0n,
           whitelistSlotSize: params.whitelistSlotSize ?? 0n,
           whitelistOpensAt: params.whitelistOpensAt ?? 0n,
-          whitelistAddresses: params.whitelistAddresses ?? []
+          whitelistAddresses: params.whitelistAddresses ?? [],
+          launchModeId: 2
         })
       : params.mode === "taxed"
         ? buildTaxedLaunchInitCode({
@@ -962,7 +1107,8 @@ async function findVanityLaunchSalt(params: {
           factory: params.factory,
           protocolFeeRecipient: params.protocolFeeRecipient,
           router: params.router,
-          graduationQuoteReserve: params.graduationQuoteReserve
+          graduationQuoteReserve: params.graduationQuoteReserve,
+          launchModeId: 1
         });
   const initCodeHash = keccak256(initCode);
   const vanityDeployer = params.deployer ?? params.factory;
@@ -1118,9 +1264,8 @@ export async function readToken(address: string): Promise<TokenSnapshot> {
     currentPriceQuotePerToken,
     graduationProgressBps,
     remainingQuoteCapacity,
-    pairPreloadedQuote,
-    pairClean,
-    pairGraduationCompatible,
+    protocolFeeAccrued,
+    creatorFeeAccrued,
     protocolClaimable,
     creatorClaimable,
     creatorFeeSweepReady,
@@ -1156,17 +1301,8 @@ export async function readToken(address: string): Promise<TokenSnapshot> {
       abi: launchTokenAbi,
       functionName: "remainingQuoteCapacity"
     }),
-    client.readContract({
-      address: tokenAddress,
-      abi: launchTokenAbi,
-      functionName: "pairPreloadedQuote"
-    }),
-    client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "isPairClean" }),
-    client.readContract({
-      address: tokenAddress,
-      abi: launchTokenAbi,
-      functionName: "isPairGraduationCompatible"
-    }),
+    client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "protocolFeeVault" }),
+    client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "creatorFeeVault" }),
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "protocolClaimable" }),
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "creatorClaimable" }),
     client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "creatorFeeSweepReady" }),
@@ -1191,8 +1327,7 @@ export async function readToken(address: string): Promise<TokenSnapshot> {
     bigint,
     bigint,
     bigint,
-    boolean,
-    boolean,
+    bigint,
     bigint,
     bigint,
     boolean,
@@ -1200,6 +1335,12 @@ export async function readToken(address: string): Promise<TokenSnapshot> {
     bigint,
     readonly [bigint, bigint]
   ];
+
+  const {
+    pairPreloadedQuote,
+    pairClean,
+    pairGraduationCompatible
+  } = await readPairStatusFromChain(tokenAddress, pair, wrappedNative);
 
   let launchModeId = 1n;
   let launchSuffix = standardVanitySuffix;
@@ -1289,6 +1430,8 @@ export async function readToken(address: string): Promise<TokenSnapshot> {
     pairPreloadedQuote,
     pairClean,
     pairGraduationCompatible,
+    protocolFeeAccrued,
+    creatorFeeAccrued,
     protocolClaimable,
     creatorClaimable,
     creatorFeeSweepReady,
@@ -1550,6 +1693,16 @@ export async function createLaunch(
   const burnShareBps = params.burnShareBps ?? 5000;
   const treasuryShareBps = params.treasuryShareBps ?? 5000;
   const treasuryWallet = params.treasuryWallet ?? zeroAddress;
+  const nowUnix = BigInt(Math.floor(Date.now() / 1000));
+
+  if ((family === "whitelist" || family === "whitelistTaxed") && whitelistOpensAt > 0n) {
+    if (whitelistOpensAt < nowUnix) {
+      throw new Error("Whitelist opening time must be in the future.");
+    }
+    if (whitelistOpensAt > nowUnix + whitelistMaxDelaySeconds) {
+      throw new Error("Whitelist opening time must be within 3 days of creation.");
+    }
+  }
 
   const vanity = await findVanityLaunchSalt({
     mode: family,
@@ -1584,7 +1737,7 @@ export async function createLaunch(
   if (family === "standard") {
     hash = await walletClient.writeContract({
       account,
-      chain: appChain,
+      chain: getRuntimeChain(),
       address: normalizedFactoryAddress,
       abi: launchFactoryAbi,
       functionName: atomicQuoteIn > 0n ? "createLaunchAndBuyWithSalt" : "createLaunchWithSalt",
@@ -1600,7 +1753,7 @@ export async function createLaunch(
     const delayedOpen = whitelistOpensAt > 0n;
     hash = await walletClient.writeContract({
       account,
-      chain: appChain,
+      chain: getRuntimeChain(),
       address: normalizedFactoryAddress,
       abi: launchFactoryAbi,
       functionName: delayedOpen ? "createWhitelistLaunchWithSalt" : "createWhitelistLaunchAndCommitWithSalt",
@@ -1619,7 +1772,7 @@ export async function createLaunch(
   } else if (family === "taxed") {
     hash = await walletClient.writeContract({
       account,
-      chain: appChain,
+      chain: getRuntimeChain(),
       address: normalizedFactoryAddress,
       abi: launchFactoryAbi,
       functionName: atomicQuoteIn > 0n ? "createTaxLaunchAndBuyWithSalt" : "createTaxLaunchWithSalt",
@@ -1673,7 +1826,7 @@ export async function createLaunch(
     });
     hash = await walletClient.writeContract({
       account,
-      chain: appChain,
+      chain: getRuntimeChain(),
       address: normalizedFactoryAddress,
       abi: launchFactoryAbi,
       functionName: delayedOpen ? "createWhitelistTaxLaunchWithSalt" : "createWhitelistTaxLaunchAndCommitWithSalt",
@@ -1741,7 +1894,7 @@ export async function executeBuy(address: string, grossQuoteIn: string, minToken
 
   const hash = await walletClient.writeContract({
     account,
-    chain: appChain,
+    chain: getRuntimeChain(),
     address: getAddress(address),
     abi: launchTokenAbi,
     functionName: "buy",
@@ -1760,7 +1913,7 @@ export async function executeWhitelistCommit(address: string, slotSize: bigint) 
 
   const hash = await walletClient.writeContract({
     account,
-    chain: appChain,
+    chain: getRuntimeChain(),
     address: getAddress(address),
     abi: launchTokenWhitelistAbi,
     functionName: "commitWhitelistSeat",
@@ -1778,7 +1931,7 @@ export async function claimWhitelistAllocation(address: string) {
 
   const hash = await walletClient.writeContract({
     account,
-    chain: appChain,
+    chain: getRuntimeChain(),
     address: getAddress(address),
     abi: launchTokenWhitelistAbi,
     functionName: "claimWhitelistAllocation"
@@ -1795,7 +1948,7 @@ export async function claimWhitelistRefund(address: string) {
 
   const hash = await walletClient.writeContract({
     account,
-    chain: appChain,
+    chain: getRuntimeChain(),
     address: getAddress(address),
     abi: launchTokenWhitelistAbi,
     functionName: "claimWhitelistRefund"
@@ -1812,7 +1965,7 @@ export async function executeSell(address: string, tokenAmount: string, minQuote
 
   const hash = await walletClient.writeContract({
     account,
-    chain: appChain,
+    chain: getRuntimeChain(),
     address: getAddress(address),
     abi: launchTokenAbi,
     functionName: "sell",
@@ -1830,7 +1983,7 @@ export async function claimFactoryProtocolFees(factoryAddress: string) {
 
   const hash = await walletClient.writeContract({
     account,
-    chain: appChain,
+    chain: getRuntimeChain(),
     address: getAddress(factoryAddress),
     abi: launchFactoryAbi,
     functionName: "claimProtocolCreateFees"
@@ -1847,7 +2000,7 @@ export async function claimTokenProtocolFees(tokenAddress: string) {
 
   const hash = await walletClient.writeContract({
     account,
-    chain: appChain,
+    chain: getRuntimeChain(),
     address: getAddress(tokenAddress),
     abi: launchTokenAbi,
     functionName: "claimProtocolFees"
@@ -1864,7 +2017,7 @@ export async function claimCreatorFees(tokenAddress: string) {
 
   const hash = await walletClient.writeContract({
     account,
-    chain: appChain,
+    chain: getRuntimeChain(),
     address: getAddress(tokenAddress),
     abi: launchTokenAbi,
     functionName: "claimCreatorFees"
@@ -1881,7 +2034,7 @@ export async function sweepAbandonedCreatorFees(tokenAddress: string) {
 
   const hash = await walletClient.writeContract({
     account,
-    chain: appChain,
+    chain: getRuntimeChain(),
     address: getAddress(tokenAddress),
     abi: launchTokenAbi,
     functionName: "sweepAbandonedCreatorFees"
@@ -2028,6 +2181,8 @@ function convertSnapshotLaunch(launch: SnapshotLaunchJson): TokenSnapshot {
     pairPreloadedQuote: BigInt(launch.pairPreloadedQuote),
     pairClean: launch.pairClean,
     pairGraduationCompatible: launch.pairGraduationCompatible,
+    protocolFeeAccrued: BigInt(launch.protocolFeeAccrued ?? launch.protocolClaimable ?? "0"),
+    creatorFeeAccrued: BigInt(launch.creatorFeeAccrued ?? launch.creatorClaimable ?? "0"),
     protocolClaimable: BigInt(launch.protocolClaimable),
     creatorClaimable: BigInt(launch.creatorClaimable),
     creatorFeeSweepReady: false,
@@ -2079,6 +2234,8 @@ function convertApiLaunchSummary(launch: ApiLaunchSummaryJson, graduationQuoteRe
     pairPreloadedQuote: BigInt(launch.pairPreloadedQuote),
     pairClean: false,
     pairGraduationCompatible: false,
+    protocolFeeAccrued: BigInt(launch.protocolFeeAccrued ?? "0"),
+    creatorFeeAccrued: BigInt(launch.creatorFeeAccrued ?? "0"),
     protocolClaimable: 0n,
     creatorClaimable: 0n,
     creatorFeeSweepReady: false,
@@ -2134,6 +2291,7 @@ function convertSnapshotActivity(activity: SnapshotActivityJson): ActivityFeedIt
     phase: activity.phase,
     side: activity.side,
     marketAddress: getAddress(activity.marketAddress),
+    actor: activity.actor ? getAddress(activity.actor) : null,
     netQuote: BigInt(activity.netQuote),
     tokenAmount: BigInt(activity.tokenAmount),
     priceQuotePerToken: tradePrice(BigInt(activity.netQuote), BigInt(activity.tokenAmount))
@@ -2396,6 +2554,7 @@ export async function fetchUnifiedActivity(tokenAddress: string, lookbackBlocks 
 
       if (decoded.eventName === "BuyExecuted") {
         const args = decoded.args as unknown as {
+          buyer: `0x${string}`;
           netQuoteIn: bigint;
           tokenOut: bigint;
         };
@@ -2411,6 +2570,7 @@ export async function fetchUnifiedActivity(tokenAddress: string, lookbackBlocks 
           phase: "bonding",
           side: "buy",
           marketAddress: token,
+          actor: getAddress(args.buyer),
           netQuote: args.netQuoteIn,
           tokenAmount: args.tokenOut,
           priceQuotePerToken: tradePrice(args.netQuoteIn, args.tokenOut)
@@ -2420,6 +2580,7 @@ export async function fetchUnifiedActivity(tokenAddress: string, lookbackBlocks 
 
       if (decoded.eventName === "SellExecuted") {
         const args = decoded.args as unknown as {
+          seller: `0x${string}`;
           netQuoteOut: bigint;
           tokenIn: bigint;
         };
@@ -2435,6 +2596,7 @@ export async function fetchUnifiedActivity(tokenAddress: string, lookbackBlocks 
           phase: "bonding",
           side: "sell",
           marketAddress: token,
+          actor: getAddress(args.seller),
           netQuote: args.netQuoteOut,
           tokenAmount: args.tokenIn,
           priceQuotePerToken: tradePrice(args.netQuoteOut, args.tokenIn)
@@ -2541,6 +2703,7 @@ export async function fetchUnifiedActivity(tokenAddress: string, lookbackBlocks 
           phase: "dexOnly",
           side,
           marketAddress: pairAddress,
+          actor: null,
           netQuote,
           tokenAmount,
           priceQuotePerToken: tradePrice(netQuote, tokenAmount)
@@ -2622,7 +2785,7 @@ async function normalizeTradeLogs(client: ReturnType<typeof getPublicClient>, lo
 export function formatNative(value: bigint) {
   return `${Number(formatEther(value)).toLocaleString(undefined, {
     maximumFractionDigits: 6
-  })} ${activeProtocolProfile.nativeSymbol}`;
+  })} ${getRuntimeProtocolProfile().nativeSymbol}`;
 }
 
 export function formatToken(value: bigint, decimals = 18) {
@@ -2639,6 +2802,8 @@ declare global {
   interface Window {
     ethereum?: {
       request: (args: { method: string; params?: unknown[] }) => Promise<any>;
+      on?: (event: string, listener: (...args: any[]) => void) => void;
+      removeListener?: (event: string, listener: (...args: any[]) => void) => void;
     };
   }
 }

@@ -6,11 +6,11 @@ contract LaunchCreate2Deployer {
     error Unauthorized();
     error AlreadyConfigured();
 
-    address public immutable owner;
+    address payable public immutable owner;
     address public factory;
 
     constructor() {
-        owner = msg.sender;
+        owner = payable(msg.sender);
     }
 
     function setFactory(address factory_) external {
@@ -37,5 +37,15 @@ contract LaunchCreate2Deployer {
                 )
             )
         );
+    }
+
+    function recoverUnexpectedNative() external {
+        uint256 amount = address(this).balance;
+        bool ok;
+        address recipient = owner;
+        assembly ("memory-safe") {
+            ok := call(gas(), recipient, amount, 0, 0, 0, 0)
+        }
+        if (!ok) revert Unauthorized();
     }
 }

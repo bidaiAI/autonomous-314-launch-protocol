@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent } from "react";
 import { formatUnits, getAddress, parseEther } from "viem";
 import { getLocale, onLocaleChange, t, ta, tf, toggleLocale, type Locale } from "./i18n";
 import {
@@ -9,7 +9,6 @@ import {
   claimWhitelistAllocation,
   claimWhitelistRefund,
   claimFactoryProtocolFees,
-  claimTokenProtocolFees,
   connectWallet,
   createLaunch,
   downloadLaunchMetadata,
@@ -34,22 +33,27 @@ import {
   readWhitelistAccountState,
   switchWalletToExpectedChain,
   sweepAbandonedCreatorFees,
+  uploadReferenceImage,
   uploadReferenceMetadata,
   verifyOfficialLaunch
 } from "./protocol";
 import type { ActivityFeedItem, CandlePoint, FactorySnapshot, LaunchMetadata, ProtocolVerification, TokenSnapshot } from "./types";
 import type { LaunchCreationFamily } from "./types";
 import { BondingCandlestickChart } from "./charts";
-import { activeProtocolProfile } from "./profiles";
+import {
+  getActiveProtocolProfile,
+  getSelectableProtocolProfiles,
+  resolveProtocolProfile,
+  setActiveProtocolChainId,
+  useActiveProtocolProfile
+} from "./profiles";
 
 const REPO_URL = "https://github.com/bidaiAI/autonomous-314-launch-protocol";
 const OFFICIAL_X_URL = "https://x.com/auto314cc";
 const OFFICIAL_CHANNEL_URL = "https://t.me/Autonomous314";
 const ALERTS_CHANNEL_URL = "https://t.me/auto314_Alert";
-const BRAND_MARK_URL = "/brand/logo-mark.svg";
-const BRAND_FULL_URL = "/brand/logo-full.svg";
-const OFFICIAL_FACTORY_ADDRESS = (import.meta.env.VITE_FACTORY_ADDRESS ?? "").trim();
-const DEX_SCREENER_CHAIN_ID = "bsc";
+const BRAND_MARK_URL = "/brand/logo-mark.png?v=20260408cube3";
+const BRAND_FULL_URL = "/brand/logo-full.png?v=20260408cube3";
 const TOKEN_DECIMALS = 10n ** 18n;
 const TOTAL_SUPPLY_UNITS = 1_000_000_000n * TOKEN_DECIMALS;
 const LP_TOKEN_RESERVE_UNITS = 200_000_000n * TOKEN_DECIMALS;
@@ -75,7 +79,7 @@ function useLocale(): Locale {
 
 type BuyPreview = Awaited<ReturnType<typeof previewBuy>>;
 type SellPreview = Awaited<ReturnType<typeof previewSell>>;
-type AppRoute = { page: "home" } | { page: "create" } | { page: "launch"; token: string } | { page: "creator" };
+type AppRoute = { page: "home" } | { page: "create" } | { page: "launch"; chainId: number; token: string } | { page: "creator" };
 type ActivityFilter = "all" | "buys" | "sells" | "system";
 type DexPairEnrichment = {
   url: string | null;
@@ -90,40 +94,97 @@ type DexPairEnrichment = {
 type MarketSort = "recent" | "marketCap" | "change" | "progress" | "countdown";
 type MarketModeFilter = "all" | "standard" | "whitelist" | "taxed" | "whitelistTax";
 type MarketLimit = "10" | "20" | "all";
+type LocalImageAssessment = {
+  width: number;
+  height: number;
+  bytes: number;
+  warnings: string[];
+};
+type LocalImageUploadState = "idle" | "loading" | "ready" | "error";
+type CreateImageMode = "none" | "url" | "file";
+
+const SUPPORTED_LOCAL_IMAGE_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+  "image/svg+xml"
+]);
+const SUPPORTED_LOCAL_IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg"]);
+const HARD_MAX_LOCAL_IMAGE_BYTES = 5 * 1024 * 1024;
+const SOFT_REFERENCE_IMAGE_BYTES = 1 * 1024 * 1024;
+const MIN_ACCEPTABLE_IMAGE_SIDE_PX = 256;
+const USABLE_IMAGE_SIDE_PX = 400;
+const RECOMMENDED_MIN_IMAGE_SIDE_PX = 1000;
+const LOCAL_CROP_PREVIEW_SIZE_PX = 280;
 
 function parseRoute(pathname: string): AppRoute {
   if (pathname === "/create") return { page: "create" };
   if (pathname === "/creator") return { page: "creator" };
+  const chainLaunchMatch = pathname.match(/^\/c\/(\d+)\/launch\/(0x[a-fA-F0-9]{40})$/);
+  if (chainLaunchMatch) return { page: "launch", chainId: Number(chainLaunchMatch[1]), token: chainLaunchMatch[2] };
   const launchMatch = pathname.match(/^\/launch\/(0x[a-fA-F0-9]{40})$/);
-  if (launchMatch) return { page: "launch", token: launchMatch[1] };
+  if (launchMatch) return { page: "launch", chainId: getActiveProtocolProfile().chainId, token: launchMatch[1] };
   return { page: "home" };
 }
 
 function routeHref(route: AppRoute) {
   if (route.page === "create") return "/create";
   if (route.page === "creator") return "/creator";
-  if (route.page === "launch") return `/launch/${route.token}`;
+  if (route.page === "launch") return `/c/${route.chainId}/launch/${route.token}`;
   return "/";
 }
 
+function chainSwitchLabel(chainId: number) {
+  if (chainId === 56) return "BSC";
+  if (chainId === 8453) return "Base";
+  if (chainId === 1) return "ETH";
+  return chainBadgeLabel(chainId);
+}
+
+function ChainSwitchIcon({ chainId }: { chainId: number }) {
+  if (chainId === 56) {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path
+          fill="currentColor"
+          d="M12 2.2 7.7 6.5l1.8 1.8L12 5.8l2.5 2.5 1.8-1.8L12 2.2Zm-6 6L3.5 10.7l1.8 1.8L7.8 10 6 8.2Zm12 0L16.2 10l2.5 2.5 1.8-1.8L18 8.2ZM12 8.2 9.5 10.7 12 13.2l2.5-2.5L12 8.2Zm-4.2 4.2L6 14.2l6 6 6-6-1.8-1.8-4.2 4.2-4.2-4.2Z"
+        />
+      </svg>
+    );
+  }
+
+  if (chainId === 8453) {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path
+          fill="currentColor"
+          d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm0 3.2a5.8 5.8 0 1 1 0 11.6 5.8 5.8 0 0 1 0-11.6Zm0 2.8a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z"
+        />
+      </svg>
+    );
+  }
+
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="8" fill="currentColor" />
+    </svg>
+  );
+}
+
+function explorerBaseUrl() {
+  const profile = getActiveProtocolProfile();
+  return profile.chain.blockExplorers?.default.url?.replace(/\/$/, "") ?? "";
+}
+
 function explorerAddressUrl(address: string) {
-  if (activeProtocolProfile.chainId === 56) {
-    return `https://bscscan.com/address/${address}`;
-  }
-  if (activeProtocolProfile.chainId === 1) {
-    return `https://etherscan.io/address/${address}`;
-  }
-  return "";
+  const baseUrl = explorerBaseUrl();
+  return baseUrl ? `${baseUrl}/address/${address}` : "";
 }
 
 function explorerTxUrl(txHash: string) {
-  if (activeProtocolProfile.chainId === 56) {
-    return `https://bscscan.com/tx/${txHash}`;
-  }
-  if (activeProtocolProfile.chainId === 1) {
-    return `https://etherscan.io/tx/${txHash}`;
-  }
-  return "";
+  const baseUrl = explorerBaseUrl();
+  return baseUrl ? `${baseUrl}/tx/${txHash}` : "";
 }
 
 function shortAddress(value: string) {
@@ -187,6 +248,48 @@ function compactNumber(value: number) {
     }
   }
   return value.toFixed(value >= 100 ? 0 : value >= 10 ? 1 : 2).replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1");
+}
+
+function formatFileSize(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  if (bytes >= 1024 * 1024) {
+    return `${(bytes / (1024 * 1024)).toFixed(bytes >= 10 * 1024 * 1024 ? 0 : 2).replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1")} MB`;
+  }
+  if (bytes >= 1024) {
+    return `${(bytes / 1024).toFixed(bytes >= 10 * 1024 ? 0 : 1).replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1")} KB`;
+  }
+  return `${bytes} B`;
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function isSupportedLocalImageFile(file: File) {
+  if (SUPPORTED_LOCAL_IMAGE_TYPES.has(file.type)) return true;
+  const fileName = typeof file.name === "string" ? file.name : "";
+  const extensionMatch = fileName.toLowerCase().match(/\.[a-z0-9]+$/);
+  return extensionMatch ? SUPPORTED_LOCAL_IMAGE_EXTENSIONS.has(extensionMatch[0]) : false;
+}
+
+function computeSquareCropGeometry(
+  sourceWidth: number,
+  sourceHeight: number,
+  targetSize: number,
+  zoom: number,
+  panX: number,
+  panY: number
+) {
+  const safeZoom = Math.max(1, zoom);
+  const coverScale = Math.max(targetSize / sourceWidth, targetSize / sourceHeight);
+  const scale = coverScale * safeZoom;
+  const width = sourceWidth * scale;
+  const height = sourceHeight * scale;
+  const overflowX = Math.max(0, width - targetSize);
+  const overflowY = Math.max(0, height - targetSize);
+  const x = (targetSize - width) / 2 - panX * (overflowX / 2);
+  const y = (targetSize - height) / 2 - panY * (overflowY / 2);
+  return { width, height, x, y };
 }
 
 function formatUsdCompact(value: number | null) {
@@ -275,8 +378,9 @@ function parseApiNumber(value: unknown) {
 
 function formatNativeCompact(value: bigint) {
   const numeric = Number(value) / 1e18;
-  if (!Number.isFinite(numeric) || numeric <= 0) return `0 ${activeProtocolProfile.nativeSymbol}`;
-  return `${compactNumber(numeric)} ${activeProtocolProfile.nativeSymbol}`;
+  const profile = getActiveProtocolProfile();
+  if (!Number.isFinite(numeric) || numeric <= 0) return `0 ${profile.nativeSymbol}`;
+  return `${compactNumber(numeric)} ${profile.nativeSymbol}`;
 }
 
 function ceilDiv(value: bigint, divisor: bigint) {
@@ -347,14 +451,15 @@ function launchSinceStartChangePct(launch: TokenSnapshot) {
 
 function formatQuotePrice(value: bigint) {
   const numeric = Number(value) / 1e18;
-  if (!Number.isFinite(numeric) || numeric <= 0) return `0 ${activeProtocolProfile.nativeSymbol}`;
+  const profile = getActiveProtocolProfile();
+  if (!Number.isFinite(numeric) || numeric <= 0) return `0 ${profile.nativeSymbol}`;
   if (numeric >= 1) {
-    return `${numeric.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${activeProtocolProfile.nativeSymbol}`;
+    return `${numeric.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${profile.nativeSymbol}`;
   }
   if (numeric >= 0.000001) {
-    return `${numeric.toLocaleString(undefined, { maximumSignificantDigits: 6 })} ${activeProtocolProfile.nativeSymbol}`;
+    return `${numeric.toLocaleString(undefined, { maximumSignificantDigits: 6 })} ${profile.nativeSymbol}`;
   }
-  return `${numeric.toExponential(4)} ${activeProtocolProfile.nativeSymbol}`;
+  return `${numeric.toExponential(4)} ${profile.nativeSymbol}`;
 }
 
 function activityTone(activity: ActivityFeedItem) {
@@ -404,6 +509,10 @@ function resolvePreviewImage(image: string) {
     return image;
   }
   return "";
+}
+
+function resolveLaunchImageOrFallback(image?: string | null) {
+  return resolvePreviewImage(image ?? "") || BRAND_MARK_URL;
 }
 
 function resolveExternalHref(value?: string) {
@@ -503,11 +612,42 @@ function marketModeFilterMatch(launch: TokenSnapshot, filter: MarketModeFilter) 
   return true;
 }
 
+function chainBadgeLabel(chainId: number) {
+  if (chainId === 56) return "BNB";
+  if (chainId === 8453) return "Base";
+  if (chainId === 1) return "ETH";
+  return `Chain ${chainId}`;
+}
+
+function dexScreenerChainIdFor(chainId: number) {
+  if (chainId === 8453) return "base";
+  if (chainId === 56) return "bsc";
+  if (chainId === 1) return "ethereum";
+  return "bsc";
+}
+
+function coingeckoAssetIdFor(chainId: number) {
+  if (chainId === 8453 || chainId === 1) return "ethereum";
+  if (chainId === 56) return "binancecoin";
+  return null;
+}
+
+function nativeUsdPriceUrl(assetId: string) {
+  const params = new URLSearchParams({
+    ids: assetId,
+    vs_currencies: "usd"
+  });
+  return `/api/coingecko/api/v3/simple/price?${params.toString()}`;
+}
+
 export function App() {
   const [route, setRoute] = useState<AppRoute>(() => parseRoute(window.location.pathname));
   const [wallet, setWallet] = useState<string>("");
-  const [factoryAddress, setFactoryAddress] = useState(OFFICIAL_FACTORY_ADDRESS);
-  const [factoryInputMode, setFactoryInputMode] = useState<"official" | "custom">(OFFICIAL_FACTORY_ADDRESS ? "official" : "custom");
+  const activeProtocolProfile = useActiveProtocolProfile();
+  const [factoryAddress, setFactoryAddress] = useState(activeProtocolProfile.officialFactoryAddress);
+  const [factoryInputMode, setFactoryInputMode] = useState<"official" | "custom">(
+    activeProtocolProfile.officialFactoryAddress ? "official" : "custom"
+  );
   const [showFactorySettings, setShowFactorySettings] = useState(false);
   const [customFactoryInput, setCustomFactoryInput] = useState("");
   const [tokenAddress, setTokenAddress] = useState(import.meta.env.VITE_TOKEN_ADDRESS ?? "");
@@ -516,18 +656,46 @@ export function App() {
   const [createMode, setCreateMode] = useState<LaunchCreationFamily>("standard");
   const [createDescription, setCreateDescription] = useState("");
   const [createImageUrl, setCreateImageUrl] = useState("");
+  const [createImageMode, setCreateImageMode] = useState<CreateImageMode>("none");
+  const [createImageSource, setCreateImageSource] = useState("");
   const [createImagePreview, setCreateImagePreview] = useState("");
   const [createImageFileName, setCreateImageFileName] = useState("");
+  const [createImageAssessment, setCreateImageAssessment] = useState<LocalImageAssessment | null>(null);
+  const [createImageUploadState, setCreateImageUploadState] = useState<LocalImageUploadState>("idle");
+  const [createImageInlineError, setCreateImageInlineError] = useState("");
+  const [createMetadataInlineNote, setCreateMetadataInlineNote] = useState("");
+  const [uploadedImageUrl, setUploadedImageUrl] = useState("");
+  const [uploadedMetadataUrl, setUploadedMetadataUrl] = useState("");
+  const [createImageCropZoom, setCreateImageCropZoom] = useState(1);
+  const [createImageCropX, setCreateImageCropX] = useState(0);
+  const [createImageCropY, setCreateImageCropY] = useState(0);
+  const [createImageCropMimeType, setCreateImageCropMimeType] = useState<"image/png" | "image/jpeg">("image/png");
   const [createWebsite, setCreateWebsite] = useState("");
   const [createTwitter, setCreateTwitter] = useState("");
   const [createTelegram, setCreateTelegram] = useState("");
   const [createDiscord, setCreateDiscord] = useState("");
-  const [showSocialEditor, setShowSocialEditor] = useState(false);
+  const [showSocialEditor, setShowSocialEditor] = useState(true);
   const [createFieldHelp, setCreateFieldHelp] = useState<null | string>(null);
+  const [showImageCropEditor, setShowImageCropEditor] = useState(false);
+  const [showMetadataAdvanced, setShowMetadataAdvanced] = useState(false);
 
   const toggleCreateFieldHelp = (key: string) => {
     setCreateFieldHelp((current) => (current === key ? null : key));
   };
+
+  function handleCreateImageUrlChange(value: string) {
+    setCreateImageUrl(value);
+    if (value.trim()) {
+      setUploadedImageUrl("");
+      setUploadedMetadataUrl("");
+    }
+    const trimmed = value.trim();
+    if (trimmed) {
+      setCreateImageMode("url");
+      return;
+    }
+    setCreateImageMode(createImageFileName ? "file" : "none");
+  }
 
   const renderFieldLabel = (label: string, helpKey?: string, optional = false) => (
     <span className="label-row">
@@ -565,8 +733,8 @@ export function App() {
   const [createMetadataUri, setCreateMetadataUri] = useState("");
   const [createAtomicBuyEnabled, setCreateAtomicBuyEnabled] = useState(true);
   const [createAtomicBuyAmount, setCreateAtomicBuyAmount] = useState("1");
-  const [createWhitelistThreshold, setCreateWhitelistThreshold] = useState("4");
-  const [createWhitelistSlotSize, setCreateWhitelistSlotSize] = useState("0.2");
+  const [createWhitelistThreshold, setCreateWhitelistThreshold] = useState(() => activeProtocolProfile.defaultWhitelistThreshold);
+  const [createWhitelistSlotSize, setCreateWhitelistSlotSize] = useState(() => activeProtocolProfile.defaultWhitelistSlotSize);
   const [createWhitelistScheduleEnabled, setCreateWhitelistScheduleEnabled] = useState(false);
   const [createWhitelistOpensAt, setCreateWhitelistOpensAt] = useState("");
   const [createWhitelistAddresses, setCreateWhitelistAddresses] = useState("");
@@ -605,7 +773,32 @@ export function App() {
   const [status, setStatus] = useState<string>(() => t("ready"));
   const [showCreateConfirm, setShowCreateConfirm] = useState(false);
   const [copiedLaunchAddress, setCopiedLaunchAddress] = useState<string | null>(null);
+  const [showImageGuidelines, setShowImageGuidelines] = useState(false);
+  const cropFrameRef = useRef<HTMLDivElement | null>(null);
+  const createImageFileInputRef = useRef<HTMLInputElement | null>(null);
+  const cropDragRef = useRef<{ pointerId: number; lastX: number; lastY: number } | null>(null);
   const configuredSocialCount = [createWebsite, createTwitter, createTelegram, createDiscord].filter((value) => value.trim()).length;
+
+  const resetCreateImageDraft = useCallback(() => {
+    setCreateImageSource("");
+    setCreateImagePreview("");
+    setCreateImageFileName("");
+    setCreateImageAssessment(null);
+    setCreateImageUploadState("idle");
+    setCreateImageInlineError("");
+    setCreateMetadataInlineNote("");
+    setUploadedImageUrl("");
+    setUploadedMetadataUrl("");
+    setShowImageCropEditor(false);
+    setCreateImageCropZoom(1);
+    setCreateImageCropX(0);
+    setCreateImageCropY(0);
+    setCreateImageCropMimeType("image/png");
+    setCreateImageMode(createImageUrl.trim() ? "url" : "none");
+    if (createImageFileInputRef.current) {
+      createImageFileInputRef.current.value = "";
+    }
+  }, [createImageUrl]);
 
   async function handleCopyText(value: string, label: string) {
     try {
@@ -649,6 +842,50 @@ export function App() {
     latestTokenAddressRef.current = tokenAddress;
   }, [tokenAddress]);
 
+  useEffect(() => {
+    if (route.page !== "create") return;
+    resetCreateImageDraft();
+  }, [resetCreateImageDraft, route.page]);
+
+  useEffect(() => {
+    const handlePageShow = (event: PageTransitionEvent) => {
+      if (!event.persisted) return;
+      if (parseRoute(window.location.pathname).page !== "create") return;
+      resetCreateImageDraft();
+    };
+
+    window.addEventListener("pageshow", handlePageShow);
+    return () => window.removeEventListener("pageshow", handlePageShow);
+  }, [resetCreateImageDraft]);
+
+  const previousChainIdRef = useRef(activeProtocolProfile.chainId);
+
+  useEffect(() => {
+    if (previousChainIdRef.current === activeProtocolProfile.chainId) {
+      return;
+    }
+    previousChainIdRef.current = activeProtocolProfile.chainId;
+
+    setFactoryInputMode(activeProtocolProfile.officialFactoryAddress ? "official" : "custom");
+    setFactoryAddress(activeProtocolProfile.officialFactoryAddress);
+    setCustomFactoryInput("");
+    setShowFactorySettings(false);
+    setCreateWhitelistThreshold(activeProtocolProfile.defaultWhitelistThreshold);
+    setCreateWhitelistSlotSize(activeProtocolProfile.defaultWhitelistSlotSize);
+    setTokenAddress("");
+    setTokenSnapshot(null);
+    setTokenVerification(null);
+    setRecentActivity([]);
+    setBondingCandles([]);
+    setGraduationTimestampMs(null);
+    setDexPairEnrichment(null);
+    setWhitelistAccountState(null);
+    setMarketQuery("");
+    setMarketSort("recent");
+    setMarketModeFilter("all");
+    setMarketLimit("20");
+  }, [activeProtocolProfile.chainId, activeProtocolProfile.defaultWhitelistSlotSize, activeProtocolProfile.defaultWhitelistThreshold, activeProtocolProfile.officialFactoryAddress]);
+
   const isBonding = tokenSnapshot?.state === "Bonding314";
   const isMigrating = tokenSnapshot?.state === "Migrating";
   const isDexOnly = tokenSnapshot?.state === "DEXOnly";
@@ -665,8 +902,6 @@ export function App() {
     : [];
   const connectedAsProtocolRecipient =
     wallet && activeFactorySnapshot ? wallet.toLowerCase() === activeFactorySnapshot.protocolFeeRecipient.toLowerCase() : false;
-  const connectedAsTokenProtocolRecipient =
-    wallet && tokenSnapshot ? wallet.toLowerCase() === tokenSnapshot.protocolFeeRecipient.toLowerCase() : false;
   const creatorFeeSweepReady = tokenSnapshot?.creatorFeeSweepReady ?? false;
   const tokenOfficial = tokenVerification?.status === "official";
   const canWriteVerifiedLaunch = tokenVerification?.status === "official";
@@ -870,18 +1105,46 @@ export function App() {
       ? tokenSnapshot.graduationQuoteReserve
       : activeFactorySnapshot?.graduationQuoteReserve ?? 0n;
   const runtimeChainLabel = activeProtocolProfile.chainLabel;
+  const activeChainBadge = chainBadgeLabel(activeProtocolProfile.chainId);
+  const selectableProtocolProfiles = useMemo(
+    () => getSelectableProtocolProfiles(activeProtocolProfile.chainId),
+    [activeProtocolProfile.chainId]
+  );
   const locale = useLocale();
   const walletWrongNetwork = Boolean(wallet) && walletChainId !== null && !walletOnExpectedChain;
-  const usingUploadedImage = Boolean(createImagePreview && !createImageUrl.trim());
+  const usingUploadedImage = createImageMode === "file" && Boolean(createImagePreview);
+  const localImageReady = createImageMode === "file" ? Boolean(createImagePreview) : Boolean(createImageUrl.trim());
+  const showLocalImagePanel = createImageMode === "file" && Boolean(createImageFileName);
   const selectedLaunchMetadataState = tokenSnapshot ? launchMetadataByToken[tokenSnapshot.address.toLowerCase()] : undefined;
   const selectedLaunchMetadata = selectedLaunchMetadataState ?? null;
   const selectedLaunchMetadataLoading =
     Boolean(tokenSnapshot?.metadataURI) && selectedLaunchMetadataState === undefined;
-  const selectedLaunchHasImage = Boolean(resolvePreviewImage(selectedLaunchMetadata?.image ?? ""));
+  const selectedLaunchImage = resolveLaunchImageOrFallback(selectedLaunchMetadata?.image);
   const whitelistApproved = whitelistAccountState?.approved ?? false;
   const canCommitWhitelist = whitelistAccountState?.canCommit ?? false;
   const canClaimWhitelistAllocationForWallet = whitelistAccountState?.canClaimAllocation ?? false;
   const canClaimWhitelistRefundForWallet = whitelistAccountState?.canClaimRefund ?? false;
+  const whitelistAllocationAmount =
+    canClaimWhitelistAllocationForWallet && whitelistSnapshot ? whitelistSnapshot.tokensPerSeat : 0n;
+  const whitelistRefundAmount =
+    canClaimWhitelistRefundForWallet && whitelistSnapshot ? whitelistSnapshot.slotSize : 0n;
+  const whitelistPrimaryAction = canClaimWhitelistAllocationForWallet
+    ? {
+        label: tf("claimAllocationAmount", { amount: formatToken(whitelistAllocationAmount) }),
+        onClick: handleClaimWhitelistAllocation,
+        disabled: walletWrongNetwork || !canWriteVerifiedLaunch
+      }
+    : canClaimWhitelistRefundForWallet
+      ? {
+          label: tf("claimRefundAmount", { amount: formatNative(whitelistRefundAmount) }),
+          onClick: handleClaimWhitelistRefund,
+          disabled: walletWrongNetwork || !canWriteVerifiedLaunch
+        }
+      : {
+          label: t("commitSeat"),
+          onClick: handleWhitelistCommit,
+          disabled: !canCommitWhitelist || walletWrongNetwork || !canWriteVerifiedLaunch
+        };
   const parsedWhitelistAddresses = useMemo(() => {
     const unique = new Map<string, `0x${string}`>();
     for (const entry of splitAddressLines(createWhitelistAddresses)) {
@@ -966,7 +1229,8 @@ export function App() {
   const requiresWhitelistCommit = createMode === "whitelist" || createMode === "whitelistTaxed";
   const whitelistAddressCountValid =
     !requiresWhitelistCommit || (parsedWhitelistAddresses !== null && whitelistAddressCount >= whitelistSeatTarget && whitelistSeatTarget > 0);
-  const officialFactoryAddress = OFFICIAL_FACTORY_ADDRESS.toLowerCase();
+  const selectedOfficialFactoryAddress = activeProtocolProfile.officialFactoryAddress.trim();
+  const officialFactoryAddress = selectedOfficialFactoryAddress.toLowerCase();
   const usingOfficialFactory = Boolean(factoryAddress && officialFactoryAddress && factoryAddress.trim().toLowerCase() === officialFactoryAddress);
   const assumeOfficialFactoryCapabilities = Boolean(officialFactoryAddress && (usingOfficialFactory || factoryAddress.trim().length === 0));
   const factorySupportsWhitelistMode = activeFactorySnapshot?.supportsWhitelistMode ?? assumeOfficialFactoryCapabilities;
@@ -1014,6 +1278,10 @@ export function App() {
   const whitelistModeUnsupported = Boolean(customFactorySelected && activeFactorySnapshot && !factorySupportsWhitelistMode);
   const taxedModeUnsupported = Boolean(customFactorySelected && activeFactorySnapshot && !factorySupportsTaxedMode);
   const whitelistTaxedModeUnsupported = Boolean(customFactorySelected && activeFactorySnapshot && !factorySupportsWhitelistTaxedMode);
+  const whitelistThresholdOptions = activeProtocolProfile.whitelistThresholdOptions;
+  const whitelistSlotSizeOptions = activeProtocolProfile.whitelistSlotSizeOptions;
+  const whitelistThresholdOptionsLabel = whitelistThresholdOptions.join(" / ");
+  const whitelistSlotSizeOptionsLabel = whitelistSlotSizeOptions.join(" / ");
   const selectedCreateFee =
     isWhitelistFamily
       ? activeFactorySnapshot?.whitelistCreateFee ?? (usingOfficialFactory ? parseEther('0.03') : 0n)
@@ -1046,7 +1314,11 @@ export function App() {
         status: "live" as const,
         eyebrow: t("modeB314Eyebrow"),
         description: t("modeB314Desc"),
-        operations: ta("modeB314Points")
+        operations: [
+          ta("modeB314Points")[0] ?? "",
+          `Thresholds: ${whitelistThresholdOptionsLabel} ${activeProtocolProfile.nativeSymbol}. Seat sizes: ${whitelistSlotSizeOptionsLabel} ${activeProtocolProfile.nativeSymbol}.`,
+          ...(ta("modeB314Points").slice(2))
+        ].filter(Boolean)
       },
       {
         suffix: "1314–9314",
@@ -1111,16 +1383,23 @@ export function App() {
     if (route.page !== "create") return;
     setShowFactorySettings(false);
     setCustomFactoryInput("");
-    if (OFFICIAL_FACTORY_ADDRESS) {
+    if (selectedOfficialFactoryAddress) {
       setFactoryInputMode("official");
-      setFactoryAddress(OFFICIAL_FACTORY_ADDRESS);
+      setFactoryAddress(selectedOfficialFactoryAddress);
     }
-  }, [route.page]);
+  }, [route.page, selectedOfficialFactoryAddress]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNowMs(Date.now()), 30000);
     return () => window.clearInterval(timer);
   }, []);
+
+  const hasCreateImageInput = useMemo(() => {
+    if (createImageMode === "file") {
+      return Boolean(createImagePreview || createImageSource);
+    }
+    return Boolean(createImageUrl.trim());
+  }, [createImageMode, createImagePreview, createImageSource, createImageUrl]);
 
   const launchMetadata = useMemo(
     () =>
@@ -1128,7 +1407,7 @@ export function App() {
         name: sanitizedCreateName,
         symbol: sanitizedCreateSymbol,
         description: createDescription,
-        image: createImageUrl.trim() || createImagePreview || undefined,
+        image: createImageMode === "file" ? uploadedImageUrl || undefined : createImageUrl.trim() || undefined,
         website: createWebsite,
         twitter: createTwitter,
         telegram: createTelegram,
@@ -1137,15 +1416,31 @@ export function App() {
     [
       createDescription,
       createDiscord,
-      createImagePreview,
+      createImageMode,
       createImageUrl,
       sanitizedCreateName,
       sanitizedCreateSymbol,
       createTelegram,
       createTwitter,
-      createWebsite
+      createWebsite,
+      uploadedImageUrl
     ]
   );
+  const createImageCropPreviewGeometry = useMemo(() => {
+    if (!createImageSource || !createImageAssessment) return null;
+    return computeSquareCropGeometry(
+      createImageAssessment.width,
+      createImageAssessment.height,
+      LOCAL_CROP_PREVIEW_SIZE_PX,
+      createImageCropZoom,
+      createImageCropX,
+      createImageCropY
+    );
+  }, [createImageAssessment, createImageCropX, createImageCropY, createImageCropZoom, createImageSource]);
+  const createImageExportSize = useMemo(() => {
+    if (!createImageAssessment) return null;
+    return Math.min(RECOMMENDED_MIN_IMAGE_SIDE_PX, Math.min(createImageAssessment.width, createImageAssessment.height));
+  }, [createImageAssessment]);
 
   const generatedInlineMetadataUri = useMemo(() => {
     if (!launchMetadata.name || !launchMetadata.symbol || usingUploadedImage) {
@@ -1159,7 +1454,11 @@ export function App() {
     () => (resolvedCreateMetadataUri ? new TextEncoder().encode(resolvedCreateMetadataUri).length : 0),
     [resolvedCreateMetadataUri]
   );
-  const hasRequiredCreateIdentity = Boolean(sanitizedCreateName && sanitizedCreateSymbol && launchMetadata.image);
+  const createPreviewImageSrc = createImageMode === "file"
+    ? createImagePreview || createImageSource || ""
+    : resolvePreviewImage(launchMetadata.image ?? "");
+  const hasCreatePreviewImage = Boolean(createPreviewImageSrc);
+  const hasRequiredCreateIdentity = Boolean(sanitizedCreateName && sanitizedCreateSymbol && hasCreateImageInput);
   const canReviewCreate =
     Boolean(wallet) &&
     !walletWrongNetwork &&
@@ -1185,13 +1484,56 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    if (route.page === "launch") {
+      const routeProfile = resolveProtocolProfile(route.chainId);
+      if (!routeProfile.enabled) {
+        navigate({ page: "home" }, true);
+        return;
+      }
+    }
+    if (route.page === "launch" && route.chainId !== activeProtocolProfile.chainId) {
+      setActiveProtocolChainId(route.chainId);
+    }
+  }, [activeProtocolProfile.chainId, route]);
+
+  useEffect(() => {
+    if (!wallet) return;
+    void refreshWalletNetworkStatus();
+  }, [activeProtocolProfile.chainId, wallet]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.ethereum) return;
+
+    const handleChainChanged = () => {
+      void refreshWalletNetworkStatus();
+    };
+    const handleAccountsChanged = (accounts: string[]) => {
+      setWallet(accounts[0] ?? "");
+      void refreshWalletNetworkStatus();
+    };
+
+    window.ethereum.on?.("chainChanged", handleChainChanged);
+    window.ethereum.on?.("accountsChanged", handleAccountsChanged);
+
+    return () => {
+      window.ethereum?.removeListener?.("chainChanged", handleChainChanged);
+      window.ethereum?.removeListener?.("accountsChanged", handleAccountsChanged);
+    };
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
-        const response = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=binancecoin&vs_currencies=usd");
+        const assetId = coingeckoAssetIdFor(activeProtocolProfile.chainId);
+        if (!assetId) {
+          if (!cancelled) setNativeUsdPrice(null);
+          return;
+        }
+        const response = await fetch(nativeUsdPriceUrl(assetId));
         if (!response.ok) return;
-        const json = (await response.json()) as { binancecoin?: { usd?: number } };
-        const price = json.binancecoin?.usd;
+        const json = (await response.json()) as Record<string, { usd?: number } | undefined>;
+        const price = json[assetId]?.usd;
         if (!cancelled && typeof price === "number" && Number.isFinite(price) && price > 0) {
           setNativeUsdPrice(price);
         }
@@ -1202,20 +1544,25 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [activeProtocolProfile.chainId]);
 
   useEffect(() => {
     if (!factoryAddress) return;
+    let cancelled = false;
     void (async () => {
       try {
         const { factory, launches } = await readRecentLaunchSnapshots(factoryAddress);
+        if (cancelled) return;
         setFactorySnapshot(factory);
         setRecentLaunchSnapshots(launches);
       } catch {
         // ignore initial bootstrap failure
       }
     })();
-  }, [factoryAddress]);
+    return () => {
+      cancelled = true;
+    };
+  }, [activeProtocolProfile.chainId, factoryAddress]);
 
   useEffect(() => {
     if (!searchLooksLikeAddress && route.page === "home") {
@@ -1228,13 +1575,16 @@ export function App() {
       setTokenVerification(null);
       return;
     }
+    if (route.chainId !== activeProtocolProfile.chainId) {
+      return;
+    }
     const normalized = route.token;
     setTokenAddress(normalized);
     void loadLaunchWorkspace(normalized).then(
       () => setStatus(tf("statusTokenLoadedAddress", { address: normalized })),
       () => setStatus(t("statusTokenLoadFailed"))
     );
-  }, [route.page, route.page === "launch" ? route.token : null]);
+  }, [activeProtocolProfile.chainId, route.page, route.page === "launch" ? route.token : null, route.page === "launch" ? route.chainId : null]);
 
   useEffect(() => {
     const launchesToResolve = recentLaunchSnapshots.filter((launch) => {
@@ -1310,9 +1660,10 @@ export function App() {
     }
 
     let cancelled = false;
+    const dexScreenerChainId = dexScreenerChainIdFor(activeProtocolProfile.chainId);
     void (async () => {
       try {
-        const response = await fetch(`https://api.dexscreener.com/latest/dex/pairs/${DEX_SCREENER_CHAIN_ID}/${tokenSnapshot.pair}`);
+        const response = await fetch(`https://api.dexscreener.com/latest/dex/pairs/${dexScreenerChainId}/${tokenSnapshot.pair}`);
         if (!response.ok) throw new Error(`Dex pair lookup failed with ${response.status}`);
         const json = (await response.json()) as {
           pairs?: Array<{
@@ -1349,7 +1700,7 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, [tokenSnapshot?.pair, tokenSnapshot?.state]);
+  }, [activeProtocolProfile.chainId, tokenSnapshot?.pair, tokenSnapshot?.state]);
 
   async function refreshWalletNetworkStatus() {
     const chainId = await getWalletChainId();
@@ -1361,11 +1712,12 @@ export function App() {
 
   async function loadLaunchWorkspace(address: string, preferIndexed = true) {
     const requestId = ++workspaceRequestRef.current;
+    const verificationFactoryAddress = activeProtocolProfile.officialFactoryAddress || factoryAddress;
     const [snapshot, indexed, verification] = await Promise.all([
       readToken(address),
       preferIndexed ? readIndexedLaunchWorkspace(address) : Promise.resolve(null),
-      factoryAddress
-        ? verifyOfficialLaunch(factoryAddress, address).catch(
+      verificationFactoryAddress
+        ? verifyOfficialLaunch(verificationFactoryAddress, address).catch(
             (): ProtocolVerification => ({
               status: "error",
               summary: t("verificationUnavailable"),
@@ -1540,10 +1892,44 @@ export function App() {
     }
   }
 
+  const handleSelectProtocolProfile = useCallback(
+    async (chainId: number) => {
+      const targetProfile = resolveProtocolProfile(chainId);
+      if (!targetProfile.enabled || targetProfile.chainId === activeProtocolProfile.chainId) {
+        return;
+      }
+
+      setActiveProtocolChainId(targetProfile.chainId);
+      if (route.page === "launch") {
+        navigate({ page: "home" }, true);
+      }
+
+      if (!wallet) return;
+
+      try {
+        await switchWalletToExpectedChain();
+        const { onExpectedChain } = await refreshWalletNetworkStatus();
+        setStatus(
+          onExpectedChain
+            ? tf("statusWalletSwitched", { chain: targetProfile.chainLabel })
+            : tf("statusConnectedWrongNetwork", { account: wallet, chain: targetProfile.chainLabel })
+        );
+      } catch (error) {
+        try {
+          await refreshWalletNetworkStatus();
+        } catch {
+          // noop
+        }
+        setStatus(error instanceof Error ? error.message : t("statusNetworkSwitchFailed"));
+      }
+    },
+    [activeProtocolProfile.chainId, navigate, refreshWalletNetworkStatus, route.page, wallet]
+  );
+
   async function handleLoadFactory() {
     try {
       setLoading(true);
-      const targetFactoryAddress = factoryInputMode === "official" ? OFFICIAL_FACTORY_ADDRESS : customFactoryInput.trim();
+      const targetFactoryAddress = factoryInputMode === "official" ? selectedOfficialFactoryAddress : customFactoryInput.trim();
       if (!targetFactoryAddress) {
         throw new Error(t("statusFactoryLoadFailed"));
       }
@@ -1562,7 +1948,7 @@ export function App() {
   async function handleLoadToken() {
     try {
       setLoading(true);
-      navigate({ page: "launch", token: tokenAddress });
+      navigate({ page: "launch", chainId: activeProtocolProfile.chainId, token: tokenAddress });
       setStatus(t("statusTokenLoaded"));
     } catch (error) {
       setStatus(error instanceof Error ? error.message : t("statusTokenLoadFailed"));
@@ -1573,7 +1959,7 @@ export function App() {
 
   async function handleSelectLaunch(address: string) {
     setTokenAddress(address);
-    navigate({ page: "launch", token: address });
+    navigate({ page: "launch", chainId: activeProtocolProfile.chainId, token: address });
     try {
       setStatus(tf("statusTokenLoadedAddress", { address }));
     } catch (error) {
@@ -1660,6 +2046,64 @@ export function App() {
     return () => window.clearTimeout(timer);
   }, [sellInput, isBonding, tokenAddress]);
 
+  useEffect(() => {
+    if (!createImageSource || !createImageAssessment) {
+      if (createImageMode !== "url") setCreateImagePreview("");
+      return;
+    }
+    let cancelled = false;
+
+    const image = new Image();
+    image.onerror = () => {
+      if (!cancelled) {
+        setStatus(t("statusImagePreviewFailed"));
+      }
+    };
+    image.onload = () => {
+      const targetSize = Math.min(RECOMMENDED_MIN_IMAGE_SIDE_PX, Math.min(image.width, image.height));
+      const geometry = computeSquareCropGeometry(
+        image.width,
+        image.height,
+        targetSize,
+        createImageCropZoom,
+        createImageCropX,
+        createImageCropY
+      );
+      const canvas = document.createElement("canvas");
+      canvas.width = targetSize;
+      canvas.height = targetSize;
+      const context = canvas.getContext("2d");
+      if (!context) {
+        if (!cancelled) setStatus(t("statusImagePreviewFailed"));
+        return;
+      }
+      context.drawImage(image, geometry.x, geometry.y, geometry.width, geometry.height);
+      const dataUrl = canvas.toDataURL(
+        createImageCropMimeType,
+        createImageCropMimeType === "image/jpeg" ? 0.92 : undefined
+      );
+      if (!cancelled) {
+        setCreateImagePreview(dataUrl);
+        setCreateImageUploadState("ready");
+        setCreateImageInlineError("");
+      }
+    };
+    image.src = createImageSource;
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    createImageAssessment,
+    createImageCropMimeType,
+    createImageCropX,
+    createImageCropY,
+    createImageCropZoom,
+    createImageMode,
+    createImageSource,
+    createImageUrl
+  ]);
+
   async function handlePreviewBuy() {
     try {
       setLoading(true);
@@ -1686,20 +2130,170 @@ export function App() {
 
   async function handleMetadataImageUpload(file: File | null) {
     if (!file) {
+      setCreateImageSource("");
       setCreateImagePreview("");
       setCreateImageFileName("");
+      setCreateImageAssessment(null);
+      setCreateImageUploadState("idle");
+      setCreateImageInlineError("");
+      setCreateMetadataInlineNote("");
+      setUploadedImageUrl("");
+      setUploadedMetadataUrl("");
+      setCreateImageMode(createImageUrl.trim() ? "url" : "none");
+      setShowImageCropEditor(false);
+      setCreateImageCropZoom(1);
+      setCreateImageCropX(0);
+      setCreateImageCropY(0);
       return;
     }
 
-    const reader = new FileReader();
-    const result = await new Promise<string>((resolve, reject) => {
-      reader.onerror = () => reject(new Error(t("statusImagePreviewFailed")));
-      reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
-      reader.readAsDataURL(file);
-    });
-
-    setCreateImagePreview(result);
+    setCreateImageMode("file");
+    setCreateImageUrl("");
+    setShowImageCropEditor(false);
     setCreateImageFileName(file.name);
+    setCreateImageUploadState("loading");
+    setCreateImageInlineError("");
+    setCreateMetadataInlineNote("");
+    setUploadedImageUrl("");
+    setUploadedMetadataUrl("");
+    setCreateImageSource("");
+    setCreateImagePreview("");
+    setCreateImageAssessment(null);
+
+    if (!isSupportedLocalImageFile(file)) {
+      const message = t("errorImageTypeUnsupported");
+      setCreateImageUploadState("error");
+      setCreateImageInlineError(message);
+      setStatus(message);
+      return;
+    }
+
+    if (file.size > HARD_MAX_LOCAL_IMAGE_BYTES) {
+      const message = tf("errorImageFileTooLarge", { size: formatFileSize(HARD_MAX_LOCAL_IMAGE_BYTES) });
+      setCreateImageUploadState("error");
+      setCreateImageInlineError(message);
+      setStatus(message);
+      return;
+    }
+
+    try {
+      const reader = new FileReader();
+      const result = await new Promise<string>((resolve, reject) => {
+        reader.onerror = () => reject(new Error(t("statusImagePreviewFailed")));
+        reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+        reader.readAsDataURL(file);
+      });
+
+      const imageAssessment = await new Promise<LocalImageAssessment>((resolve, reject) => {
+        const image = new Image();
+        image.onerror = () => reject(new Error(t("statusImagePreviewFailed")));
+        image.onload = () => {
+          const warnings: string[] = [];
+          const minSide = Math.min(image.width, image.height);
+          if (minSide < MIN_ACCEPTABLE_IMAGE_SIDE_PX) {
+            reject(new Error(tf("errorImageTooSmall", { min: String(MIN_ACCEPTABLE_IMAGE_SIDE_PX) })));
+            return;
+          }
+          if (minSide < USABLE_IMAGE_SIDE_PX) {
+            warnings.push(tf("imageWarningUsableDimensions", { min: String(USABLE_IMAGE_SIDE_PX) }));
+          }
+          if (minSide < RECOMMENDED_MIN_IMAGE_SIDE_PX) {
+            warnings.push(tf("imageWarningRecommendedDimensions", { min: String(RECOMMENDED_MIN_IMAGE_SIDE_PX) }));
+          }
+          const aspectRatio = image.width / image.height;
+          if (aspectRatio < 0.85 || aspectRatio > 1.15) {
+            warnings.push(t("imageWarningSquareSafe"));
+          }
+          if (file.size > SOFT_REFERENCE_IMAGE_BYTES) {
+            warnings.push(tf("imageWarningReferenceUpload", { size: formatFileSize(SOFT_REFERENCE_IMAGE_BYTES) }));
+          }
+          resolve({
+            width: image.width,
+            height: image.height,
+            bytes: file.size,
+            warnings
+          });
+        };
+        image.src = result;
+      });
+
+      setCreateImageSource(result);
+      setCreateImageAssessment(imageAssessment);
+      setCreateImageCropZoom(1);
+      setCreateImageCropX(0);
+      setCreateImageCropY(0);
+      setCreateImageCropMimeType(file.type === "image/jpeg" || file.type === "image/webp" ? "image/jpeg" : "image/png");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t("statusImagePreviewFailed");
+      setCreateImageUploadState("error");
+      setCreateImageInlineError(message);
+      setStatus(message);
+    }
+  }
+
+  function handleResetImageCrop() {
+    setCreateImageCropZoom(1);
+    setCreateImageCropX(0);
+    setCreateImageCropY(0);
+  }
+
+  async function buildUploadedImageAsset() {
+    if (!createImagePreview) {
+      throw new Error(t("statusImagePreviewFailed"));
+    }
+
+    const response = await fetch(createImagePreview);
+    const blob = await response.blob();
+    const extension = createImageCropMimeType === "image/jpeg" ? "jpg" : "png";
+    const baseName =
+      (createImageFileName || sanitizedCreateSymbol || sanitizedCreateName || "launch")
+        .replace(/\.[a-z0-9]+$/i, "")
+        .replace(/[^a-z0-9-_]+/gi, "-")
+        .replace(/^-+|-+$/g, "")
+      || "launch";
+    const filename = `${baseName}.${extension}`;
+    const imageUrl = await uploadReferenceImage(blob, filename);
+    setUploadedImageUrl(imageUrl);
+    return imageUrl;
+  }
+
+  function handleImageCropPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!createImageCropPreviewGeometry) return;
+    cropDragRef.current = {
+      pointerId: event.pointerId,
+      lastX: event.clientX,
+      lastY: event.clientY
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function handleImageCropPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    const drag = cropDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId || !createImageCropPreviewGeometry) return;
+
+    const deltaX = event.clientX - drag.lastX;
+    const deltaY = event.clientY - drag.lastY;
+    drag.lastX = event.clientX;
+    drag.lastY = event.clientY;
+
+    const overflowX = Math.max(0, createImageCropPreviewGeometry.width - LOCAL_CROP_PREVIEW_SIZE_PX);
+    const overflowY = Math.max(0, createImageCropPreviewGeometry.height - LOCAL_CROP_PREVIEW_SIZE_PX);
+
+    if (overflowX > 0) {
+      setCreateImageCropX((current) => clamp(current - deltaX / (overflowX / 2), -1, 1));
+    }
+    if (overflowY > 0) {
+      setCreateImageCropY((current) => clamp(current - deltaY / (overflowY / 2), -1, 1));
+    }
+  }
+
+  function handleImageCropPointerEnd(event: ReactPointerEvent<HTMLDivElement>) {
+    if (cropDragRef.current?.pointerId === event.pointerId) {
+      cropDragRef.current = null;
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+    }
   }
 
   function handleUseGeneratedMetadataUri() {
@@ -1721,18 +2315,55 @@ export function App() {
       launchMetadata,
       `${(createSymbol || createName || "launch").trim().toLowerCase().replace(/[^a-z0-9-_]+/g, "-") || "launch"}-metadata.json`
     );
+    setCreateMetadataInlineNote(t("statusMetadataDownloaded"));
     setStatus(t("statusMetadataDownloaded"));
+  }
+
+  function resolveMetadataUploadError(error: unknown) {
+    const fallback = t("statusMetadataUploadFailed");
+    const message = error instanceof Error ? error.message : fallback;
+    if (message === "Reference metadata service is not configured.") {
+      return t("statusMetadataUploadUnavailable");
+    }
+    if (
+      message === "Load failed"
+      || message === "Failed to fetch"
+      || /networkerror/i.test(message)
+      || /fetch/i.test(message)
+    ) {
+      return t("statusMetadataUploadNetworkFailed");
+    }
+    return message || fallback;
   }
 
   async function handleUploadReferenceMetadata() {
     try {
       setLoading(true);
-      const metadataUrl = await uploadReferenceMetadata(launchMetadata);
+      setCreateMetadataInlineNote("");
+      const finalImageUrl =
+        createImageMode === "file"
+          ? uploadedImageUrl || await buildUploadedImageAsset()
+          : createImageUrl.trim();
+      const metadataPayload = buildLaunchMetadata({
+        name: sanitizedCreateName,
+        symbol: sanitizedCreateSymbol,
+        description: createDescription,
+        image: finalImageUrl || undefined,
+        website: createWebsite,
+        twitter: createTwitter,
+        telegram: createTelegram,
+        discord: createDiscord
+      });
+      const metadataUrl = await uploadReferenceMetadata(metadataPayload);
       setCreateMetadataUri(metadataUrl);
+      setUploadedMetadataUrl(metadataUrl);
+      setShowMetadataAdvanced(true);
+      setCreateMetadataInlineNote(tf("metadataLinkReady", { url: metadataUrl }));
       setStatus(t("statusMetadataUploaded"));
     } catch (error) {
-      const message = error instanceof Error ? error.message : t("statusMetadataUploadFailed");
-      setStatus(message === "Reference metadata service is not configured." ? t("statusMetadataUploadUnavailable") : message);
+      const message = resolveMetadataUploadError(error);
+      setCreateMetadataInlineNote(message);
+      setStatus(message);
     } finally {
       setLoading(false);
     }
@@ -1752,7 +2383,7 @@ export function App() {
       setStatus(t("errorTokenIdentityRequired"));
       return;
     }
-    if (!launchMetadata.image) {
+    if (!hasCreateImageInput) {
       setStatus(t("errorTokenImageRequired"));
       return;
     }
@@ -1807,19 +2438,38 @@ export function App() {
       const modeFee = requiresWhitelistCommit ? snapshot.whitelistCreateFee : snapshot.standardCreateFee;
       const sanitizedName = sanitizeUnicodeLabel(createName, "name").trim();
       const sanitizedSymbol = sanitizeUnicodeLabel(createSymbol, "symbol").trim();
-      const finalMetadataUri = createMetadataUri.trim() || generatedInlineMetadataUri;
+      let finalMetadataUri = createMetadataUri.trim() || generatedInlineMetadataUri;
       if (!sanitizedName || !sanitizedSymbol) {
         throw new Error(t("errorTokenIdentityRequired"));
       }
-      if (!launchMetadata.image) {
+      if (!hasCreateImageInput) {
         throw new Error(t("errorTokenImageRequired"));
       }
       if (!finalMetadataUri) {
-        throw new Error(
-          usingUploadedImage
-            ? t("statusExternalMetadataRequiredUpload")
-            : t("statusMetadataUriRequired")
-        );
+        if (usingUploadedImage) {
+          try {
+            const finalImageUrl = uploadedImageUrl || await buildUploadedImageAsset();
+            const metadataPayload = buildLaunchMetadata({
+              name: sanitizedName,
+              symbol: sanitizedSymbol,
+              description: createDescription,
+              image: finalImageUrl,
+              website: createWebsite,
+              twitter: createTwitter,
+              telegram: createTelegram,
+              discord: createDiscord
+            });
+            finalMetadataUri = await uploadReferenceMetadata(metadataPayload);
+            setCreateMetadataUri(finalMetadataUri);
+            setUploadedMetadataUrl(finalMetadataUri);
+            setShowMetadataAdvanced(true);
+            setStatus(t("statusMetadataUploadedAuto"));
+          } catch (error) {
+            throw new Error(resolveMetadataUploadError(error));
+          }
+        } else {
+          throw new Error(t("statusMetadataUriRequired"));
+        }
       }
       const whitelistThreshold = requiresWhitelistCommit ? parseEther(createWhitelistThreshold) : undefined;
       const whitelistSlotSize = requiresWhitelistCommit ? parseEther(createWhitelistSlotSize) : undefined;
@@ -1903,7 +2553,7 @@ export function App() {
 
       if (createdToken) {
         setTokenAddress(createdToken);
-        navigate({ page: "launch", token: createdToken });
+        navigate({ page: "launch", chainId: activeProtocolProfile.chainId, token: createdToken });
         setStatus(
           tf("statusCreateConfirmed", {
             token: createdToken,
@@ -2025,19 +2675,6 @@ export function App() {
     }
   }
 
-  async function handleClaimTokenProtocolFees() {
-    try {
-      setLoading(true);
-      const receipt = await claimTokenProtocolFees(tokenAddress);
-      setStatus(tf("statusProtocolTokenFeeClaimConfirmed", { tx: receipt.transactionHash }));
-      await loadLaunchWorkspace(tokenAddress, false);
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : t("statusProtocolTokenFeeClaimFailed"));
-    } finally {
-      setLoading(false);
-    }
-  }
-
   async function handleClaimCreatorFees() {
     try {
       setLoading(true);
@@ -2104,7 +2741,7 @@ export function App() {
             {route.page === "launch" && (
               <button
                 className="nav-pill active"
-                onClick={() => navigate({ page: "launch", token: route.token })}
+                onClick={() => navigate({ page: "launch", chainId: route.chainId, token: route.token })}
               >
                 {t('navLaunch')}
               </button>
@@ -2115,6 +2752,27 @@ export function App() {
               </button>
             )}
           </nav>
+          <div className="chain-switcher" role="tablist" aria-label={t("chainProfile")}>
+            {selectableProtocolProfiles.map((profile) => {
+              const isSelected = profile.chainId === activeProtocolProfile.chainId;
+              return (
+                <button
+                  key={profile.chainId}
+                  type="button"
+                  className={`chain-switch-pill ${isSelected ? "active" : ""}`}
+                  data-chain={profile.chainId}
+                  onClick={() => void handleSelectProtocolProfile(profile.chainId)}
+                  aria-pressed={isSelected}
+                  aria-label={profile.chainLabel}
+                >
+                  <span className="chain-switch-pill-icon" aria-hidden="true">
+                    <ChainSwitchIcon chainId={profile.chainId} />
+                  </span>
+                  <span className="chain-switch-pill-label">{chainSwitchLabel(profile.chainId)}</span>
+                </button>
+              );
+            })}
+          </div>
           <button className="lang-toggle" onClick={toggleLocale}>{locale === "en" ? t("langToggleZh") : t("langToggleEn")}</button>
           <button className="secondary-button" onClick={handleConnectWallet}>
             {wallet ? shortAddress(wallet) : t('connectWallet')}
@@ -2313,7 +2971,7 @@ export function App() {
                   const addr = contractSearchInput.trim();
                   if (addr.match(/^0x[a-fA-F0-9]{40}$/)) {
                     setTokenAddress(addr);
-                    navigate({ page: "launch", token: addr });
+                    navigate({ page: "launch", chainId: activeProtocolProfile.chainId, token: addr });
                     void handleSelectLaunch(addr);
                   }
                 }}
@@ -2428,7 +3086,7 @@ export function App() {
                 {visibleLaunchSnapshots.map((launch) => {
                   const metadataState = launchMetadataByToken[launch.address.toLowerCase()];
                   const metadata = metadataState ?? null;
-                  const image = resolvePreviewImage(metadata?.image ?? "");
+                  const image = resolveLaunchImageOrFallback(metadata?.image);
                   const links = launchMetadataLinks(metadata);
                   const isActive = tokenAddress.toLowerCase() === launch.address.toLowerCase();
                   const launchMarketCapQuote = quoteMarketCap(
@@ -2477,18 +3135,11 @@ export function App() {
 
                   return (
                     <article key={launch.address} className={`launch-card ${isActive ? "active" : ""}`}>
-                      <div className="launch-card-media">
-                        {image ? (
-                          <img src={image} alt={tf("launchCoverAlt", { name: metadata?.name || launch.name })} />
-                        ) : (
-                          <div className="launch-card-placeholder">{(metadata?.symbol || launch.symbol).slice(0, 6)}</div>
-                        )}
-                        <span className={`stage-pill ${displayState === "Bonding314" ? "live" : displayState === "DEXOnly" ? "done" : ""}`}>
-                          {launchStateLabel(displayState)}
-                        </span>
-                      </div>
                       <div className="launch-card-body">
-                        <div className="launch-card-head">
+                        <div className="launch-card-head launch-card-head-with-art">
+                          <div className="launch-card-art">
+                            <img src={image} alt={tf("launchCoverAlt", { name: metadata?.name || launch.name })} />
+                          </div>
                           <div className="launch-card-title-wrap">
                             <div className="launch-card-title-row">
                               <h3>{metadata?.name || launch.name}</h3>
@@ -2502,6 +3153,10 @@ export function App() {
                           </div>
                         </div>
                         <div className="launch-card-chip-row">
+                          <span className={`stage-pill ${displayState === "Bonding314" ? "live" : displayState === "DEXOnly" ? "done" : ""}`}>
+                            {launchStateLabel(displayState)}
+                          </span>
+                          <span className="launch-card-chain-chip">{activeChainBadge}</span>
                           <span className={`mode-suffix-badge ${modeTone}`}>{launchModeCardLabel(launch.launchMode)}</span>
                           <span className="launch-card-code-chip">{launch.launchSuffix || t("launchSuffixFallback")}</span>
                           {taxBadgeValue ? <span className="launch-card-tax-chip">{t("taxRate")} {taxBadgeValue}</span> : null}
@@ -2594,7 +3249,7 @@ export function App() {
                     className={factoryInputMode === "official" ? "factory-switch-pill active" : "factory-switch-pill"}
                     onClick={() => {
                       setFactoryInputMode("official");
-                      setFactoryAddress(OFFICIAL_FACTORY_ADDRESS);
+                      setFactoryAddress(selectedOfficialFactoryAddress);
                     }}
                   >
                     {t("useOfficialFactory")}
@@ -2628,7 +3283,7 @@ export function App() {
                   {factoryInputMode === "official" ? (
                     <label className="field">
                       <span>{t('factoryAddress')}</span>
-                      <input value={OFFICIAL_FACTORY_ADDRESS} readOnly />
+                      <input value={selectedOfficialFactoryAddress} readOnly />
                     </label>
                   ) : (
                     <label className="field">
@@ -2700,7 +3355,10 @@ export function App() {
               <div className="create-hero-card">
                 <div className="create-hero-top">
                   <div className="create-hero-intro">
-                    <span className="section-kicker">{t('createKicker')}</span>
+                    <div className="create-hero-kicker-row">
+                      <span className="section-kicker">{t('createKicker')}</span>
+                      <span className="launch-card-chain-chip">{activeChainBadge}</span>
+                    </div>
                     <h2>{t('createTitle')}</h2>
                     <p className="topbar-copy">
                       {t('createDesc')}
@@ -2889,6 +3547,29 @@ export function App() {
                         <span className="section-kicker">{t("metadataKicker")}</span>
                         <h3>{t("metadataTitle")}</h3>
                       </div>
+                      <div className="section-head-actions section-head-actions-inline">
+                        <button
+                          type="button"
+                          className="secondary-button section-action-chip"
+                          onClick={() => setShowImageGuidelines((current) => !current)}
+                        >
+                          {showImageGuidelines ? t("hideImageGuidelines") : t("showImageGuidelines")}
+                        </button>
+                        <button
+                          type="button"
+                          className="secondary-button section-action-chip"
+                          onClick={() => setShowSocialEditor((current) => !current)}
+                        >
+                          {showSocialEditor ? t("hideSocialLinks") : configuredSocialCount > 0 ? t("editSocialLinks") : t("showSocialLinks")}
+                        </button>
+                        <button
+                          type="button"
+                          className="secondary-button section-action-chip"
+                          onClick={() => setShowMetadataAdvanced((current) => !current)}
+                        >
+                          {showMetadataAdvanced ? t("hideMetadataAdvanced") : t("showMetadataAdvanced")}
+                        </button>
+                      </div>
                     </div>
                     <div className="field-group-head">
                       <strong>{t("coverImageLabel")} <em className="field-required-mark">*</em></strong>
@@ -2898,7 +3579,7 @@ export function App() {
                       <label className="field">
                         {renderFieldMethodLabel(t("imageUrl"), "image")}
                         {createFieldHelp === "image" ? <small className="field-help-copy">{t("imageHelp")}</small> : null}
-                        <input value={createImageUrl} onChange={(e) => setCreateImageUrl(e.target.value)} placeholder={t("imageUrlPlaceholder")} />
+                        <input value={createImageUrl} onChange={(e) => handleCreateImageUrlChange(e.target.value)} placeholder={t("imageUrlPlaceholder")} />
                         <small className="field-note">{t("imageUrlOptionalNote")}</small>
                       </label>
                       <div className="metadata-image-divider">
@@ -2908,6 +3589,7 @@ export function App() {
                         {renderFieldMethodLabel(t("uploadImage"), "imageUpload")}
                         {createFieldHelp === "imageUpload" ? <small className="field-help-copy">{t("imageUploadHelp")}</small> : null}
                         <input
+                          ref={createImageFileInputRef}
                           type="file"
                           accept="image/*"
                           onChange={(e) => {
@@ -2917,20 +3599,205 @@ export function App() {
                         <small className="field-note">{t("imageUploadOptionalNote")}</small>
                       </label>
                     </div>
-                    <div className="social-trigger-card">
-                      <div className="social-trigger-head">
-                        <div className="social-trigger-copy">
-                          <span className="section-kicker">{t("socialLinksLabel")} <em className="field-badge optional">{t("optionalField")}</em></span>
-                          <strong>{t("socialLinksTitle")}</strong>
-                          <p className="social-trigger-note">{configuredSocialCount > 0 ? tf("socialLinksCount", { count: String(configuredSocialCount) }) : t("socialLinksEmptyHint")}</p>
+                    {showLocalImagePanel ? (
+                      <div className="metadata-local-preview panel subtle-panel">
+                        <div className="metadata-local-preview-head">
+                          <div>
+                            <span className="section-kicker">{t("localPreviewTitle")}</span>
+                            <strong>
+                              {createImageUploadState === "error"
+                                ? t("localPreviewError")
+                                : createImageUploadState === "ready"
+                                  ? t("localPreviewReady")
+                                  : t("localPreviewPreparing")}
+                            </strong>
+                          </div>
                         </div>
-                        <button type="button" className="secondary-button" onClick={() => setShowSocialEditor((current) => !current)}>
-                          {showSocialEditor ? t("hideSocialLinks") : configuredSocialCount > 0 ? t("editSocialLinks") : t("showSocialLinks")}
-                        </button>
+                        <div className="metadata-local-preview-grid">
+                          <div className="metadata-local-preview-shell">
+                            {createImagePreview || createImageSource ? (
+                              <img
+                                className="metadata-image"
+                                src={createImagePreview || createImageSource}
+                                alt={tf("previewAlt", { name: sanitizedCreateName || t("untitledLaunch") })}
+                              />
+                            ) : (
+                              <div className="metadata-image-placeholder">
+                                {createImageUploadState === "error" ? t("localPreviewUnavailable") : t("localPreviewPreparing")}
+                              </div>
+                            )}
+                          </div>
+                          <div className="metadata-local-preview-copy">
+                            <p>{t("selectedFile")} {createImageFileName}</p>
+                            {createImageInlineError ? <p className="field-error-inline">{createImageInlineError}</p> : null}
+                            <p>{t("localUploadAutoNote")}</p>
+                            <div className="button-row compact-button-row">
+                              <button
+                                onClick={() => void handleUploadReferenceMetadata()}
+                                type="button"
+                                disabled={loading || !localImageReady}
+                              >
+                                {t("uploadImageNow")}
+                              </button>
+                              <button
+                                className="secondary-button"
+                                onClick={() => setShowImageCropEditor((current) => !current)}
+                                type="button"
+                                disabled={!createImageSource || !createImageAssessment}
+                              >
+                                {showImageCropEditor ? t("hideImageCrop") : t("showImageCrop")}
+                              </button>
+                            </div>
+                            {uploadedMetadataUrl ? (
+                              <div className="callout success compact-callout metadata-upload-success">
+                                <strong>{t("metadataReadyTitle")}</strong>
+                                <p>{t("metadataReadyDesc")}</p>
+                                <a
+                                  className="metadata-upload-link mono-address-break"
+                                  href={uploadedMetadataUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  {uploadedMetadataUrl}
+                                </a>
+                                <div className="button-row compact-button-row metadata-upload-actions">
+                                  <button
+                                    className="secondary-button"
+                                    type="button"
+                                    onClick={() => void handleCopyText(uploadedMetadataUrl, t("metadataUri"))}
+                                  >
+                                    {t("copyMetadataLink")}
+                                  </button>
+                                  <button
+                                    className="secondary-button"
+                                    type="button"
+                                    onClick={() => window.open(uploadedMetadataUrl, "_blank", "noopener,noreferrer")}
+                                  >
+                                    {t("openMetadataLink")}
+                                  </button>
+                                </div>
+                              </div>
+                            ) : createMetadataInlineNote ? <p className="field-note mono-address-break">{createMetadataInlineNote}</p> : null}
+                          </div>
+                        </div>
                       </div>
-                    </div>
+                    ) : null}
+                    {showImageGuidelines ? (
+                      <div className="callout compact-callout subtle-callout">
+                        <strong>{t("imageGuidelineTitle")}</strong>
+                        <p>{t("imageGuidelinePrimary")}</p>
+                        <p>{t("imageGuidelineFormats")}</p>
+                        <p>{t("imageGuidelineDimensions")}</p>
+                        <p>{t("imageGuidelineWeight")}</p>
+                      </div>
+                    ) : null}
+                    {showLocalImagePanel && showImageCropEditor && createImageSource && createImageAssessment && createImageCropPreviewGeometry ? (
+                      <div className="metadata-crop-panel panel subtle-panel">
+                        <div className="metadata-crop-head">
+                          <div>
+                            <span className="section-kicker">{t("imageCropTitle")}</span>
+                            <strong>{t("imageCropDesc")}</strong>
+                          </div>
+                          <button type="button" className="secondary-button" onClick={handleResetImageCrop}>
+                            {t("imageCropReset")}
+                          </button>
+                        </div>
+                        <div className="metadata-crop-grid">
+                          <div className="metadata-crop-stage">
+                            <div
+                              ref={cropFrameRef}
+                              className="metadata-crop-frame"
+                              onPointerDown={handleImageCropPointerDown}
+                              onPointerMove={handleImageCropPointerMove}
+                              onPointerUp={handleImageCropPointerEnd}
+                              onPointerCancel={handleImageCropPointerEnd}
+                            >
+                              <img
+                                src={createImageSource}
+                                alt={tf("previewAlt", { name: sanitizedCreateName || t("untitledLaunch") })}
+                                style={{
+                                  width: `${createImageCropPreviewGeometry.width}px`,
+                                  height: `${createImageCropPreviewGeometry.height}px`,
+                                  left: `${createImageCropPreviewGeometry.x}px`,
+                                  top: `${createImageCropPreviewGeometry.y}px`
+                                }}
+                              />
+                              <div className="metadata-crop-safe-box" aria-hidden="true" />
+                              <div className="metadata-crop-safe-circle" aria-hidden="true" />
+                              <div className="metadata-crop-center-dot" aria-hidden="true" />
+                            </div>
+                            <p className="field-note">
+                              {tf("imageCropResultNote", {
+                                size: createImageExportSize ? `${createImageExportSize} × ${createImageExportSize}` : "—"
+                              })}
+                            </p>
+                            <p className="field-note">{t("imageCropDragHint")}</p>
+                          </div>
+                          <div className="metadata-crop-controls">
+                            <label className="field">
+                              <span>{t("imageCropZoom")}</span>
+                              <input
+                                type="range"
+                                min="1"
+                                max="2.5"
+                                step="0.01"
+                                value={createImageCropZoom}
+                                onChange={(e) => setCreateImageCropZoom(Number.parseFloat(e.target.value))}
+                              />
+                            </label>
+                            <label className="field">
+                              <span>{t("imageCropHorizontal")}</span>
+                              <input
+                                type="range"
+                                min="-1"
+                                max="1"
+                                step="0.01"
+                                value={createImageCropX}
+                                onChange={(e) => setCreateImageCropX(Number.parseFloat(e.target.value))}
+                              />
+                            </label>
+                            <label className="field">
+                              <span>{t("imageCropVertical")}</span>
+                              <input
+                                type="range"
+                                min="-1"
+                                max="1"
+                                step="0.01"
+                                value={createImageCropY}
+                                onChange={(e) => setCreateImageCropY(Number.parseFloat(e.target.value))}
+                              />
+                            </label>
+                            <p className="field-note">{t("imageCropAutoNote")}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+                    {showLocalImagePanel && createImageFileName && createImageAssessment && (
+                      <div className="callout compact-callout subtle-callout">
+                        <strong>{t("imageAssessmentLabel")}</strong>
+                        <p>{t("selectedFile")} {createImageFileName}</p>
+                        <p>
+                          {tf("imageAssessmentMeta", {
+                            dimensions: `${createImageAssessment.width} × ${createImageAssessment.height}`,
+                            size: formatFileSize(createImageAssessment.bytes)
+                          })}
+                        </p>
+                      </div>
+                    )}
+                    {showLocalImagePanel && createImageAssessment?.warnings.length ? (
+                      <div className="callout compact-callout warn">
+                        <strong>{t("imageAssessmentLabel")}</strong>
+                        {createImageAssessment.warnings.map((warning) => (
+                          <p key={warning}>{warning}</p>
+                        ))}
+                      </div>
+                    ) : null}
                     {showSocialEditor && (
                       <div className="social-inline-editor panel subtle-panel">
+                        <div className="field-group-head compact-inline-head">
+                          <strong>{t("socialLinksTitle")}</strong>
+                          <p>{configuredSocialCount > 0 ? tf("socialLinksCount", { count: String(configuredSocialCount) }) : t("socialLinksEmptyHint")}</p>
+                        </div>
                         <p className="social-inline-copy">{t("socialLinksDialogDesc")}</p>
                         <div className="metadata-two-column">
                           <label className="field">
@@ -2954,31 +3821,39 @@ export function App() {
                         </div>
                       </div>
                     )}
-                    {createImageFileName && (
-                      <div className="callout compact-callout subtle-callout">
-                        <p>{t("selectedFile")} {createImageFileName}</p>
-                      </div>
-                    )}
-                    <label className="field">
-                      {renderFieldLabel(t("metadataUri"), "metadataUri", true)}
-                      {createFieldHelp === "metadataUri" ? <small className="field-help-copy">{t("metadataUriHelp")}</small> : null}
-                      <input
-                        value={createMetadataUri}
-                        onChange={(e) => setCreateMetadataUri(e.target.value)}
-                        placeholder={t("metadataUriPlaceholder")}
-                      />
-                    </label>
-                    <div className="button-row">
-                      <button className="secondary-button" onClick={() => void handleUploadReferenceMetadata()} type="button">
-                        {t("uploadReferenceMetadata")}
-                      </button>
-                      <button className="secondary-button" onClick={handleUseGeneratedMetadataUri} type="button">
-                        {t("useInlineMetadata")}
-                      </button>
-                      <button className="secondary-button" onClick={handleDownloadMetadata} type="button">
-                        {t("downloadMetadata")}
-                      </button>
-                    </div>
+                    {showMetadataAdvanced ? (
+                      <>
+                        <div className="field-group-head compact-inline-head">
+                          <strong>{t("metadataAdvancedTitle")}</strong>
+                          <p>{t("metadataAdvancedDesc")}</p>
+                        </div>
+                        <label className="field">
+                          {renderFieldLabel(t("metadataUri"), "metadataUri", true)}
+                          {createFieldHelp === "metadataUri" ? <small className="field-help-copy">{t("metadataUriHelp")}</small> : null}
+                          <input
+                            value={createMetadataUri}
+                            onChange={(e) => {
+                              setCreateMetadataUri(e.target.value);
+                              if (uploadedMetadataUrl && e.target.value.trim() !== uploadedMetadataUrl) {
+                                setUploadedMetadataUrl("");
+                              }
+                            }}
+                            placeholder={t("metadataUriPlaceholder")}
+                          />
+                        </label>
+                        <div className="button-row">
+                          <button className="secondary-button" onClick={() => void handleUploadReferenceMetadata()} type="button">
+                            {t("uploadReferenceMetadata")}
+                          </button>
+                          <button className="secondary-button" onClick={handleUseGeneratedMetadataUri} type="button">
+                            {t("useInlineMetadata")}
+                          </button>
+                          <button className="secondary-button" onClick={handleDownloadMetadata} type="button">
+                            {t("downloadMetadata")}
+                          </button>
+                        </div>
+                      </>
+                    ) : null}
                   </section>
 
                   {isTaxedFamily && (
@@ -3077,19 +3952,22 @@ export function App() {
                           {renderFieldLabel(`${t("wlThreshold")} (${activeProtocolProfile.nativeSymbol})`, "wlThreshold")}
                           {createFieldHelp === "wlThreshold" ? <small className="field-help-copy">{t("wlThresholdHelp")}</small> : null}
                           <select value={createWhitelistThreshold} onChange={(e) => setCreateWhitelistThreshold(e.target.value)}>
-                            <option value="4">4 BNB</option>
-                            <option value="6">6 BNB</option>
-                            <option value="8">8 BNB</option>
+                            {whitelistThresholdOptions.map((value) => (
+                              <option key={value} value={value}>
+                                {value} {activeProtocolProfile.nativeSymbol}
+                              </option>
+                            ))}
                           </select>
                         </label>
                         <label className="field">
                           {renderFieldLabel(`${t("wlSlotSize")} (${activeProtocolProfile.nativeSymbol})`, "wlSlotSize")}
                           {createFieldHelp === "wlSlotSize" ? <small className="field-help-copy">{t("wlSlotSizeHelp")}</small> : null}
                           <select value={createWhitelistSlotSize} onChange={(e) => setCreateWhitelistSlotSize(e.target.value)}>
-                            <option value="0.1">0.1 BNB</option>
-                            <option value="0.2">0.2 BNB</option>
-                            <option value="0.5">0.5 BNB</option>
-                            <option value="1">1 BNB</option>
+                            {whitelistSlotSizeOptions.map((value) => (
+                              <option key={value} value={value}>
+                                {value} {activeProtocolProfile.nativeSymbol}
+                              </option>
+                            ))}
                           </select>
                         </label>
                       </div>
@@ -3173,14 +4051,16 @@ export function App() {
                     </div>
                     <div className="metadata-preview-body">
                       <div className="metadata-image-shell">
-                        {resolvePreviewImage(launchMetadata.image ?? "") ? (
+                        {hasCreatePreviewImage ? (
                           <img
                             className="metadata-image"
-                            src={resolvePreviewImage(launchMetadata.image ?? "")}
+                            src={createPreviewImageSrc}
                             alt={tf("previewAlt", { name: createName || t("launchTitle") })}
                           />
                         ) : (
-                          <div className="metadata-image-placeholder">{t("noImageYet")}</div>
+                          <div className="metadata-image-placeholder">
+                            <span>{t("noImageYet")}</span>
+                          </div>
                         )}
                       </div>
                       <div className="metadata-preview-copy">
@@ -3332,11 +4212,9 @@ export function App() {
                     <div className="launch-hero-primary">
                       <div className="launch-hero-head">
                         <div className="launch-hero-title-wrap">
-                          {selectedLaunchHasImage ? (
-                            <div className="launch-mini-art">
-                              <img src={resolvePreviewImage(selectedLaunchMetadata?.image ?? "")!} alt={tf("launchCoverAlt", { name: selectedLaunchMetadata?.name || tokenSnapshot.name })} />
-                            </div>
-                          ) : null}
+                          <div className="launch-mini-art">
+                            <img src={selectedLaunchImage} alt={tf("launchCoverAlt", { name: selectedLaunchMetadata?.name || tokenSnapshot.name })} />
+                          </div>
                           <div>
                             <span className="section-kicker">{t("launchOverview")}</span>
                             <h3>{selectedLaunchMetadata?.name || tokenSnapshot.name}</h3>
@@ -3364,7 +4242,8 @@ export function App() {
                     </div>
 
                     <div className="launch-hero-side">
-                      <div className="launch-meta-strip">
+                    <div className="launch-meta-strip">
+                        <span className="launch-card-chain-chip">{activeChainBadge}</span>
                         <span className={`mode-suffix-badge ${tokenModeTone}`}>{launchModeCardLabel(tokenSnapshot.launchMode)}</span>
                         <span className="launch-card-code-chip">{tokenSnapshot.launchSuffix}</span>
                         {tokenTaxBadgeValue ? <span className="launch-card-tax-chip">{t("taxRate")} {tokenTaxBadgeValue}</span> : null}
@@ -3909,6 +4788,7 @@ export function App() {
                       </dl>
 
                       <dl className="data-list">
+                        <div><dt>{t("creatorFeesAccrued")}</dt><dd>{formatNative(tokenSnapshot.creatorFeeAccrued)}</dd></div>
                         <div><dt>{t("protocolClaimable")}</dt><dd>{formatNative(tokenSnapshot.protocolClaimable)}</dd></div>
                         <div><dt>{t("creatorClaimable")}</dt><dd>{formatNative(tokenSnapshot.creatorClaimable)}</dd></div>
                         <div><dt>{t("tokenProtocolRecipient")}</dt><dd className="address-value"><span className="mono-address">{tokenSnapshot.protocolFeeRecipient}</span><button type="button" className="copy-chip" onClick={() => void handleCopyText(tokenSnapshot.protocolFeeRecipient, t("tokenProtocolRecipient"))}>{t("copyAddress")}</button></dd></div>
@@ -3948,9 +4828,27 @@ export function App() {
                     </button>
                   </div>
                   <div className="trade-estimate-card whitelist-estimate-card">
-                    <span className="metric-label">{t("wlSeatSummaryLabel")}</span>
-                    <strong>{formatNative(whitelistSnapshot.slotSize)}</strong>
-                    <div className="metric-subtle">{whitelistApproved ? t("wlApproved") : t("wlNotApproved")}</div>
+                    <span className="metric-label">
+                      {canClaimWhitelistAllocationForWallet
+                        ? t("wlClaimAllocationReady")
+                        : canClaimWhitelistRefundForWallet
+                          ? t("wlClaimRefundReady")
+                          : t("wlSeatSummaryLabel")}
+                    </span>
+                    <strong>
+                      {canClaimWhitelistAllocationForWallet
+                        ? formatToken(whitelistAllocationAmount)
+                        : canClaimWhitelistRefundForWallet
+                          ? formatNative(whitelistRefundAmount)
+                          : formatNative(whitelistSnapshot.slotSize)}
+                    </strong>
+                    <div className="metric-subtle">
+                      {canClaimWhitelistAllocationForWallet || canClaimWhitelistRefundForWallet
+                        ? t("claimable")
+                        : whitelistApproved
+                          ? t("wlApproved")
+                          : t("wlNotApproved")}
+                    </div>
                   </div>
                   <div className="create-summary-grid compact whitelist-summary-grid">
                     <div><span>{t("mode")}</span><strong>{tokenSnapshot?.launchSuffix || "b314"}</strong></div>
@@ -3958,38 +4856,22 @@ export function App() {
                     <div><span>{t("wlRemainingShort")}</span><strong>{whitelistSeatsRemaining.toString()}</strong></div>
                     <div><span>{t("wlSeatSizeShort")}</span><strong>{formatNative(whitelistSnapshot.slotSize)}</strong></div>
                   </div>
-                  <div className="trade-hint-card">
+                  <div className="whitelist-inline-note">
                     <strong>{t("wlDirectTransferTitle")}</strong>
-                    <p>{tf("wlDirectTransferBody", { amount: formatNative(whitelistSnapshot.slotSize) })}</p>
+                    <span>{tf("wlDirectTransferBody", { amount: formatNative(whitelistSnapshot.slotSize) })}</span>
                   </div>
                   <div className="button-row stacked">
-                    <button onClick={handleWhitelistCommit} disabled={!canCommitWhitelist || walletWrongNetwork || !canWriteVerifiedLaunch}>
-                      {t("commitSeat")}
+                    <button onClick={whitelistPrimaryAction.onClick} disabled={whitelistPrimaryAction.disabled}>
+                      {whitelistPrimaryAction.label}
                     </button>
                   </div>
-                  <details className="trade-advanced">
+                  <details className="trade-advanced trade-advanced-compact">
                     <summary>{t("advancedWhitelistActions")}</summary>
                     <div className="trade-advanced-body">
-                      <div className={`callout ${whitelistApproved ? "success" : "warn"} compact-callout`}>
-                        <strong>{whitelistApproved ? t("wlApproved") : t("wlNotApproved")}</strong>
-                        <p>{t("wlCommitExplain")}</p>
+                      <div className={`whitelist-advanced-status ${whitelistApproved ? "success" : "warn"}`}>
+                        {whitelistApproved ? t("wlApproved") : t("wlNotApproved")}
                       </div>
-                      <div className="button-row stacked compact-actions">
-                        <button
-                          className="secondary-button"
-                          onClick={handleClaimWhitelistAllocation}
-                          disabled={!canClaimWhitelistAllocationForWallet || walletWrongNetwork || !canWriteVerifiedLaunch}
-                        >
-                          {t("claimAllocation")}
-                        </button>
-                        <button
-                          className="secondary-button"
-                          onClick={handleClaimWhitelistRefund}
-                          disabled={!canClaimWhitelistRefundForWallet || walletWrongNetwork || !canWriteVerifiedLaunch}
-                        >
-                          {t("claimRefund")}
-                        </button>
-                      </div>
+                      <p className="whitelist-advanced-copy">{t("wlCommitExplain")}</p>
                     </div>
                   </details>
                 </>
@@ -4127,13 +5009,6 @@ export function App() {
             <article className="panel">
               <h2>{t('claimsTitle')}</h2>
               <div className="button-row stacked">
-                <button
-                  className="secondary-button"
-                  onClick={handleClaimTokenProtocolFees}
-                  disabled={!tokenSnapshot || !connectedAsTokenProtocolRecipient || walletWrongNetwork || !canWriteVerifiedLaunch}
-                >
-                  {t('claimTokenProtocol')}
-                </button>
                 <button className="secondary-button" onClick={handleClaimCreatorFees} disabled={!isDexOnly || !connectedAsCreator || walletWrongNetwork || !canWriteVerifiedLaunch}>
                   {t('claimCreatorFees')}
                 </button>
@@ -4148,9 +5023,6 @@ export function App() {
                 <li>{t('claimsNote4')}</li>
                 <li>{t('claimsNote5')}</li>
               </ul>
-              <div className="status-hint">
-                {t('factoryClaimNote')}
-              </div>
             </article>
           </aside>
         </section>
@@ -4169,6 +5041,14 @@ export function App() {
                   <div>
                     <span className="metric-label">{t('totalLaunches')}</span>
                     <strong>{creatorLaunches.length}</strong>
+                  </div>
+                  <div>
+                    <span className="metric-label">{t('totalCreatorFeesAccrued')}</span>
+                    <strong>
+                      {creatorLaunches.length > 0
+                        ? formatNative(creatorLaunches.reduce((sum: bigint, l: TokenSnapshot) => sum + l.creatorFeeAccrued, 0n))
+                        : "0"}
+                    </strong>
                   </div>
                   <div>
                     <span className="metric-label">{t('totalClaimable')}</span>
@@ -4212,6 +5092,7 @@ export function App() {
                         </div>
                         <div className="token-meta">
                           <span>{t('currentPrice')}: {formatNative(launch.currentPriceQuotePerToken)}</span>
+                          <span>{t('creatorFeesAccrued')}: {formatNative(launch.creatorFeeAccrued)}</span>
                           <span>{t('creatorClaimable')}: {formatNative(launch.creatorClaimable)}</span>
                         </div>
                       </div>
@@ -4220,7 +5101,7 @@ export function App() {
                           className="secondary-button"
                           onClick={() => {
                             setTokenAddress(launch.address);
-                            navigate({ page: "launch", token: launch.address });
+                            navigate({ page: "launch", chainId: activeProtocolProfile.chainId, token: launch.address });
                             void handleSelectLaunch(launch.address);
                           }}
                         >

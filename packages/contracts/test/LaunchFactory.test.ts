@@ -78,9 +78,34 @@ describe("LaunchFactory", function () {
   const WHITELIST_CREATE_FEE = ethers.parseEther("0.03");
   const GRADUATION_TARGET = ethers.parseEther("12");
   const DEFAULT_PROTOCOL_FEE_RECIPIENT = "0xC4187bE6b362DF625696d4a9ec5E6FA461CC0314";
+  const BSC_WHITELIST_THRESHOLDS = [ethers.parseEther("4"), ethers.parseEther("6"), ethers.parseEther("8")];
+  const BSC_WHITELIST_SLOT_SIZES = [
+    ethers.parseEther("0.1"),
+    ethers.parseEther("0.2"),
+    ethers.parseEther("0.5"),
+    ethers.parseEther("1")
+  ];
+  const BASE_WHITELIST_THRESHOLDS = [ethers.parseEther("1"), ethers.parseEther("2"), ethers.parseEther("3")];
+  const BASE_WHITELIST_SLOT_SIZES = [
+    ethers.parseEther("0.04"),
+    ethers.parseEther("0.1"),
+    ethers.parseEther("0.2"),
+    ethers.parseEther("0.5")
+  ];
 
-  async function deployFixture() {
+  async function deployFixture(options?: {
+    standardCreateFee?: bigint;
+    whitelistCreateFee?: bigint;
+    graduationTarget?: bigint;
+    whitelistThresholdPresets?: bigint[];
+    whitelistSlotSizePresets?: bigint[];
+  }) {
     const [owner, protocol, creator, treasury] = await ethers.getSigners();
+    const standardCreateFee = options?.standardCreateFee ?? STANDARD_CREATE_FEE;
+    const whitelistCreateFee = options?.whitelistCreateFee ?? WHITELIST_CREATE_FEE;
+    const graduationTarget = options?.graduationTarget ?? GRADUATION_TARGET;
+    const whitelistThresholdPresets = options?.whitelistThresholdPresets ?? BSC_WHITELIST_THRESHOLDS;
+    const whitelistSlotSizePresets = options?.whitelistSlotSizePresets ?? BSC_WHITELIST_SLOT_SIZES;
 
     const MockWNATIVE = await ethers.getContractFactory("MockERC20");
     const wbnb = await MockWNATIVE.deploy("Wrapped Native", "WNATIVE");
@@ -119,9 +144,11 @@ describe("LaunchFactory", function () {
       await whitelistDeployer.getAddress(),
       await taxedDeployer.getAddress(),
       await whitelistTaxedDeployer.getAddress(),
-      STANDARD_CREATE_FEE,
-      WHITELIST_CREATE_FEE,
-      GRADUATION_TARGET
+      standardCreateFee,
+      whitelistCreateFee,
+      graduationTarget,
+      whitelistThresholdPresets,
+      whitelistSlotSizePresets
     );
     await launchFactory.waitForDeployment();
     await whitelistTaxedDeployer.setFactory(await launchFactory.getAddress());
@@ -167,6 +194,49 @@ describe("LaunchFactory", function () {
     expect(await launchFactory.createFeeForMode(3)).to.equal(STANDARD_CREATE_FEE);
     expect(await launchFactory.createFeeForMode(11)).to.equal(STANDARD_CREATE_FEE);
     expect(await launchFactory.createFeeForMode(12)).to.equal(WHITELIST_CREATE_FEE);
+    expect(await launchFactory.isAllowedWhitelistThreshold(ethers.parseEther("4"))).to.equal(true);
+    expect(await launchFactory.isAllowedWhitelistSlotSize(ethers.parseEther("0.1"))).to.equal(true);
+  });
+
+  it("supports a base-style whitelist preset profile without changing BSC defaults", async function () {
+    const { launchFactory, creator, mockRouter, standardDeployer, whitelistDeployer, taxedDeployer, whitelistTaxedDeployer } =
+      await deployFixture({
+        standardCreateFee: ethers.parseEther("0.005"),
+        whitelistCreateFee: ethers.parseEther("0.01"),
+        graduationTarget: ethers.parseEther("4"),
+        whitelistThresholdPresets: BASE_WHITELIST_THRESHOLDS,
+        whitelistSlotSizePresets: BASE_WHITELIST_SLOT_SIZES
+      });
+
+    expect(await launchFactory.createFee()).to.equal(ethers.parseEther("0.005"));
+    expect(await launchFactory.createFeeForMode(2)).to.equal(ethers.parseEther("0.01"));
+    expect(await launchFactory.graduationQuoteReserve()).to.equal(ethers.parseEther("4"));
+    expect(await launchFactory.router()).to.equal(await mockRouter.getAddress());
+    expect(await launchFactory.isAllowedWhitelistThreshold(ethers.parseEther("1"))).to.equal(true);
+    expect(await launchFactory.isAllowedWhitelistThreshold(ethers.parseEther("3"))).to.equal(true);
+    expect(await launchFactory.isAllowedWhitelistThreshold(ethers.parseEther("4"))).to.equal(false);
+    expect(await launchFactory.isAllowedWhitelistSlotSize(ethers.parseEther("0.04"))).to.equal(true);
+    expect(await launchFactory.isAllowedWhitelistSlotSize(ethers.parseEther("0.5"))).to.equal(true);
+    expect(await launchFactory.isAllowedWhitelistSlotSize(ethers.parseEther("0.02"))).to.equal(false);
+
+    const whitelistAddresses = Array.from({ length: 25 }, () => ethers.Wallet.createRandom().address);
+    const tx = await launchFactory.connect(creator).createWhitelistLaunch(
+      "Base Seats",
+      "BSEAT",
+      "ipfs://base-seats",
+      ethers.parseEther("1"),
+      ethers.parseEther("0.04"),
+      0,
+      whitelistAddresses,
+      { value: ethers.parseEther("0.01") }
+    );
+    const receipt = await tx.wait();
+    const launchCreatedLog = receipt!.logs.find((log) => "fragment" in log && log.fragment?.name === "LaunchCreated");
+    expect(launchCreatedLog).to.not.equal(undefined);
+    expect(await launchFactory.whitelistDeployer()).to.equal(await whitelistDeployer.getAddress());
+    expect(await launchFactory.standardDeployer()).to.equal(await standardDeployer.getAddress());
+    expect(await launchFactory.taxedDeployer()).to.equal(await taxedDeployer.getAddress());
+    expect(await launchFactory.whitelistTaxedDeployer()).to.equal(await whitelistTaxedDeployer.getAddress());
   });
 
   it("falls back to the default protocol fee recipient when zero is passed", async function () {
@@ -211,13 +281,63 @@ describe("LaunchFactory", function () {
       await whitelistTaxedDeployer.getAddress(),
       STANDARD_CREATE_FEE,
       WHITELIST_CREATE_FEE,
-      GRADUATION_TARGET
+      GRADUATION_TARGET,
+      BSC_WHITELIST_THRESHOLDS,
+      BSC_WHITELIST_SLOT_SIZES
     );
     await launchFactory.waitForDeployment();
     await whitelistTaxedDeployer.setFactory(await launchFactory.getAddress());
 
     expect(await launchFactory.protocolFeeRecipient()).to.equal(DEFAULT_PROTOCOL_FEE_RECIPIENT);
     expect(await launchFactory.DEFAULT_PROTOCOL_FEE_RECIPIENT()).to.equal(DEFAULT_PROTOCOL_FEE_RECIPIENT);
+  });
+
+  it("reconciles forced native into protocol create fees", async function () {
+    const { creator, launchFactory, protocol } = await deployFixture();
+
+    const ForceSend = await ethers.getContractFactory("ForceSend");
+    const forceSend = await ForceSend.deploy({ value: ethers.parseEther("0.15") });
+    await forceSend.waitForDeployment();
+    await forceSend.boom(await launchFactory.getAddress());
+
+    await expect(launchFactory.connect(creator).reconcileUnexpectedNative())
+      .to.emit(launchFactory, "UnexpectedNativeReconciled")
+      .withArgs(creator.address, ethers.parseEther("0.15"));
+
+    expect(await launchFactory.accruedProtocolCreateFees()).to.equal(ethers.parseEther("0.15"));
+
+    const recipientBalanceBefore = await ethers.provider.getBalance(creator.address);
+    await launchFactory.connect(protocol).claimProtocolCreateFeesTo(creator.address);
+    expect(await ethers.provider.getBalance(creator.address)).to.equal(recipientBalanceBefore + ethers.parseEther("0.15"));
+    expect(await launchFactory.accruedProtocolCreateFees()).to.equal(0n);
+  });
+
+  it("lets support deployers recover forced native to their immutable owner", async function () {
+    const { creator, owner, standardDeployer, whitelistDeployer, taxedDeployer, whitelistTaxedDeployer } =
+      await deployFixture();
+
+    const ForceSend = await ethers.getContractFactory("ForceSend");
+    const deployers = [standardDeployer, whitelistDeployer, taxedDeployer, whitelistTaxedDeployer];
+    const amounts = [
+      ethers.parseEther("0.01"),
+      ethers.parseEther("0.02"),
+      ethers.parseEther("0.03"),
+      ethers.parseEther("0.04"),
+    ];
+
+    for (let i = 0; i < deployers.length; i += 1) {
+      const deployerContract = deployers[i];
+      const amount = amounts[i];
+      const forceSend = await ForceSend.deploy({ value: amount });
+      await forceSend.waitForDeployment();
+      await forceSend.boom(await deployerContract.getAddress());
+
+      const ownerBalanceBefore = await ethers.provider.getBalance(owner.address);
+      await deployerContract.connect(creator).recoverUnexpectedNative();
+
+      expect(await ethers.provider.getBalance(owner.address)).to.equal(ownerBalanceBefore + amount);
+      expect(await ethers.provider.getBalance(await deployerContract.getAddress())).to.equal(0n);
+    }
   });
 
   it("creates standard launches and records creator ownership", async function () {

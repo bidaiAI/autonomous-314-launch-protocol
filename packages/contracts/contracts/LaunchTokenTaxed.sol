@@ -7,6 +7,9 @@ import {ILaunchFactoryRegistry} from "./interfaces/ILaunchFactoryRegistry.sol";
 contract LaunchTokenTaxed is LaunchToken {
     error InvalidTaxConfig();
     error UnauthorizedTaxedFactoryDeployment();
+    error UnauthorizedTaxablePoolManager();
+    error InvalidTaxablePool();
+    error CanonicalTaxablePoolRequired();
 
     struct TaxedConstructorArgs {
         string name;
@@ -28,6 +31,7 @@ contract LaunchTokenTaxed is LaunchToken {
     uint16 private immutable _burnShareBps;
     uint16 private immutable _treasuryShareBps;
     address private immutable _treasuryWallet;
+    mapping(address => bool) public isTaxablePool;
 
     event TaxApplied(
         address indexed from,
@@ -37,6 +41,7 @@ contract LaunchTokenTaxed is LaunchToken {
         uint256 burnAmount,
         uint256 treasuryAmount
     );
+    event TaxablePoolUpdated(address indexed pool, bool enabled, bool canonicalPair);
 
     constructor(TaxedConstructorArgs memory args) LaunchToken(
         LaunchToken.ConstructorArgs({
@@ -56,6 +61,7 @@ contract LaunchTokenTaxed is LaunchToken {
         _burnShareBps = args.burnShareBps;
         _treasuryShareBps = args.treasuryShareBps;
         _treasuryWallet = args.treasuryWallet;
+        _setTaxablePool(pair, true);
         if (!_isAuthorizedTaxedFactoryDeployment(args.factory)) revert UnauthorizedTaxedFactoryDeployment();
     }
 
@@ -78,6 +84,13 @@ contract LaunchTokenTaxed is LaunchToken {
         returns (bool enabled, uint16 configuredTaxBps, uint16 burnBps, uint16 treasuryBps, address wallet, bool active)
     {
         return (true, _taxBps, _burnShareBps, _treasuryShareBps, _treasuryWallet, state == LaunchState.DEXOnly);
+    }
+
+    function setTaxablePool(address pool, bool enabled) external {
+        if (!_canManageTaxablePools(msg.sender)) revert UnauthorizedTaxablePoolManager();
+        if (pool == pair && !enabled) revert CanonicalTaxablePoolRequired();
+        if (enabled && !_isValidTaxablePool(pool)) revert InvalidTaxablePool();
+        _setTaxablePool(pool, enabled);
     }
 
     function _update(address from, address to, uint256 value) internal override {
@@ -108,7 +121,7 @@ contract LaunchTokenTaxed is LaunchToken {
         if (value == 0) return false;
         if (state != LaunchState.DEXOnly) return false;
         if (from == address(0) || to == address(0)) return false;
-        return from == pair || to == pair;
+        return isTaxablePool[from] || isTaxablePool[to];
     }
 
     function _validateTaxConfig(
@@ -131,6 +144,40 @@ contract LaunchTokenTaxed is LaunchToken {
         if (msg.sender == factory_) return true;
         if (factory_.code.length == 0) return false;
         return msg.sender == ILaunchFactoryRegistry(factory_).taxedDeployer();
+    }
+
+    function _canManageTaxablePools(address account) private view returns (bool) {
+        if (account == creator) return true;
+        if (factory.code.length == 0) return false;
+
+        (bool success, bytes memory data) = factory.staticcall(abi.encodeWithSignature("owner()"));
+        return success && data.length >= 32 && abi.decode(data, (address)) == account;
+    }
+
+    function _isValidTaxablePool(address pool) private view returns (bool) {
+        if (pool == address(0) || pool == address(this) || pool.code.length == 0) return false;
+
+        (bool token0Ok, bytes memory token0Data) = pool.staticcall(abi.encodeWithSignature("token0()"));
+        (bool token1Ok, bytes memory token1Data) = pool.staticcall(abi.encodeWithSignature("token1()"));
+        (bool factoryOk, bytes memory factoryData) = pool.staticcall(abi.encodeWithSignature("factory()"));
+        if (
+            !token0Ok || token0Data.length < 32 || !token1Ok || token1Data.length < 32 || !factoryOk
+                || factoryData.length < 32
+        ) return false;
+
+        address token0 = abi.decode(token0Data, (address));
+        address token1 = abi.decode(token1Data, (address));
+        address poolFactory = abi.decode(factoryData, (address));
+        if (poolFactory == address(0) || poolFactory.code.length == 0) return false;
+
+        return token0 == address(this) || token1 == address(this);
+    }
+
+    function _setTaxablePool(address pool, bool enabled) private {
+        bool current = isTaxablePool[pool];
+        if (current == enabled) return;
+        isTaxablePool[pool] = enabled;
+        emit TaxablePoolUpdated(pool, enabled, pool == pair);
     }
 
     function _modeForTaxBps(uint16 taxBps_) private pure returns (uint8) {

@@ -3,12 +3,14 @@ pragma solidity ^0.8.24;
 
 interface IERC20Like {
     function balanceOf(address account) external view returns (uint256);
+    function transfer(address to, uint256 amount) external returns (bool);
 }
 
 contract MockDexV2Pair {
     uint112 private reserve0;
     uint112 private reserve1;
 
+    address public immutable factory;
     address public immutable token0;
     address public immutable token1;
     uint256 public totalSupply;
@@ -16,6 +18,7 @@ contract MockDexV2Pair {
     mapping(address => uint256) public balanceOf;
 
     constructor(address token0_, address token1_) {
+        factory = msg.sender;
         token0 = token0_;
         token1 = token1_;
     }
@@ -62,6 +65,21 @@ contract MockDexV2Pair {
         balanceOf[to] += liquidity;
         reserve0 = uint112(balance0Current);
         reserve1 = uint112(balance1Current);
+    }
+
+    function skim(address to) external {
+        uint256 balance0Current = IERC20Like(token0).balanceOf(address(this));
+        uint256 balance1Current = IERC20Like(token1).balanceOf(address(this));
+
+        uint256 excess0 = balance0Current > reserve0 ? balance0Current - reserve0 : 0;
+        uint256 excess1 = balance1Current > reserve1 ? balance1Current - reserve1 : 0;
+
+        if (excess0 != 0) {
+            IERC20Like(token0).transfer(to, excess0);
+        }
+        if (excess1 != 0) {
+            IERC20Like(token1).transfer(to, excess1);
+        }
     }
 
     function setReserves(uint112 reserve0_, uint112 reserve1_) external {

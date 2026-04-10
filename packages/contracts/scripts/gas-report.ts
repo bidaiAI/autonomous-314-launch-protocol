@@ -4,6 +4,13 @@ const CREATE_FEE = ethers.parseEther("0.01");
 const GRADUATION_TARGET = ethers.parseEther(process.env.GAS_REPORT_GRADUATION_TARGET_NATIVE ?? process.env.GAS_REPORT_GRADUATION_TARGET_BNB ?? "0.2");
 const FIRST_BUY = GRADUATION_TARGET / 4n;
 const OVERBUY = GRADUATION_TARGET * 5n;
+const WHITELIST_THRESHOLDS = [ethers.parseEther("4"), ethers.parseEther("6"), ethers.parseEther("8")];
+const WHITELIST_SLOT_SIZES = [
+  ethers.parseEther("0.1"),
+  ethers.parseEther("0.2"),
+  ethers.parseEther("0.5"),
+  ethers.parseEther("1")
+];
 
 function formatNative(value: bigint) {
   return ethers.formatEther(value);
@@ -30,15 +37,39 @@ async function main() {
   const mockRouter = await MockRouter.deploy(await mockFactory.getAddress(), await wbnb.getAddress());
   await mockRouter.waitForDeployment();
 
+  const StandardDeployer = await ethers.getContractFactory("LaunchTokenDeployer");
+  const standardDeployer = await StandardDeployer.deploy();
+  await standardDeployer.waitForDeployment();
+
+  const WhitelistDeployer = await ethers.getContractFactory("LaunchTokenWhitelistDeployer");
+  const whitelistDeployer = await WhitelistDeployer.deploy();
+  await whitelistDeployer.waitForDeployment();
+
+  const TaxedDeployer = await ethers.getContractFactory("LaunchTokenTaxedDeployer");
+  const taxedDeployer = await TaxedDeployer.deploy();
+  await taxedDeployer.waitForDeployment();
+
+  const WhitelistTaxedDeployer = await ethers.getContractFactory("LaunchCreate2Deployer");
+  const whitelistTaxedDeployer = await WhitelistTaxedDeployer.deploy();
+  await whitelistTaxedDeployer.waitForDeployment();
+
   const LaunchFactory = await ethers.getContractFactory("LaunchFactory");
   const launchFactory = await LaunchFactory.deploy(
     owner.address,
     await mockRouter.getAddress(),
     protocol.address,
+    await standardDeployer.getAddress(),
+    await whitelistDeployer.getAddress(),
+    await taxedDeployer.getAddress(),
+    await whitelistTaxedDeployer.getAddress(),
     CREATE_FEE,
-    GRADUATION_TARGET
+    CREATE_FEE,
+    GRADUATION_TARGET,
+    WHITELIST_THRESHOLDS,
+    WHITELIST_SLOT_SIZES
   );
   await launchFactory.waitForDeployment();
+  await whitelistTaxedDeployer.setFactory(await launchFactory.getAddress());
 
   const factoryDeployReceipt = await launchFactory.deploymentTransaction()?.wait();
   if (!factoryDeployReceipt) {

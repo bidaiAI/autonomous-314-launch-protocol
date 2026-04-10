@@ -4,7 +4,10 @@ pragma solidity ^0.8.24;
 import {LaunchTokenWhitelist} from "./LaunchTokenWhitelist.sol";
 
 contract LaunchTokenWhitelistDeployer {
+    address private recoveryRecipient;
+
     error Unauthorized();
+
     struct DeployConfig {
         string name;
         string symbol;
@@ -20,6 +23,10 @@ contract LaunchTokenWhitelistDeployer {
         address[] whitelistAddresses;
         uint8 launchModeId;
         bytes32 salt;
+    }
+
+    constructor() {
+        recoveryRecipient = msg.sender;
     }
 
     function deploy(DeployConfig calldata config) external returns (address token) {
@@ -41,5 +48,15 @@ contract LaunchTokenWhitelistDeployer {
                 launchModeId: config.launchModeId
             }))
         );
+    }
+
+    function recoverUnexpectedNative() external {
+        uint256 amount = address(this).balance;
+        bool ok;
+        address recipient = recoveryRecipient;
+        assembly ("memory-safe") {
+            ok := call(gas(), recipient, amount, 0, 0, 0, 0)
+        }
+        if (!ok) revert Unauthorized();
     }
 }

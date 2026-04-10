@@ -54,6 +54,7 @@ export type TradeRecord = {
   kind: "trade";
   token: `0x${string}`;
   marketAddress: `0x${string}`;
+  actor: `0x${string}` | null;
   txHash: `0x${string}`;
   blockNumber: bigint;
   logIndex: number;
@@ -110,6 +111,7 @@ export type LaunchWorkspaceSnapshot = {
   creator: `0x${string}`;
   name: string;
   symbol: string;
+  totalSupply: string;
   mode: number;
   modeLabel: LaunchMode;
   suffix: string;
@@ -123,6 +125,8 @@ export type LaunchWorkspaceSnapshot = {
   pairPreloadedQuote: string;
   pairClean: boolean;
   pairGraduationCompatible: boolean;
+  protocolFeeAccrued: string;
+  creatorFeeAccrued: string;
   protocolClaimable: string;
   creatorClaimable: string;
   whitelistStatus: string;

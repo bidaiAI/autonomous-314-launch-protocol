@@ -5,6 +5,13 @@ describe("LaunchTokenWhitelistTaxed", function () {
   const GRADUATION_TARGET = ethers.parseEther("12");
   const THRESHOLD = ethers.parseEther("4");
   const SLOT = ethers.parseEther("1");
+  const WHITELIST_THRESHOLDS = [ethers.parseEther("4"), ethers.parseEther("6"), ethers.parseEther("8")];
+  const WHITELIST_SLOT_SIZES = [
+    ethers.parseEther("0.1"),
+    ethers.parseEther("0.2"),
+    ethers.parseEther("0.5"),
+    ethers.parseEther("1")
+  ];
 
   async function buildWhitelistTaxedInitCode(params: {
     name: string;
@@ -97,7 +104,9 @@ describe("LaunchTokenWhitelistTaxed", function () {
       await whitelistTaxedDeployer.getAddress(),
       ethers.parseEther("0.01"),
       ethers.parseEther("0.03"),
-      GRADUATION_TARGET
+      GRADUATION_TARGET,
+      WHITELIST_THRESHOLDS,
+      WHITELIST_SLOT_SIZES
     );
     await launchFactory.waitForDeployment();
     await whitelistTaxedDeployer.setFactory(await launchFactory.getAddress());
@@ -148,7 +157,7 @@ describe("LaunchTokenWhitelistTaxed", function () {
     const pairAddress = await token.pair();
     const pair = await ethers.getContractAt("MockDexV2Pair", pairAddress);
 
-    return { deployer, buyer, buyer2, buyer3, buyer4, treasury, token, pair };
+    return { deployer, creator, buyer, buyer2, buyer3, buyer4, treasury, token, pair, mockFactory };
   }
 
   it("does not apply transfer tax during whitelist allocation claims", async function () {
@@ -171,7 +180,7 @@ describe("LaunchTokenWhitelistTaxed", function () {
     expect(await token.balanceOf(treasury.address)).to.equal(treasuryBefore);
   });
 
-  it("applies tax only after graduation when transferring to the pair", async function () {
+  it("applies tax only after graduation when transferring to the canonical registered pool", async function () {
     const { deployer, buyer, buyer2, buyer3, buyer4, treasury, token, pair } = await deployFixture();
     const dead = "0x000000000000000000000000000000000000dEaD";
 
@@ -197,6 +206,59 @@ describe("LaunchTokenWhitelistTaxed", function () {
 
     expect(await token.balanceOf(dead)).to.equal(deadBefore + expectedBurn);
     expect(await token.balanceOf(treasury.address)).to.equal(treasuryBefore + expectedTreasury);
+    expect(await token.isTaxablePool(await pair.getAddress())).to.equal(true);
+  });
+
+  it("lets the creator add a secondary pool without taxing wallet transfers or arbitrary addresses", async function () {
+    const { deployer, creator, buyer, buyer2, buyer3, buyer4, treasury, token, mockFactory } = await deployFixture();
+    const dead = "0x000000000000000000000000000000000000dEaD";
+
+    await buyer.sendTransaction({ to: await token.getAddress(), value: SLOT });
+    await buyer2.sendTransaction({ to: await token.getAddress(), value: SLOT });
+    await buyer3.sendTransaction({ to: await token.getAddress(), value: SLOT });
+    await buyer4.sendTransaction({ to: await token.getAddress(), value: SLOT });
+    await token.connect(buyer).claimWhitelistAllocation();
+
+    await deployer.sendTransaction({ to: buyer.address, value: ethers.parseEther("20") });
+    await token.connect(buyer).buy(0, { value: ethers.parseEther("20") });
+    expect(await token.state()).to.equal(3n);
+
+    const MockQuote = await ethers.getContractFactory("MockERC20");
+    const altQuote = await MockQuote.deploy("Alt Quote", "ALT");
+    await altQuote.waitForDeployment();
+
+    await mockFactory.createPair(await token.getAddress(), await altQuote.getAddress());
+    const altPairAddress = await mockFactory.getPair(await token.getAddress(), await altQuote.getAddress());
+    const altPair = await ethers.getContractAt("MockDexV2Pair", altPairAddress);
+
+    const transferAmount = (await token.balanceOf(buyer.address)) / 20n;
+    const treasuryBeforeUntaxed = await token.balanceOf(treasury.address);
+    const deadBeforeUntaxed = await token.balanceOf(dead);
+
+    await token.connect(buyer).transfer(await altPair.getAddress(), transferAmount);
+
+    expect(await token.balanceOf(treasury.address)).to.equal(treasuryBeforeUntaxed);
+    expect(await token.balanceOf(dead)).to.equal(deadBeforeUntaxed);
+
+    await expect(token.connect(creator).setTaxablePool(await altPair.getAddress(), true))
+      .to.emit(token, "TaxablePoolUpdated")
+      .withArgs(await altPair.getAddress(), true, false);
+
+    const treasuryBeforeTaxed = await token.balanceOf(treasury.address);
+    const deadBeforeTaxed = await token.balanceOf(dead);
+    await token.connect(buyer).transfer(await altPair.getAddress(), transferAmount);
+
+    const expectedTax = transferAmount * 500n / 10_000n;
+    const expectedBurn = expectedTax / 2n;
+    const expectedTreasury = expectedTax - expectedBurn;
+
+    expect(await token.balanceOf(dead)).to.equal(deadBeforeTaxed + expectedBurn);
+    expect(await token.balanceOf(treasury.address)).to.equal(treasuryBeforeTaxed + expectedTreasury);
+
+    await expect(token.connect(buyer2).setTaxablePool(buyer2.address, true)).to.be.revertedWithCustomError(
+      token,
+      "UnauthorizedTaxablePoolManager"
+    );
   });
 
   it("does not tax wallet-to-wallet transfers after graduation and rejects direct sends back into the token", async function () {

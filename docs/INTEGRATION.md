@@ -12,6 +12,8 @@ This document describes how third-party frontends, wallets, bots, and indexers s
   - This file is the main integration reference.
 - **Current official deployment values**
   - Use [`docs/OFFICIAL_PARAMETERS.md`](./OFFICIAL_PARAMETERS.md) for the current public factory, deployers, blocks, and runtime profile.
+- **Chain-specific deployments**
+  - Use [`docs/BASE_PROFILE.md`](./BASE_PROFILE.md) for the Base chain runtime profile, parameters, and indexer defaults.
 - **Metadata / social-link hydration**
   - Use [`docs/LAUNCH_METADATA.md`](./LAUNCH_METADATA.md) when you need images and social links.
 
@@ -20,6 +22,8 @@ The **protocol core is EVM-generic**. Examples in this document use the **offici
 - native asset: `BNB`
 - wrapped native asset: `WBNB`
 - canonical DEX: `PancakeSwap V2`
+
+The same integration surface applies to the **Base** runtime profile as well; only the chain-specific values change. Use [`docs/BASE_PROFILE.md`](./BASE_PROFILE.md) for Base-specific router, fee, whitelist, explorer, and indexer defaults.
 
 ## 1. Canonical architecture
 

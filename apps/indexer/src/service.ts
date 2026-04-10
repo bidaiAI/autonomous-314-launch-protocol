@@ -47,6 +47,15 @@ const legacyFactoryAbi = [
     outputs: [{ name: "", type: "address" }]
   }
 ] as const;
+const erc20BalanceOfAbi = [
+  {
+    type: "function",
+    name: "balanceOf",
+    stateMutability: "view",
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }]
+  }
+] as const;
 const buyExecutedTopic = eventTopic(
   "BuyExecuted(address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256)"
 );
@@ -55,6 +64,59 @@ const sellExecutedTopic = eventTopic(
 );
 const graduatedTopic = eventTopic("Graduated(address,uint256,uint256,uint256,uint256)");
 const swapTopic = eventTopic("Swap(address,uint256,uint256,uint256,uint256,address)");
+
+async function readPairStatus(
+  client: ReturnType<typeof createPublicClient>,
+  tokenAddress: `0x${string}`,
+  pair: `0x${string}`,
+  wrappedNative: `0x${string}`
+) {
+  if (pair === zeroAddress) {
+    return {
+      pairPreloadedQuote: 0n,
+      pairClean: false,
+      pairGraduationCompatible: false
+    };
+  }
+
+  const [pairSupply, reserves, token0, token1, tokenBalanceAtPair, quoteBalanceAtPair] = (await client.multicall({
+    allowFailure: false,
+    contracts: [
+      { address: pair, abi: v2PairAbi, functionName: "totalSupply" },
+      { address: pair, abi: v2PairAbi, functionName: "getReserves" },
+      { address: pair, abi: v2PairAbi, functionName: "token0" },
+      { address: pair, abi: v2PairAbi, functionName: "token1" },
+      { address: tokenAddress, abi: erc20BalanceOfAbi, functionName: "balanceOf", args: [pair] },
+      { address: wrappedNative, abi: erc20BalanceOfAbi, functionName: "balanceOf", args: [pair] }
+    ]
+  })) as unknown as [
+    bigint,
+    readonly [bigint, bigint, number],
+    `0x${string}`,
+    `0x${string}`,
+    bigint,
+    bigint
+  ];
+
+  const quoteReserve =
+    token0.toLowerCase() === wrappedNative.toLowerCase()
+      ? reserves[0]
+      : token1.toLowerCase() === wrappedNative.toLowerCase()
+        ? reserves[1]
+        : 0n;
+  const tokenReserve =
+    token0.toLowerCase() === tokenAddress.toLowerCase()
+      ? reserves[0]
+      : token1.toLowerCase() === tokenAddress.toLowerCase()
+        ? reserves[1]
+        : 0n;
+
+  return {
+    pairPreloadedQuote: quoteBalanceAtPair,
+    pairClean: pairSupply === 0n && tokenReserve === 0n && quoteReserve === 0n && tokenBalanceAtPair === 0n && quoteBalanceAtPair === 0n,
+    pairGraduationCompatible: pairSupply === 0n && tokenReserve === 0n && tokenBalanceAtPair === 0n
+  };
+}
 
 export async function buildIndexerSnapshot(): Promise<IndexerSnapshot> {
   if (!indexerConfig.factoryAddress) {
@@ -80,18 +142,18 @@ export async function buildIndexerSnapshot(): Promise<IndexerSnapshot> {
     functionName: "totalLaunches"
   })) as bigint;
   const launchCount = Number(totalLaunches > BigInt(indexerConfig.launchLimit) ? BigInt(indexerConfig.launchLimit) : totalLaunches);
-  const launches: `0x${string}`[] = [];
-
-  for (let offset = 0; offset < launchCount; offset += 1) {
-    const index = totalLaunches - 1n - BigInt(offset);
-    const token = (await client.readContract({
-      address: factoryAddress,
-      abi: legacyFactoryAbi,
-      functionName: "allLaunches",
-      args: [index]
-    })) as `0x${string}`;
-    launches.push(token);
-  }
+  const launches =
+    launchCount === 0
+      ? []
+      : ((await client.multicall({
+          allowFailure: false,
+          contracts: Array.from({ length: launchCount }, (_unused, offset) => ({
+            address: factoryAddress,
+            abi: legacyFactoryAbi,
+            functionName: "allLaunches" as const,
+            args: [totalLaunches - 1n - BigInt(offset)] as const
+          }))
+        })) as unknown as `0x${string}`[]);
 
   const workspaceSnapshots: LaunchWorkspaceSnapshot[] = [];
 
@@ -137,10 +199,13 @@ export async function buildIndexerSnapshot(): Promise<IndexerSnapshot> {
     }
 
     if ((graduationBlock !== null || tokenSnapshot.state === "DEXOnly") && graduationPair !== zeroAddress) {
-      const [token0, token1] = (await Promise.all([
-        client.readContract({ address: graduationPair, abi: v2PairAbi, functionName: "token0" }),
-        client.readContract({ address: graduationPair, abi: v2PairAbi, functionName: "token1" })
-      ])) as [`0x${string}`, `0x${string}`];
+      const [token0, token1] = (await client.multicall({
+        allowFailure: false,
+        contracts: [
+          { address: graduationPair, abi: v2PairAbi, functionName: "token0" },
+          { address: graduationPair, abi: v2PairAbi, functionName: "token1" }
+        ]
+      })) as unknown as [`0x${string}`, `0x${string}`];
 
       let pairLogs: Log[] = [];
       try {
@@ -362,55 +427,67 @@ async function readLaunchSnapshot(client: ReturnType<typeof createPublicClient>,
   const [
     name,
     symbol,
+    totalSupply,
     state,
     pair,
+    wrappedNative,
     creator,
     metadataURI,
     currentPriceQuotePerToken,
     graduationQuoteReserve,
     graduationProgressBps,
     remainingQuoteCapacity,
-    pairPreloadedQuote,
-    pairClean,
-    pairGraduationCompatible,
+    protocolFeeAccrued,
+    creatorFeeAccrued,
     protocolClaimable,
     creatorClaimable,
     dexReserves
-  ] = (await Promise.all([
-    client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "name" }),
-    client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "symbol" }),
-    client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "state" }),
-    client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "pair" }),
-    client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "creator" }),
-    client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "metadataURI" }),
-    client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "currentPriceQuotePerToken" }),
-    client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "graduationQuoteReserve" }),
-    client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "displayGraduationProgressBps" }),
-    client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "remainingQuoteCapacity" }),
-    client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "pairPreloadedQuote" }),
-    client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "isPairClean" }),
-    client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "isPairGraduationCompatible" }),
-    client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "protocolClaimable" }),
-    client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "creatorClaimable" }),
-    client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "dexReserves" })
-  ])) as [
+  ] = (await client.multicall({
+    allowFailure: false,
+    contracts: [
+      { address: tokenAddress, abi: launchTokenAbi, functionName: "name" },
+      { address: tokenAddress, abi: launchTokenAbi, functionName: "symbol" },
+      { address: tokenAddress, abi: launchTokenAbi, functionName: "totalSupply" },
+      { address: tokenAddress, abi: launchTokenAbi, functionName: "state" },
+      { address: tokenAddress, abi: launchTokenAbi, functionName: "pair" },
+      { address: tokenAddress, abi: launchTokenAbi, functionName: "wrappedNative" },
+      { address: tokenAddress, abi: launchTokenAbi, functionName: "creator" },
+      { address: tokenAddress, abi: launchTokenAbi, functionName: "metadataURI" },
+      { address: tokenAddress, abi: launchTokenAbi, functionName: "currentPriceQuotePerToken" },
+      { address: tokenAddress, abi: launchTokenAbi, functionName: "graduationQuoteReserve" },
+      { address: tokenAddress, abi: launchTokenAbi, functionName: "displayGraduationProgressBps" },
+      { address: tokenAddress, abi: launchTokenAbi, functionName: "remainingQuoteCapacity" },
+      { address: tokenAddress, abi: launchTokenAbi, functionName: "protocolFeeVault" },
+      { address: tokenAddress, abi: launchTokenAbi, functionName: "creatorFeeVault" },
+      { address: tokenAddress, abi: launchTokenAbi, functionName: "protocolClaimable" },
+      { address: tokenAddress, abi: launchTokenAbi, functionName: "creatorClaimable" },
+      { address: tokenAddress, abi: launchTokenAbi, functionName: "dexReserves" }
+    ]
+  })) as unknown as [
     string,
     string,
+    bigint,
     bigint,
     `0x${string}`,
     `0x${string}`,
+    `0x${string}`,
     string,
     bigint,
     bigint,
     bigint,
     bigint,
     bigint,
-    boolean,
-    boolean,
+    bigint,
     bigint,
     bigint,
     readonly [bigint, bigint]
   ];
+
+  const {
+    pairPreloadedQuote,
+    pairClean,
+    pairGraduationCompatible
+  } = await readPairStatus(client, tokenAddress, pair, wrappedNative);
 
   let launchMode = 1n;
   let launchSuffix = expectedSuffixForMode(Number(launchMode));
@@ -428,40 +505,59 @@ async function readLaunchSnapshot(client: ReturnType<typeof createPublicClient>,
   ];
   let taxConfig: TaxConfigSnapshot = null;
 
-  try {
-    launchMode = (await client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "launchMode" })) as bigint;
-  } catch {}
-  try {
-    launchSuffix = (await client.readContract({ address: tokenAddress, abi: launchTokenAbi, functionName: "launchSuffix" })) as string;
-  } catch {}
-  try {
-    whitelistStatus = (await client.readContract({
-      address: tokenAddress,
-      abi: launchTokenAbi,
-      functionName: "whitelistStatus"
-    })) as bigint;
-    whitelistSnapshot = (await client.readContract({
-      address: tokenAddress,
-      abi: launchTokenAbi,
-      functionName: "whitelistSnapshot"
-    })) as readonly [bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint];
-  } catch {}
-  if (isTaxedMode(launchMode)) {
-    try {
-      const [enabled, taxBps, burnShareBps, treasuryShareBps, treasuryWallet, active] = (await client.readContract({
-        address: tokenAddress,
-        abi: launchTokenAbi,
-        functionName: "taxConfig"
-      })) as readonly [boolean, bigint, bigint, bigint, `0x${string}`, boolean];
-      taxConfig = {
-        enabled,
-        taxBps: taxBps.toString(),
-        burnShareBps: burnShareBps.toString(),
-        treasuryShareBps: treasuryShareBps.toString(),
-        treasuryWallet: treasuryWallet === zeroAddress ? null : treasuryWallet,
-        active
-      };
-    } catch {}
+  const optionalResults = (await client.multicall({
+    allowFailure: true,
+    contracts: [
+      { address: tokenAddress, abi: launchTokenAbi, functionName: "launchMode" },
+      { address: tokenAddress, abi: launchTokenAbi, functionName: "launchSuffix" },
+      { address: tokenAddress, abi: launchTokenAbi, functionName: "whitelistStatus" },
+      { address: tokenAddress, abi: launchTokenAbi, functionName: "whitelistSnapshot" },
+      { address: tokenAddress, abi: launchTokenAbi, functionName: "taxConfig" }
+    ]
+  })) as unknown as Array<
+    | { status: "success"; result: unknown }
+    | { status: "failure"; error: unknown }
+  >;
+
+  const launchModeResult = optionalResults[0];
+  const launchSuffixResult = optionalResults[1];
+  const whitelistStatusResult = optionalResults[2];
+  const whitelistSnapshotResult = optionalResults[3];
+  const taxConfigResult = optionalResults[4];
+
+  if (launchModeResult?.status === "success" && typeof launchModeResult.result === "bigint") {
+    launchMode = launchModeResult.result;
+  }
+  if (launchSuffixResult?.status === "success" && typeof launchSuffixResult.result === "string") {
+    launchSuffix = launchSuffixResult.result;
+  }
+  if (whitelistStatusResult?.status === "success" && typeof whitelistStatusResult.result === "bigint") {
+    whitelistStatus = whitelistStatusResult.result;
+  }
+  if (whitelistSnapshotResult?.status === "success" && Array.isArray(whitelistSnapshotResult.result)) {
+    whitelistSnapshot = whitelistSnapshotResult.result as unknown as readonly [
+      bigint,
+      bigint,
+      bigint,
+      bigint,
+      bigint,
+      bigint,
+      bigint,
+      bigint,
+      bigint
+    ];
+  }
+  if (taxConfigResult?.status === "success" && Array.isArray(taxConfigResult.result) && isTaxedMode(launchMode)) {
+    const [enabled, taxBps, burnShareBps, treasuryShareBps, treasuryWallet, active] =
+      taxConfigResult.result as unknown as readonly [boolean, bigint, bigint, bigint, `0x${string}`, boolean];
+    taxConfig = {
+      enabled,
+      taxBps: taxBps.toString(),
+      burnShareBps: burnShareBps.toString(),
+      treasuryShareBps: treasuryShareBps.toString(),
+      treasuryWallet: treasuryWallet === zeroAddress ? null : treasuryWallet,
+      active
+    };
   }
 
   if (!launchSuffix) {
@@ -488,6 +584,7 @@ async function readLaunchSnapshot(client: ReturnType<typeof createPublicClient>,
     creator,
     name,
     symbol,
+    totalSupply: totalSupply.toString(),
     mode: Number(launchMode),
     modeLabel: launchModeFromId(Number(launchMode)),
     suffix: launchSuffix,
@@ -501,6 +598,8 @@ async function readLaunchSnapshot(client: ReturnType<typeof createPublicClient>,
     pairPreloadedQuote: pairPreloadedQuote.toString(),
     pairClean,
     pairGraduationCompatible,
+    protocolFeeAccrued: protocolFeeAccrued.toString(),
+    creatorFeeAccrued: creatorFeeAccrued.toString(),
     protocolClaimable: protocolClaimable.toString(),
     creatorClaimable: creatorClaimable.toString(),
     whitelistStatus: whitelistStatus.toString(),

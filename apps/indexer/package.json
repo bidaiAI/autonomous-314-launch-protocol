@@ -9,7 +9,10 @@
     "serve": "tsx src/server.ts",
     "build": "rm -rf dist && tsc -p tsconfig.json",
     "start": "tsx src/server.ts",
-    "start:snapshot": "node dist/main.js"
+    "start:snapshot": "node dist/main.js",
+    "sync:verification-artifacts": "node scripts/sync-verification-artifacts.mjs",
+    "verify:once": "tsx src/verify-once.ts",
+    "test": "tsx --test src/**/*.test.ts"
   },
   "dependencies": {
     "viem": "^2.38.2"

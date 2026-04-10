@@ -80,6 +80,8 @@ export type TokenSnapshot = {
   pairPreloadedQuote: bigint;
   pairClean: boolean;
   pairGraduationCompatible: boolean;
+  protocolFeeAccrued: bigint;
+  creatorFeeAccrued: bigint;
   protocolClaimable: bigint;
   creatorClaimable: bigint;
   creatorFeeSweepReady: boolean;
@@ -133,6 +135,7 @@ export type ActivityFeedItem =
       phase: "bonding" | "dexOnly";
       side: "buy" | "sell";
       marketAddress: `0x${string}`;
+      actor: `0x${string}` | null;
       netQuote: bigint;
       tokenAmount: bigint;
       priceQuotePerToken: bigint;

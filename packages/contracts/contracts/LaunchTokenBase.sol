@@ -43,7 +43,7 @@ abstract contract LaunchTokenBase is ERC20, ReentrancyGuard {
     uint256 public constant TOTAL_SUPPLY = 1_000_000_000 ether;
     uint256 public constant LP_TOKEN_RESERVE = 200_000_000 ether;
     uint256 public constant SALE_TOKEN_RESERVE = TOTAL_SUPPLY - LP_TOKEN_RESERVE;
-    uint256 public constant VIRTUAL_QUOTE_DIVISOR = 3;
+    uint256 public constant CURVE_VIRTUAL_TOKEN_RESERVE = 107_036_752 ether;
 
     uint256 public constant BPS_DENOMINATOR = 10_000;
     uint256 public constant TOTAL_FEE_BPS = 100;
@@ -109,6 +109,7 @@ abstract contract LaunchTokenBase is ERC20, ReentrancyGuard {
         uint256 preloadedQuoteAmount,
         uint256 liquidityBurned
     );
+    event UnexpectedNativeReconciled(address indexed caller, uint256 amount);
     event ProtocolFeesClaimed(address indexed recipient, uint256 amount);
     event CreatorFeesClaimed(address indexed recipient, uint256 amount);
     event CreatorFeesSwept(address indexed caller, uint256 amount);
@@ -142,7 +143,11 @@ abstract contract LaunchTokenBase is ERC20, ReentrancyGuard {
         LaunchState initialState_
     ) ERC20(name_, symbol_) {
         if (graduationQuoteReserve_ == 0) revert InvalidGraduationConfig();
-        uint256 virtualQuoteReserve_ = graduationQuoteReserve_ / VIRTUAL_QUOTE_DIVISOR;
+        uint256 virtualQuoteReserve_ = Math.mulDiv(
+            graduationQuoteReserve_,
+            LP_TOKEN_RESERVE + CURVE_VIRTUAL_TOKEN_RESERVE,
+            SALE_TOKEN_RESERVE
+        );
         if (virtualQuoteReserve_ == 0) revert InvalidGraduationConfig();
         if (creator_ == address(0) || factory_ == address(0) || protocolFeeRecipient_ == address(0) || router_ == address(0)) revert ZeroAddress();
 
@@ -154,7 +159,7 @@ abstract contract LaunchTokenBase is ERC20, ReentrancyGuard {
         wrappedNative = IUniswapV2LikeRouter02(router_).WETH();
         graduationQuoteReserve = graduationQuoteReserve_;
         virtualQuoteReserve = virtualQuoteReserve_;
-        virtualTokenReserve = (LP_TOKEN_RESERVE * virtualQuoteReserve_) / graduationQuoteReserve_;
+        virtualTokenReserve = CURVE_VIRTUAL_TOKEN_RESERVE;
         createdAt = block.timestamp;
         lastTradeAt = block.timestamp;
         metadataURI = metadataURI_;
@@ -299,6 +304,15 @@ abstract contract LaunchTokenBase is ERC20, ReentrancyGuard {
         emit CreatorFeesSwept(msg.sender, amount);
     }
 
+    function reconcileUnexpectedNative() external returns (uint256 amount) {
+        amount = _unexpectedNativeBalance();
+        if (amount == 0) revert NothingToClaim();
+
+        protocolFeeVault += amount;
+
+        emit UnexpectedNativeReconciled(msg.sender, amount);
+    }
+
     function previewBuy(uint256 grossQuoteIn)
         external
         view
@@ -396,21 +410,6 @@ abstract contract LaunchTokenBase is ERC20, ReentrancyGuard {
         return lastBuy == 0 || block.number > lastBuy;
     }
 
-    function isPairClean() external view returns (bool) {
-        return _pairIsClean();
-    }
-
-    function isPairGraduationCompatible() external view returns (bool) {
-        return _pairAllowsGraduation();
-    }
-
-    function pairPreloadedQuote() external view returns (uint256) {
-        if (pair == address(0)) {
-            return 0;
-        }
-        return IERC20Minimal(wrappedNative).balanceOf(pair);
-    }
-
     function protocolClaimable() external view returns (uint256) {
         return protocolFeeVault;
     }
@@ -455,15 +454,11 @@ abstract contract LaunchTokenBase is ERC20, ReentrancyGuard {
     }
 
     function accountedNativeBalance() external view returns (uint256) {
-        return curveQuoteReserve + protocolFeeVault + creatorFeeVault + _additionalAccountedNative();
+        return _accountedNativeBalance();
     }
 
     function unexpectedNativeBalance() external view returns (uint256) {
-        uint256 accounted = curveQuoteReserve + protocolFeeVault + creatorFeeVault + _additionalAccountedNative();
-        if (address(this).balance <= accounted) {
-            return 0;
-        }
-        return address(this).balance - accounted;
+        return _unexpectedNativeBalance();
     }
 
     function whitelistStatus() public view virtual returns (uint8) {
@@ -628,20 +623,22 @@ abstract contract LaunchTokenBase is ERC20, ReentrancyGuard {
         state = LaunchState.Migrating;
         emit StateTransition(previousState, LaunchState.Migrating);
 
-        _assertPairAllowsGraduation();
+        uint256 preloadedQuoteAmount = _preparePairForGraduation();
 
         uint256 tokenAmount = lpTokenReserve;
-        uint256 quoteAmount = curveQuoteReserve;
-        uint256 preloadedQuoteAmount = IERC20Minimal(wrappedNative).balanceOf(pair);
+        uint256 quoteAmount = curveQuoteReserve - preloadedQuoteAmount;
 
         _transfer(address(this), pair, tokenAmount);
-        IWrappedNative(wrappedNative).deposit{value: quoteAmount}();
-        bool wrappedTransferOk = IWrappedNative(wrappedNative).transfer(pair, quoteAmount);
-        if (!wrappedTransferOk) revert WrappedQuoteTransferFailed();
+        if (quoteAmount != 0) {
+            IWrappedNative(wrappedNative).deposit{value: quoteAmount}();
+            bool wrappedTransferOk = IWrappedNative(wrappedNative).transfer(pair, quoteAmount);
+            if (!wrappedTransferOk) revert WrappedQuoteTransferFailed();
+        }
 
         uint256 liquidityBurned = IUniswapV2LikePair(pair).mint(DEAD_ADDRESS);
 
         lpTokenReserve = 0;
+        protocolFeeVault += preloadedQuoteAmount;
         curveQuoteReserve = 0;
 
         previousState = state;
@@ -650,41 +647,54 @@ abstract contract LaunchTokenBase is ERC20, ReentrancyGuard {
         emit Graduated(pair, tokenAmount, quoteAmount, preloadedQuoteAmount, liquidityBurned);
     }
 
-    function _assertPairAllowsGraduation() internal view {
-        if (!_pairAllowsGraduation()) revert PairPolluted();
+    function _accountedNativeBalance() internal view returns (uint256) {
+        return curveQuoteReserve + protocolFeeVault + creatorFeeVault + _additionalAccountedNative();
     }
 
-    function _pairIsClean() internal view returns (bool) {
-        if (pair == address(0)) return false;
-
-        IUniswapV2LikePair lpPair = IUniswapV2LikePair(pair);
-        if (lpPair.totalSupply() != 0) return false;
-
-        (uint112 reserve0, uint112 reserve1,) = lpPair.getReserves();
-        if (reserve0 != 0 || reserve1 != 0) return false;
-
-        if (balanceOf(pair) != 0) return false;
-        if (IERC20Minimal(wrappedNative).balanceOf(pair) != 0) return false;
-
-        return true;
+    function _unexpectedNativeBalance() internal view returns (uint256 amount) {
+        uint256 accounted = _accountedNativeBalance();
+        uint256 actualBalance = address(this).balance;
+        if (actualBalance <= accounted) {
+            return 0;
+        }
+        return actualBalance - accounted;
     }
 
-    function _pairAllowsGraduation() internal view returns (bool) {
-        if (pair == address(0)) return false;
+    function _recoverSkimmablePairBalances() internal {
+        if (pair == address(0)) return;
 
         IUniswapV2LikePair lpPair = IUniswapV2LikePair(pair);
-        if (lpPair.totalSupply() != 0) return false;
+        if (lpPair.totalSupply() != 0) {
+            return;
+        }
+        lpPair.skim(protocolFeeRecipient);
+    }
 
-        if (balanceOf(pair) != 0) return false;
+    function _preparePairForGraduation() internal returns (uint256 preloadedQuoteAmount) {
+        if (pair == address(0)) revert PairPolluted();
+
+        _recoverSkimmablePairBalances();
+
+        IUniswapV2LikePair lpPair = IUniswapV2LikePair(pair);
+        if (lpPair.totalSupply() != 0) revert PairPolluted();
+
+        if (balanceOf(pair) != 0) revert PairPolluted();
 
         (uint112 reserve0, uint112 reserve1,) = lpPair.getReserves();
         address token0 = lpPair.token0();
         address token1 = lpPair.token1();
 
-        if (token0 == address(this) && reserve0 != 0) return false;
-        if (token1 == address(this) && reserve1 != 0) return false;
+        if (token0 == address(this)) {
+            if (reserve0 != 0) revert PairPolluted();
+            preloadedQuoteAmount = reserve1;
+        } else if (token1 == address(this)) {
+            if (reserve1 != 0) revert PairPolluted();
+            preloadedQuoteAmount = reserve0;
+        } else {
+            revert PairPolluted();
+        }
 
-        return true;
+        if (preloadedQuoteAmount > graduationQuoteReserve) revert PairPolluted();
     }
 
     function _buyTokenOut(uint256 netQuoteIn) internal view returns (uint256 tokenOut) {

@@ -5,6 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-0f172a.svg)](./LICENSE)
 ![EVM Generic](https://img.shields.io/badge/core-EVM%20generic-2563eb.svg)
 ![BSC Official Profile](https://img.shields.io/badge/official%20profile-BSC-f59e0b.svg)
+![Base Runtime Profile](https://img.shields.io/badge/runtime-Base-0052ff.svg)
 ![Creator First](https://img.shields.io/badge/fees-0.7%25%20creator%20%7C%200.3%25%20protocol-10b981.svg)
 ![Open Protocol](https://img.shields.io/badge/model-open%20protocol-7c3aed.svg)
 
@@ -17,6 +18,7 @@ An open-source, deplatformed **EVM-native** onchain launch protocol with a built
 If you are reading this repo for integration work, start here:
 
 - **Official runtime / deployment parameters:** [`docs/OFFICIAL_PARAMETERS.md`](docs/OFFICIAL_PARAMETERS.md)
+- **Base runtime profile:** [`docs/BASE_PROFILE.md`](docs/BASE_PROFILE.md)
 - **Protocol integration:** [`docs/INTEGRATION.md`](docs/INTEGRATION.md)
 - **Metadata / socials / images:** [`docs/LAUNCH_METADATA.md`](docs/LAUNCH_METADATA.md)
 
@@ -55,7 +57,7 @@ Autonomous 314 is built with four concrete goals:
 
 ## Why Autonomous 314 is structurally different
 
-The point of this protocol is not just "launch tokens on BSC". The point is to change **where the market logic lives** and **who depends on whom**.
+The point of this protocol is not just "launch tokens on BSC or Base". The point is to change **where the market logic lives** and **who depends on whom**.
 
 - **Contract-native market, not frontend-native market**
   - before graduation, trading happens inside the launch contract itself instead of relying on a platform UI or off-chain swap backend
@@ -413,16 +415,32 @@ In other words, this repository is meant to be a **self-contained open launch sy
 
 This repository is the **EVM-generic core**.
 
-The current **official launch profile** is:
+The current **official runtime profiles** are:
 
-- chain: **BSC**
+### BSC official profile
+
+- chain: **BNB Smart Chain**
 - DEX: **PancakeSwap V2**
 - wrapped native quote: **WBNB**
 - graduation target: **12 BNB**
 - curve profile: Flap-aligned token-side shape scaled to the `12 BNB` repo profile
 - standard/taxed create fee: **0.01 BNB** (repository V2 default)
 - whitelist/whitelist-tax create fee: **0.03 BNB** (repository V2 default)
+
+### Base official profile
+
+- chain: **Base**
+- DEX: **QuickSwap V2**
+- wrapped native quote: **WETH**
+- graduation target: **4 ETH**
+- standard/taxed create fee: **0.005 ETH**
+- whitelist/whitelist-tax create fee: **0.01 ETH**
+
+Both official profiles currently share the same default protocol treasury fallback:
+
 - default protocol treasury fallback: **`0xC4187bE6b362DF625696d4a9ec5E6FA461CC0314`**
+
+Use [`docs/OFFICIAL_PARAMETERS.md`](docs/OFFICIAL_PARAMETERS.md) as the canonical public reference for the current BSC + Base deployment values, and [`docs/BASE_PROFILE.md`](docs/BASE_PROFILE.md) for the Base-specific deployment profile.
 
 If a factory deployer passes `address(0)` as the protocol fee recipient, the factory falls back to the default treasury above. Deployers can still override it explicitly.
 

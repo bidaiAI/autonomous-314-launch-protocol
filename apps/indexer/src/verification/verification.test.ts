@@ -1,0 +1,157 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { decodeFunctionData, encodeDeployData, encodeFunctionData, getAddress } from "viem";
+import { launchFactoryAbi } from "../abi";
+import { buildLaunchConstructorArguments } from "./launches";
+import {
+  encodeConstructorArguments,
+  extractConstructorArgumentsFromCreationInput,
+  loadContractBuildSpec
+} from "./specs";
+
+test("rebuilds standard launch constructor arguments from factory call data", () => {
+  const creator = getAddress("0x1111111111111111111111111111111111111111");
+  const factory = getAddress("0x2222222222222222222222222222222222222222");
+  const protocolFeeRecipient = getAddress("0x3333333333333333333333333333333333333333");
+  const router = getAddress("0x4444444444444444444444444444444444444444");
+  const txData = encodeFunctionData({
+    abi: launchFactoryAbi,
+    functionName: "createLaunchAndBuyWithSalt",
+    args: ["Auto", "AUTO", "ipfs://meta", "0x" + "11".repeat(32), 123n]
+  });
+  const decoded = decodeFunctionData({ abi: launchFactoryAbi, data: txData });
+
+  const constructorArguments = buildLaunchConstructorArguments({
+    functionName: decoded.functionName,
+    args: decoded.args ?? [],
+    creator,
+    factoryContext: {
+      factory,
+      protocolFeeRecipient,
+      router,
+      graduationQuoteReserve: 12n * 10n ** 18n
+    },
+    mode: 1
+  });
+
+  const expected = encodeConstructorArguments("contracts/LaunchToken.sol:LaunchToken", [
+    {
+      name: "Auto",
+      symbol: "AUTO",
+      metadataURI: "ipfs://meta",
+      creator,
+      factory,
+      protocolFeeRecipient,
+      router,
+      graduationQuoteReserve: 12n * 10n ** 18n,
+      launchModeId: 1
+    }
+  ]);
+
+  assert.equal(constructorArguments, expected);
+});
+
+test("rebuilds whitelist taxed launch constructor arguments from factory call data", () => {
+  const creator = getAddress("0x1111111111111111111111111111111111111111");
+  const factory = getAddress("0x2222222222222222222222222222222222222222");
+  const protocolFeeRecipient = getAddress("0x3333333333333333333333333333333333333333");
+  const router = getAddress("0x4444444444444444444444444444444444444444");
+  const whitelistAddresses = [
+    getAddress("0x5555555555555555555555555555555555555555"),
+    getAddress("0x6666666666666666666666666666666666666666")
+  ] as const;
+
+  const txData = encodeFunctionData({
+    abi: launchFactoryAbi,
+    functionName: "createWhitelistTaxLaunchWithSalt",
+    args: [
+      "WL Tax",
+      "F314",
+      "ipfs://wl-tax",
+      {
+        whitelistThreshold: 4n * 10n ** 18n,
+        whitelistSlotSize: 1n * 10n ** 18n,
+        whitelistOpensAt: 0n,
+        whitelistAddresses
+      },
+      {
+        taxBps: 300,
+        burnShareBps: 6000,
+        treasuryShareBps: 4000,
+        treasuryWallet: getAddress("0x7777777777777777777777777777777777777777")
+      },
+      "0x1234",
+      "0x" + "22".repeat(32)
+    ]
+  });
+  const decoded = decodeFunctionData({ abi: launchFactoryAbi, data: txData });
+
+  const constructorArguments = buildLaunchConstructorArguments({
+    functionName: decoded.functionName,
+    args: decoded.args ?? [],
+    creator,
+    factoryContext: {
+      factory,
+      protocolFeeRecipient,
+      router,
+      graduationQuoteReserve: 12n * 10n ** 18n
+    },
+    mode: 12
+  });
+
+  const expected = encodeConstructorArguments(
+    "contracts/LaunchTokenWhitelistTaxed.sol:LaunchTokenWhitelistTaxed",
+    [
+      {
+        name: "WL Tax",
+        symbol: "F314",
+        metadataURI: "ipfs://wl-tax",
+        creator,
+        factory,
+        protocolFeeRecipient,
+        router,
+        graduationQuoteReserve: 12n * 10n ** 18n,
+        whitelistThreshold: 4n * 10n ** 18n,
+        whitelistSlotSize: 1n * 10n ** 18n,
+        whitelistOpensAt: 0n,
+        whitelistAddresses,
+        launchModeId: 12,
+        taxBps: 300,
+        burnShareBps: 6000,
+        treasuryShareBps: 4000,
+        treasuryWallet: getAddress("0x7777777777777777777777777777777777777777")
+      }
+    ]
+  );
+
+  assert.equal(constructorArguments, expected);
+});
+
+test("extracts constructor args from top-level deployment input for official contracts", () => {
+  const spec = loadContractBuildSpec("contracts/LaunchFactory.sol:LaunchFactory");
+  const deployData = encodeDeployData({
+    abi: spec.abi,
+    bytecode: spec.bytecode,
+    args: [
+      getAddress("0x9999999999999999999999999999999999999999"),
+      getAddress("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+      getAddress("0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
+      getAddress("0xcccccccccccccccccccccccccccccccccccccccc"),
+      getAddress("0xdddddddddddddddddddddddddddddddddddddddd"),
+      getAddress("0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"),
+      getAddress("0xffffffffffffffffffffffffffffffffffffffff"),
+      10n ** 16n,
+      3n * 10n ** 16n,
+      12n * 10n ** 18n,
+      [4n, 6n, 8n],
+      [1n * 10n ** 17n, 2n * 10n ** 17n, 5n * 10n ** 17n, 1n * 10n ** 18n]
+    ]
+  });
+
+  const extracted = extractConstructorArgumentsFromCreationInput(
+    "contracts/LaunchFactory.sol:LaunchFactory",
+    deployData
+  );
+
+  assert.equal(extracted, `0x${deployData.slice(spec.bytecode.length)}`);
+});

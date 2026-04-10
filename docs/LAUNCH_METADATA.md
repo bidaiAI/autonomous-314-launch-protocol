@@ -25,6 +25,32 @@ Everything richer than that should live behind `metadataURI`.
 }
 ```
 
+## Recommended image guidance
+
+To align better with launch cards, token detail pages, bots, and wallet listings:
+
+- use a **square** cover image whenever possible
+- keep the main logo / mascot / wordmark in the **center safe area**
+- avoid important text or logos near the edges because several surfaces crop with `cover`
+- prefer **PNG**, **JPG**, or **WebP**
+- **400 × 400 px** can work for fast creation flows
+- aim for **1000 × 1000 px or above** for sharper cards and wallet/bot rendering
+- keep files roughly **1 MB** when possible for smoother metadata handling
+
+The reference frontend accepts local image uploads for preview, but the production-friendly path is still:
+
+1. host the final image at a permanent URL
+2. place that URL in `image`
+3. publish the metadata JSON to a permanent `metadataURI`
+
+The create page also supports **local square crop preview** so creators can center artwork before exporting metadata.
+
+This keeps third-party consumers consistent:
+
+- bots can render the logo from `image`
+- wallets can hydrate project identity from `image` + social links
+- custom frontends can reuse the same metadata without guessing image policy
+
 ## Why this boundary exists
 
 - Rich metadata changes more often than protocol state.

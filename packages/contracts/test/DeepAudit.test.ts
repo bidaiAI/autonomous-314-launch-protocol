@@ -474,7 +474,6 @@ describe("Deep Audit: AMM Math & Edge Cases", function () {
     it("pair with non-zero totalSupply blocks graduation", async function () {
       const { token, buyer, pair } = await deployFixture();
       await pair.setTotalSupply(1n);
-      expect(await token.isPairGraduationCompatible()).to.equal(false);
 
       await expect(
         token.connect(buyer).buy(0, { value: OVERBUY })

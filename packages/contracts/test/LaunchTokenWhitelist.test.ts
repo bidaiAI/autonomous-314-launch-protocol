@@ -5,6 +5,20 @@ describe("LaunchTokenWhitelist", function () {
   const GRADUATION_TARGET = ethers.parseEther("12");
   const THRESHOLD = ethers.parseEther("4");
   const SLOT = ethers.parseEther("0.2");
+  const WHITELIST_THRESHOLDS = [ethers.parseEther("4"), ethers.parseEther("6"), ethers.parseEther("8")];
+  const WHITELIST_SLOT_SIZES = [
+    ethers.parseEther("0.1"),
+    ethers.parseEther("0.2"),
+    ethers.parseEther("0.5"),
+    ethers.parseEther("1")
+  ];
+
+  async function deployWhitelistFactoryRegistry(whitelistDeployer: string) {
+    const Registry = await ethers.getContractFactory("MockLaunchFactoryRegistry");
+    const registry = await Registry.deploy(whitelistDeployer, WHITELIST_THRESHOLDS, WHITELIST_SLOT_SIZES);
+    await registry.waitForDeployment();
+    return registry;
+  }
 
   async function deployFixture(options?: { whitelistCount?: number }) {
     const [deployer, creator, protocol] = await ethers.getSigners();
@@ -31,6 +45,7 @@ describe("LaunchTokenWhitelist", function () {
     const mockRouter = await MockRouter.deploy(await mockFactory.getAddress(), await wbnb.getAddress());
     await mockRouter.waitForDeployment();
 
+    const whitelistFactoryRegistry = await deployWhitelistFactoryRegistry(deployer.address);
     const whitelist = whitelistCommitters.map((signer) => signer.address);
 
     const LaunchTokenWhitelist = await ethers.getContractFactory("LaunchTokenWhitelist");
@@ -39,7 +54,7 @@ describe("LaunchTokenWhitelist", function () {
       symbol: "B314",
       metadataURI: "ipfs://b314",
       creator: creator.address,
-      factory: deployer.address,
+      factory: await whitelistFactoryRegistry.getAddress(),
       protocolFeeRecipient: protocol.address,
       router: await mockRouter.getAddress(),
       graduationQuoteReserve: GRADUATION_TARGET,
@@ -108,6 +123,72 @@ describe("LaunchTokenWhitelist", function () {
       .withArgs(buyer2.address, tokensPerSeat);
   });
 
+  it("keeps reserved whitelist allocation untouched through repeated public buy-sell attacks after finalize", async function () {
+    const { token, buyer, whitelistCommitters, deployer } = await deployFixture();
+    const tokenAddr = await token.getAddress();
+    const outsiderA = ethers.Wallet.createRandom().connect(ethers.provider);
+    const outsiderB = ethers.Wallet.createRandom().connect(ethers.provider);
+
+    await deployer.sendTransaction({ to: outsiderA.address, value: ethers.parseEther("5") });
+    await deployer.sendTransaction({ to: outsiderB.address, value: ethers.parseEther("5") });
+
+    for (const committer of whitelistCommitters) {
+      await committer.sendTransaction({ to: tokenAddr, value: SLOT });
+    }
+
+    const reservedBefore = await token.whitelistAllocationTokenReserve();
+    const perSeatBefore = await token.whitelistTokensPerSeat();
+    const seatsFilled = await token.whitelistSeatsFilled();
+
+    await outsiderA.sendTransaction({ to: tokenAddr, value: ethers.parseEther("0.8") });
+    const outsiderABalance = await token.balanceOf(outsiderA.address);
+    await ethers.provider.send("evm_mine", []);
+    await token.connect(outsiderA).sell(outsiderABalance / 2n, 0);
+
+    await outsiderB.sendTransaction({ to: tokenAddr, value: ethers.parseEther("0.6") });
+    const outsiderBBalance = await token.balanceOf(outsiderB.address);
+    await ethers.provider.send("evm_mine", []);
+    await token.connect(outsiderB).sell(outsiderBBalance / 3n, 0);
+
+    expect(await token.whitelistAllocationTokenReserve()).to.equal(reservedBefore);
+    expect(await token.whitelistTokensPerSeat()).to.equal(perSeatBefore);
+    expect(await token.whitelistSeatsFilled()).to.equal(seatsFilled);
+
+    const buyerBalanceBefore = await token.balanceOf(buyer.address);
+    await token.connect(buyer).claimWhitelistAllocation();
+    const buyerBalanceAfter = await token.balanceOf(buyer.address);
+
+    expect(buyerBalanceAfter - buyerBalanceBefore).to.equal(perSeatBefore);
+    expect(await token.whitelistAllocationTokenReserve()).to.equal(reservedBefore - perSeatBefore);
+  });
+
+  it("does not let the threshold-filling seat overpay and combine commit with a first 314 buy", async function () {
+    const { token, whitelistCommitters } = await deployFixture();
+    const tokenAddr = await token.getAddress();
+
+    for (const committer of whitelistCommitters.slice(0, -1)) {
+      await committer.sendTransaction({ to: tokenAddr, value: SLOT });
+    }
+
+    const finalCommitter = whitelistCommitters[whitelistCommitters.length - 1];
+    const extraBuyAmount = ethers.parseEther("0.1");
+
+    await expect(
+      finalCommitter.sendTransaction({ to: tokenAddr, value: SLOT + extraBuyAmount })
+    ).to.be.revertedWithCustomError(token, "InvalidWhitelistCommitAmount");
+
+    expect(await token.state()).to.equal(4n);
+    expect(await token.whitelistFinalized()).to.equal(false);
+    expect(await token.whitelistCommittedTotal()).to.equal(THRESHOLD - SLOT);
+    expect(await token.whitelistSeatsFilled()).to.equal(19n);
+
+    await finalCommitter.sendTransaction({ to: tokenAddr, value: SLOT });
+
+    expect(await token.state()).to.equal(1n);
+    expect(await token.whitelistFinalized()).to.equal(true);
+    expect(await token.whitelistCommittedTotal()).to.equal(THRESHOLD);
+  });
+
   it("rejects duplicate allocation and refund claims after the first successful claim", async function () {
     const { token, buyer, buyer2, whitelistCommitters } = await deployFixture();
     const tokenAddr = await token.getAddress();
@@ -172,6 +253,7 @@ describe("LaunchTokenWhitelist", function () {
     const mockRouter = await MockRouter.deploy(await mockFactory.getAddress(), await wbnb.getAddress());
     await mockRouter.waitForDeployment();
 
+    const whitelistFactoryRegistry = await deployWhitelistFactoryRegistry(deployer.address);
     const whitelist = whitelistCommitters.map((signer) => signer.address);
     const latestBlock = await ethers.provider.getBlock("latest");
     const opensAt = BigInt((latestBlock?.timestamp ?? 0) + 2 * 60 * 60);
@@ -182,7 +264,7 @@ describe("LaunchTokenWhitelist", function () {
       symbol: "DB314",
       metadataURI: "ipfs://db314",
       creator: creator.address,
-      factory: deployer.address,
+      factory: await whitelistFactoryRegistry.getAddress(),
       protocolFeeRecipient: protocol.address,
       router: await mockRouter.getAddress(),
       graduationQuoteReserve: GRADUATION_TARGET,
@@ -225,6 +307,7 @@ describe("LaunchTokenWhitelist", function () {
     const mockRouter = await MockRouter.deploy(await mockFactory.getAddress(), await wbnb.getAddress());
     await mockRouter.waitForDeployment();
 
+    const whitelistFactoryRegistry = await deployWhitelistFactoryRegistry(deployer.address);
     const oversizedWhitelist = Array.from({ length: 61 }, () => ethers.Wallet.createRandom().address);
 
     const LaunchTokenWhitelist = await ethers.getContractFactory("LaunchTokenWhitelist");
@@ -234,7 +317,7 @@ describe("LaunchTokenWhitelist", function () {
         symbol: "B314",
         metadataURI: "ipfs://b314",
         creator: creator.address,
-        factory: deployer.address,
+        factory: await whitelistFactoryRegistry.getAddress(),
         protocolFeeRecipient: protocol.address,
         router: await mockRouter.getAddress(),
         graduationQuoteReserve: GRADUATION_TARGET,
@@ -264,6 +347,79 @@ describe("LaunchTokenWhitelist", function () {
     expect(await token.whitelistExpiredWithoutFinalization()).to.equal(true);
     expect(await token.balanceOf(outsider.address)).to.be.gt(0n);
     expect(await token.canClaimWhitelistRefund(buyer.address)).to.equal(true);
+  });
+
+  it("rejects a same-block outsider buy if it lands before the threshold-filling whitelist seat", async function () {
+    const { token, deployer, whitelistCommitters } = await deployFixture();
+    const tokenAddr = await token.getAddress();
+    const finalCommitter = whitelistCommitters[whitelistCommitters.length - 1];
+    const outsider = ethers.Wallet.createRandom().connect(ethers.provider);
+
+    await deployer.sendTransaction({ to: outsider.address, value: ethers.parseEther("1") });
+
+    for (const committer of whitelistCommitters.slice(0, -1)) {
+      await committer.sendTransaction({ to: tokenAddr, value: SLOT });
+    }
+
+    await ethers.provider.send("evm_setAutomine", [false]);
+
+    try {
+      const outsiderBuyTx = await outsider.sendTransaction({
+        to: tokenAddr,
+        value: SLOT,
+        gasLimit: 500_000,
+      });
+      const finalSeatTx = await finalCommitter.sendTransaction({ to: tokenAddr, value: SLOT });
+
+      await ethers.provider.send("evm_mine", []);
+
+      const outsiderReceipt = await outsiderBuyTx.wait().catch(() => null);
+      const finalSeatReceipt = await finalSeatTx.wait();
+
+      expect(outsiderReceipt).to.equal(null);
+      expect(finalSeatReceipt?.status).to.equal(1);
+      expect(await token.whitelistFinalized()).to.equal(true);
+      expect(await token.state()).to.equal(1n);
+      expect(await token.balanceOf(outsider.address)).to.equal(0n);
+      expect(await token.whitelistCommittedTotal()).to.equal(THRESHOLD);
+    } finally {
+      await ethers.provider.send("evm_setAutomine", [true]);
+    }
+  });
+
+  it("opens bonding immediately after the threshold-filling seat so a later tx in the same block can buy", async function () {
+    const { token, deployer, whitelistCommitters } = await deployFixture();
+    const tokenAddr = await token.getAddress();
+    const finalCommitter = whitelistCommitters[whitelistCommitters.length - 1];
+    const outsider = ethers.Wallet.createRandom().connect(ethers.provider);
+
+    await deployer.sendTransaction({ to: outsider.address, value: ethers.parseEther("1") });
+
+    for (const committer of whitelistCommitters.slice(0, -1)) {
+      await committer.sendTransaction({ to: tokenAddr, value: SLOT });
+    }
+
+    await ethers.provider.send("evm_setAutomine", [false]);
+
+    try {
+      const finalSeatTx = await finalCommitter.sendTransaction({ to: tokenAddr, value: SLOT });
+      const outsiderBuyTx = await outsider.sendTransaction({ to: tokenAddr, value: ethers.parseEther("0.1") });
+
+      await ethers.provider.send("evm_mine", []);
+
+      const finalSeatReceipt = await finalSeatTx.wait();
+      const outsiderReceipt = await outsiderBuyTx.wait();
+
+      expect(finalSeatReceipt?.status).to.equal(1);
+      expect(outsiderReceipt?.status).to.equal(1);
+      expect(finalSeatReceipt?.blockNumber).to.equal(outsiderReceipt?.blockNumber);
+      expect(await token.whitelistFinalized()).to.equal(true);
+      expect(await token.state()).to.equal(1n);
+      expect(await token.balanceOf(outsider.address)).to.be.gt(0n);
+      expect(await token.lastBuyBlock(outsider.address)).to.equal(BigInt(outsiderReceipt!.blockNumber));
+    } finally {
+      await ethers.provider.send("evm_setAutomine", [true]);
+    }
   });
 
   it("does not let outsiders claim another user's allocation or refund", async function () {
@@ -326,6 +482,76 @@ describe("LaunchTokenWhitelist", function () {
     );
   });
 
+  it("keeps whitelist reserve and claims intact under repeated forced-native injection after finalize", async function () {
+    const { token, buyer, whitelistCommitters } = await deployFixture();
+    const tokenAddr = await token.getAddress();
+
+    for (const committer of whitelistCommitters) {
+      await committer.sendTransaction({ to: tokenAddr, value: SLOT });
+    }
+
+    const accountedBefore = await token.accountedNativeBalance();
+    const reservedBefore = await token.whitelistAllocationTokenReserve();
+    const perSeatBefore = await token.whitelistTokensPerSeat();
+
+    const ForceSend = await ethers.getContractFactory("ForceSend");
+    const first = await ForceSend.deploy({ value: ethers.parseEther("0.15") });
+    await first.waitForDeployment();
+    await first.boom(tokenAddr);
+
+    const second = await ForceSend.deploy({ value: ethers.parseEther("0.35") });
+    await second.waitForDeployment();
+    await second.boom(tokenAddr);
+
+    expect(await token.accountedNativeBalance()).to.equal(accountedBefore);
+    expect(await token.unexpectedNativeBalance()).to.equal(ethers.parseEther("0.5"));
+    expect(await token.whitelistAllocationTokenReserve()).to.equal(reservedBefore);
+    expect(await token.whitelistTokensPerSeat()).to.equal(perSeatBefore);
+
+    const buyerBalanceBefore = await token.balanceOf(buyer.address);
+    await token.connect(buyer).claimWhitelistAllocation();
+    const buyerBalanceAfter = await token.balanceOf(buyer.address);
+
+    expect(buyerBalanceAfter - buyerBalanceBefore).to.equal(perSeatBefore);
+    expect(await token.whitelistAllocationTokenReserve()).to.equal(reservedBefore - perSeatBefore);
+  });
+
+  it("reconciles forced native after whitelist finalize without disturbing seat allocations", async function () {
+    const { token, buyer, other, protocol, whitelistCommitters } = await deployFixture();
+    const tokenAddr = await token.getAddress();
+
+    for (const committer of whitelistCommitters) {
+      await committer.sendTransaction({ to: tokenAddr, value: SLOT });
+    }
+
+    const accountedBefore = await token.accountedNativeBalance();
+    const protocolFeeBefore = await token.protocolFeeVault();
+    const reservedBefore = await token.whitelistAllocationTokenReserve();
+    const perSeatBefore = await token.whitelistTokensPerSeat();
+
+    const ForceSend = await ethers.getContractFactory("ForceSend");
+    const forceSend = await ForceSend.deploy({ value: ethers.parseEther("0.4") });
+    await forceSend.waitForDeployment();
+    await forceSend.boom(tokenAddr);
+
+    await expect(token.connect(buyer).reconcileUnexpectedNative())
+      .to.emit(token, "UnexpectedNativeReconciled")
+      .withArgs(buyer.address, ethers.parseEther("0.4"));
+
+    expect(await token.unexpectedNativeBalance()).to.equal(0n);
+    expect(await token.protocolFeeVault()).to.equal(protocolFeeBefore + ethers.parseEther("0.4"));
+    expect(await token.accountedNativeBalance()).to.equal(accountedBefore + ethers.parseEther("0.4"));
+    expect(await token.whitelistAllocationTokenReserve()).to.equal(reservedBefore);
+    expect(await token.whitelistTokensPerSeat()).to.equal(perSeatBefore);
+
+    const recipientBalanceBefore = await ethers.provider.getBalance(other.address);
+    const claimable = await token.protocolFeeVault();
+    await token.connect(protocol).claimProtocolFeesTo(other.address);
+
+    expect(await ethers.provider.getBalance(other.address)).to.equal(recipientBalanceBefore + claimable);
+    expect(await token.protocolFeeVault()).to.equal(0n);
+  });
+
   it("keeps finalize and fallback mutually exclusive under repeated phase advances", async function () {
     const finalized = await deployFixture();
     const finalizedAddr = await finalized.token.getAddress();
@@ -375,6 +601,7 @@ describe("LaunchTokenWhitelist", function () {
     const attacker = await Attacker.deploy();
     await attacker.waitForDeployment();
 
+    const whitelistFactoryRegistry = await deployWhitelistFactoryRegistry(deployer.address);
     const whitelist = [await attacker.getAddress(), ...Array.from({ length: 19 }, () => ethers.Wallet.createRandom().address)];
 
     const LaunchTokenWhitelist = await ethers.getContractFactory("LaunchTokenWhitelist");
@@ -383,7 +610,7 @@ describe("LaunchTokenWhitelist", function () {
       symbol: "B314",
       metadataURI: "ipfs://b314",
       creator: creator.address,
-      factory: deployer.address,
+      factory: await whitelistFactoryRegistry.getAddress(),
       protocolFeeRecipient: protocol.address,
       router: await mockRouter.getAddress(),
       graduationQuoteReserve: GRADUATION_TARGET,

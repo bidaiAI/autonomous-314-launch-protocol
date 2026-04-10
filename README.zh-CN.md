@@ -5,6 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-0f172a.svg)](./LICENSE)
 ![EVM Generic](https://img.shields.io/badge/core-EVM%20generic-2563eb.svg)
 ![BSC Official Profile](https://img.shields.io/badge/official%20profile-BSC-f59e0b.svg)
+![Base Runtime Profile](https://img.shields.io/badge/runtime-Base-0052ff.svg)
 ![Creator First](https://img.shields.io/badge/fees-0.7%25%20creator%20%7C%200.3%25%20protocol-10b981.svg)
 ![Open Protocol](https://img.shields.io/badge/model-open%20protocol-7c3aed.svg)
 
@@ -17,6 +18,7 @@
 如果你是为了接入协议而打开这个仓库，建议先从这里开始：
 
 - **官方运行参数 / 部署参数总表：** [`docs/OFFICIAL_PARAMETERS.md`](docs/OFFICIAL_PARAMETERS.md)
+- **Base 运行参数档案：** [`docs/BASE_PROFILE.md`](docs/BASE_PROFILE.md)
 - **协议接入总览：** [`docs/INTEGRATION.md`](docs/INTEGRATION.md)
 - **metadata / 社交链接 / 图片字段：** [`docs/LAUNCH_METADATA.md`](docs/LAUNCH_METADATA.md)
 
@@ -55,7 +57,7 @@ Autonomous 314 当前的目标很明确，主要有四个：
 
 ## Autonomous 314 的结构性特点
 
-这个协议的重点，不只是“能在 BSC 上发币”，而是**把市场逻辑放在哪里**、**把依赖关系反过来**。
+这个协议的重点，不只是“能在 BSC 或 Base 上发币”，而是**把市场逻辑放在哪里**、**把依赖关系反过来**。
 
 - **市场原生在合约里，不是原生在前端里**
   - 毕业前交易直接发生在 launch 合约自身，而不是依赖平台 UI 或链下撮合后台
@@ -415,16 +417,32 @@ Autonomous 314 比封闭 launch 网站更接近 Web3 精神：
 
 这个仓库是 **EVM-generic core**。
 
-当前的**官方试运行 profile** 是：
+当前的**官方运行 profile** 是双链：
 
-- 链：**BSC**
+### BSC 官方 profile
+
+- 链：**BNB Smart Chain**
 - DEX：**PancakeSwap V2**
 - wrapped native quote：**WBNB**
 - 毕业目标：**12 BNB**
 - 曲线 profile：对齐 Flap 官方最新 BNB 曲线的 token 侧形状，并缩放到仓库的 `12 BNB` profile
 - 标准/税版创建费：**0.01 BNB**（V2 仓库默认）
 - 白名单/白名单税版创建费：**0.03 BNB**（V2 仓库默认）
+
+### Base 官方 profile
+
+- 链：**Base**
+- DEX：**QuickSwap V2**
+- wrapped native quote：**WETH**
+- 毕业目标：**4 ETH**
+- 标准/税版创建费：**0.005 ETH**
+- 白名单/白名单税版创建费：**0.01 ETH**
+
+当前两个官方 profile 共享同一个默认协议 treasury fallback：
+
 - 默认协议 treasury fallback：**`0xC4187bE6b362DF625696d4a9ec5E6FA461CC0314`**
+
+当前 BSC + Base 的公开参数总表请以 [`docs/OFFICIAL_PARAMETERS.md`](docs/OFFICIAL_PARAMETERS.md) 为准；Base 链专属部署参数请看 [`docs/BASE_PROFILE.md`](docs/BASE_PROFILE.md)。
 
 如果工厂部署时把 `protocolFeeRecipient` 传成 `address(0)`，工厂会自动 fallback 到上面的默认 treasury 地址。  
 当然，自部署者仍然可以显式传入自己的地址进行覆盖。

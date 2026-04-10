@@ -11,13 +11,6 @@ contract LaunchTokenWhitelist is LaunchTokenBase {
 
     uint256 public constant MAX_WHITELIST_DELAY = 3 days;
     uint256 public constant WHITELIST_DURATION = 24 hours;
-    uint256 public constant THRESHOLD_4_BNB = 4 ether;
-    uint256 public constant THRESHOLD_6_BNB = 6 ether;
-    uint256 public constant THRESHOLD_8_BNB = 8 ether;
-    uint256 public constant SLOT_01_BNB = 0.1 ether;
-    uint256 public constant SLOT_02_BNB = 0.2 ether;
-    uint256 public constant SLOT_05_BNB = 0.5 ether;
-    uint256 public constant SLOT_1_BNB = 1 ether;
     uint256 public constant MAX_SEATS = 80;
     uint256 public constant MAX_WHITELIST_MULTIPLE = 3;
 
@@ -93,9 +86,9 @@ contract LaunchTokenWhitelist is LaunchTokenBase {
         args.launchModeId,
         LaunchState.WhitelistCommit
     ) {
-        if (!_isAllowedThreshold(args.whitelistThreshold)) revert InvalidWhitelistThreshold();
+        if (!_isAllowedThreshold(args.factory, args.whitelistThreshold)) revert InvalidWhitelistThreshold();
         if (args.whitelistThreshold >= args.graduationQuoteReserve) revert InvalidWhitelistThreshold();
-        if (!_isAllowedSlotSize(args.whitelistSlotSize)) revert InvalidWhitelistSlotSize();
+        if (!_isAllowedSlotSize(args.factory, args.whitelistSlotSize)) revert InvalidWhitelistSlotSize();
         if (args.whitelistThreshold % args.whitelistSlotSize != 0) revert InvalidWhitelistSeatCount();
 
         uint256 seatCount = args.whitelistThreshold / args.whitelistSlotSize;
@@ -344,11 +337,19 @@ contract LaunchTokenWhitelist is LaunchTokenBase {
         emit WhitelistFinalized(grossCommitted, netQuoteIn, protocolFee, creatorFee, whitelistSeatsFilled, tokensPerSeat, reservedTokenAmount);
     }
 
-    function _isAllowedThreshold(uint256 threshold) internal pure returns (bool) {
-        return threshold == THRESHOLD_4_BNB || threshold == THRESHOLD_6_BNB || threshold == THRESHOLD_8_BNB;
+    function _isAllowedThreshold(address factory_, uint256 threshold) internal view returns (bool) {
+        if (factory_.code.length == 0) return false;
+        (bool success, bytes memory data) = factory_.staticcall(
+            abi.encodeWithSelector(ILaunchFactoryRegistry.isAllowedWhitelistThreshold.selector, threshold)
+        );
+        return success && data.length >= 32 && abi.decode(data, (bool));
     }
 
-    function _isAllowedSlotSize(uint256 slotSize) internal pure returns (bool) {
-        return slotSize == SLOT_01_BNB || slotSize == SLOT_02_BNB || slotSize == SLOT_05_BNB || slotSize == SLOT_1_BNB;
+    function _isAllowedSlotSize(address factory_, uint256 slotSize) internal view returns (bool) {
+        if (factory_.code.length == 0) return false;
+        (bool success, bytes memory data) = factory_.staticcall(
+            abi.encodeWithSelector(ILaunchFactoryRegistry.isAllowedWhitelistSlotSize.selector, slotSize)
+        );
+        return success && data.length >= 32 && abi.decode(data, (bool));
     }
 }

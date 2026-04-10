@@ -9,6 +9,13 @@ const DEFAULT_STANDARD_CREATE_FEE = "0.01";
 const DEFAULT_WHITELIST_CREATE_FEE = "0.03";
 const DEFAULT_GRADUATION_TARGET = "12";
 const DEFAULT_SUFFIX = "0314";
+const BSC_WHITELIST_THRESHOLDS = [ethers.parseEther("4"), ethers.parseEther("6"), ethers.parseEther("8")];
+const BSC_WHITELIST_SLOT_SIZES = [
+  ethers.parseEther("0.1"),
+  ethers.parseEther("0.2"),
+  ethers.parseEther("0.5"),
+  ethers.parseEther("1")
+];
 
 function optionalAddress(value: string | undefined) {
   if (!value || !value.trim()) return null;
@@ -69,6 +76,8 @@ function buildFactoryDeployTxRequest(
     standardCreateFee: bigint;
     whitelistCreateFee: bigint;
     graduationTarget: bigint;
+    whitelistThresholdPresets: bigint[];
+    whitelistSlotSizePresets: bigint[];
   }
 ) {
   return factory.getDeployTransaction(
@@ -81,7 +90,9 @@ function buildFactoryDeployTxRequest(
     args.whitelistTaxedDeployer,
     args.standardCreateFee,
     args.whitelistCreateFee,
-    args.graduationTarget
+    args.graduationTarget,
+    args.whitelistThresholdPresets,
+    args.whitelistSlotSizePresets
   );
 }
 
@@ -103,6 +114,25 @@ function findVanitySalt(create2Deployer: string, initCodeHash: string, suffix: s
       };
     }
   }
+}
+
+async function waitForCode(
+  provider: typeof ethers.provider,
+  address: string,
+  label: string,
+  attempts = 10,
+  delayMs = 1500
+) {
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const code = await provider.getCode(address);
+    if (code !== "0x") {
+      return code;
+    }
+    if (attempt < attempts) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+  throw new Error(`${label} deployment succeeded but no code was found at ${address} after ${attempts} checks`);
 }
 
 async function deploySupportDeployer(
@@ -148,10 +178,7 @@ async function deploySupportDeployer(
     throw new Error(`${name} deployment transaction failed`);
   }
 
-  const code = await provider.getCode(predicted);
-  if (code === "0x") {
-    throw new Error(`${name} deployment succeeded but no code was found at ${predicted}`);
-  }
+  await waitForCode(provider, predicted, name);
 
   nonceCursor.value += 1n;
   return { address: predicted, predictedOnly: false, txHash: tx.hash };
@@ -259,7 +286,9 @@ async function main() {
     whitelistTaxedDeployer: whitelistTaxedDeployer.address,
     standardCreateFee,
     whitelistCreateFee,
-    graduationTarget
+    graduationTarget,
+    whitelistThresholdPresets: BSC_WHITELIST_THRESHOLDS,
+    whitelistSlotSizePresets: BSC_WHITELIST_SLOT_SIZES
   });
 
   const initCode = deployTxRequest.data;

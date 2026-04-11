@@ -34,9 +34,10 @@ function resolveRuntimeIndexerApiBaseUrl(configuredUrl: string | undefined, devP
   return normalized;
 }
 
-function resolveRuntimeRpcUrls(configuredUrl: string | undefined, fallbackUrl: string) {
+function resolveRuntimeRpcUrls(configuredUrl: string | undefined, fallbackUrl: string, preferFallbackFirst = false) {
   const configured = configuredUrl?.trim() ?? "";
-  const urls = [configured, fallbackUrl.trim()].filter(Boolean);
+  const primaryUrl = fallbackUrl.trim();
+  const urls = preferFallbackFirst ? [primaryUrl, configured] : [configured, primaryUrl];
   return urls.filter((url, index, array) => array.indexOf(url) === index);
 }
 
@@ -67,8 +68,8 @@ const profiles: Record<number, ProtocolChainProfile> = {
     nativeSymbol: "BNB",
     wrappedNativeSymbol: "WBNB",
     dexName: "PancakeSwap V2",
-    defaultRpcUrl: (import.meta.env.VITE_RPC_URL ?? "https://bsc-dataseed.binance.org").trim(),
     rpcUrls: resolveRuntimeRpcUrls(import.meta.env.VITE_RPC_URL, "https://bsc-dataseed.binance.org"),
+    defaultRpcUrl: resolveRuntimeRpcUrls(import.meta.env.VITE_RPC_URL, "https://bsc-dataseed.binance.org")[0] ?? "https://bsc-dataseed.binance.org",
     officialFactoryAddress: (import.meta.env.VITE_FACTORY_ADDRESS ?? "").trim(),
     indexerApiBaseUrl: resolveRuntimeIndexerApiBaseUrl(import.meta.env.VITE_INDEXER_API_URL, "/__proxy/indexer"),
     indexerSnapshotUrl: import.meta.env.VITE_INDEXER_SNAPSHOT_URL ?? "/data/indexer-snapshot.json",
@@ -86,8 +87,9 @@ const profiles: Record<number, ProtocolChainProfile> = {
     nativeSymbol: "ETH",
     wrappedNativeSymbol: "WETH",
     dexName: "QuickSwap V2",
-    defaultRpcUrl: (import.meta.env.VITE_BASE_RPC_URL ?? "https://mainnet.base.org").trim(),
-    rpcUrls: resolveRuntimeRpcUrls(import.meta.env.VITE_BASE_RPC_URL, "https://mainnet.base.org"),
+    rpcUrls: resolveRuntimeRpcUrls(import.meta.env.VITE_BASE_RPC_URL, "https://mainnet.base.org", true),
+    defaultRpcUrl:
+      resolveRuntimeRpcUrls(import.meta.env.VITE_BASE_RPC_URL, "https://mainnet.base.org", true)[0] ?? "https://mainnet.base.org",
     officialFactoryAddress: (import.meta.env.VITE_BASE_FACTORY_ADDRESS ?? "").trim(),
     indexerApiBaseUrl: resolveRuntimeIndexerApiBaseUrl(
       import.meta.env.VITE_BASE_INDEXER_API_URL,

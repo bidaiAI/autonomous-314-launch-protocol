@@ -45,13 +45,27 @@ function parseOriginList(value: string | undefined, fallback: string[]) {
   return parsed.length > 0 ? [...new Set(parsed)] : fallback;
 }
 
+function resolveRuntimeRpcUrls(configuredUrl: string | undefined, fallbackUrl: string, preferFallbackFirst = false) {
+  const configured = configuredUrl?.trim() ?? "";
+  const primaryUrl = fallbackUrl.trim();
+  const urls = preferFallbackFirst ? [primaryUrl, configured] : [configured, primaryUrl];
+  return urls.filter((url, index, array) => Boolean(url) && array.indexOf(url) === index);
+}
+
+const rpcUrls = resolveRuntimeRpcUrls(
+  process.env.INDEXER_RPC_URL,
+  profile.defaultRpcUrl,
+  chainId === 8453
+);
+
 export const indexerConfig = {
   chainId,
   chain: profile.chainLabel,
   nativeSymbol: profile.nativeSymbol,
   wrappedNativeSymbol: profile.wrappedNativeSymbol,
   dexName: profile.dexName,
-  rpcUrl: process.env.INDEXER_RPC_URL ?? profile.defaultRpcUrl,
+  rpcUrl: rpcUrls[0] ?? profile.defaultRpcUrl,
+  rpcUrls,
   factoryAddress: process.env.INDEXER_FACTORY_ADDRESS as `0x${string}` | undefined,
   fromBlock: process.env.INDEXER_FROM_BLOCK ? BigInt(process.env.INDEXER_FROM_BLOCK) : undefined,
   toBlock: process.env.INDEXER_TO_BLOCK ? BigInt(process.env.INDEXER_TO_BLOCK) : undefined,

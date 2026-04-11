@@ -1,4 +1,4 @@
-import { createPublicClient, getAddress, hexToBigInt, hexToNumber, http, keccak256, stringToHex, type Hex, type Log } from "viem";
+import { createPublicClient, fallback, getAddress, hexToBigInt, hexToNumber, http, keccak256, stringToHex, type Hex, type Log } from "viem";
 import { launchTokenAbi, v2PairAbi } from "./abi";
 import { buildCandlesFromTrades } from "./candles";
 import { indexerConfig } from "./config";
@@ -124,10 +124,17 @@ export async function buildIndexerSnapshot(): Promise<IndexerSnapshot> {
   }
 
   const profile = resolveIndexerProfile(indexerConfig.chainId);
+  const transport =
+    indexerConfig.rpcUrls.length > 1
+      ? fallback(indexerConfig.rpcUrls.map((url) => http(url, { timeout: 8_000 })), {
+          rank: false,
+          retryCount: 1
+        })
+      : http(indexerConfig.rpcUrl, { timeout: 8_000 });
 
   const client = createPublicClient({
     chain: profile.viemChain,
-    transport: http(indexerConfig.rpcUrl)
+    transport
   });
 
   const latestBlock = await client.getBlockNumber();

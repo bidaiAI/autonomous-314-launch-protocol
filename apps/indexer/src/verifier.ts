@@ -1,4 +1,4 @@
-import { createPublicClient, getAddress, http, type Hex } from "viem";
+import { createPublicClient, fallback, getAddress, http, type Hex } from "viem";
 import { launchFactoryAbi } from "./abi";
 import { indexerConfig } from "./config";
 import {
@@ -76,7 +76,13 @@ type VerificationWorkerSnapshot = {
 const profile = resolveIndexerProfile(indexerConfig.chainId);
 const publicClient = createPublicClient({
   chain: profile.viemChain,
-  transport: http(indexerConfig.rpcUrl)
+  transport:
+    indexerConfig.rpcUrls.length > 1
+      ? fallback(indexerConfig.rpcUrls.map((url) => http(url, { timeout: 8_000 })), {
+          rank: false,
+          retryCount: 1
+        })
+      : http(indexerConfig.rpcUrl, { timeout: 8_000 })
 });
 
 function nowMs() {

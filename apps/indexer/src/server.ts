@@ -17,11 +17,13 @@ import type { CandleBucket, SegmentedChartSnapshot } from "./schema";
 const __metadir = dirname(fileURLToPath(import.meta.url));
 const METADATA_DIR = join(__metadir, "..", "metadata");
 const MEDIA_DIR = join(__metadir, "..", "media");
+const CHART_CACHE_DIR = join(dirname(indexerConfig.outputPath), "chart-cache");
 
 const port = Number(process.env.PORT ?? process.env.INDEXER_PORT ?? 8787);
-const cacheTtlMs = Number(process.env.INDEXER_CACHE_TTL_MS ?? 15_000);
+const cacheTtlMs = Number(process.env.INDEXER_CACHE_TTL_MS ?? 60_000);
 const prewarmIntervalMs = Number(process.env.INDEXER_PREWARM_INTERVAL_MS ?? 0);
 const corsOrigin = process.env.INDEXER_CORS_ORIGIN ?? "*";
+const staticSnapshotOnly = process.env.INDEXER_STATIC_SNAPSHOT_ONLY === "1";
 const runtimeProcess = process as unknown as NodeJS.Process & { argv: string[] };
 const xAuthConfig = {
   clientId: indexerConfig.xClientId,
@@ -39,6 +41,19 @@ const xPublishConfig = {
 let cache: { expiresAt: number; snapshot: IndexerSnapshot } | null = null;
 let inflight: Promise<IndexerSnapshot> | null = null;
 const supportedChartTimeframes = new Set<CandleBucket["timeframe"]>(["1m", "5m", "15m", "1h", "4h", "1d"]);
+
+type PersistedChartResponse = {
+  token: `0x${string}`;
+  chainId: number;
+  chain: string;
+  nativeSymbol: string;
+  wrappedNativeSymbol: string;
+  dexName: string;
+  factory: `0x${string}`;
+  generatedAtMs: number;
+  indexedToBlock: string;
+  segmentedChart: SegmentedChartSnapshot;
+};
 
 export class RequestBodyTooLargeError extends Error {
   constructor(public readonly maxBytes: number) {
@@ -67,6 +82,70 @@ export function filterSegmentedChartByTimeframe(
   };
 }
 
+function chartCachePath(token: string) {
+  return join(CHART_CACHE_DIR, `${indexerConfig.chainId}-${token.toLowerCase()}.json`);
+}
+
+function persistSnapshotArtifacts(snapshot: IndexerSnapshot) {
+  mkdirSync(dirname(indexerConfig.outputPath), { recursive: true });
+  writeFileSync(indexerConfig.outputPath, JSON.stringify(snapshot, null, 2));
+
+  mkdirSync(CHART_CACHE_DIR, { recursive: true });
+  for (const launch of snapshot.launches) {
+    const payload: PersistedChartResponse = {
+      token: launch.token,
+      chainId: snapshot.chainId,
+      chain: snapshot.chain,
+      nativeSymbol: snapshot.nativeSymbol,
+      wrappedNativeSymbol: snapshot.wrappedNativeSymbol,
+      dexName: snapshot.dexName,
+      factory: snapshot.factory,
+      generatedAtMs: snapshot.generatedAtMs,
+      indexedToBlock: snapshot.toBlock,
+      segmentedChart: launch.segmentedChart
+    };
+    writeFileSync(chartCachePath(launch.token), JSON.stringify(payload, null, 2));
+  }
+}
+
+function seedCacheFromDisk() {
+  if (cache || !existsSync(indexerConfig.outputPath)) {
+    return;
+  }
+
+  try {
+    const snapshot = JSON.parse(readFileSync(indexerConfig.outputPath, "utf-8")) as IndexerSnapshot;
+    cache = {
+      snapshot,
+      expiresAt: 0
+    };
+  } catch (error) {
+    console.warn("[indexer-api] failed to load persisted snapshot", error);
+  }
+}
+
+function readPersistedChart(
+  token: string,
+  timeframe: CandleBucket["timeframe"] | null
+): (PersistedChartResponse & { timeframe: CandleBucket["timeframe"] | null }) | null {
+  const filepath = chartCachePath(token);
+  if (!existsSync(filepath)) {
+    return null;
+  }
+
+  try {
+    const payload = JSON.parse(readFileSync(filepath, "utf-8")) as PersistedChartResponse;
+    return {
+      ...payload,
+      timeframe,
+      segmentedChart: filterSegmentedChartByTimeframe(payload.segmentedChart, timeframe)
+    };
+  } catch (error) {
+    console.warn("[indexer-api] failed to load persisted chart", { token, error });
+    return null;
+  }
+}
+
 function refreshSnapshot() {
   if (inflight) {
     return inflight;
@@ -78,6 +157,11 @@ function refreshSnapshot() {
         snapshot,
         expiresAt: Date.now() + cacheTtlMs
       };
+      try {
+        persistSnapshotArtifacts(snapshot);
+      } catch (error) {
+        console.warn("[indexer-api] failed to persist snapshot artifacts", error);
+      }
       return snapshot;
     })
     .finally(() => {
@@ -88,8 +172,12 @@ function refreshSnapshot() {
 }
 
 async function getSnapshot(forceRefresh = false) {
+  seedCacheFromDisk();
   const now = Date.now();
   if (forceRefresh) {
+    if (staticSnapshotOnly && cache) {
+      return cache.snapshot;
+    }
     return refreshSnapshot();
   }
 
@@ -98,10 +186,17 @@ async function getSnapshot(forceRefresh = false) {
   }
 
   if (cache) {
+    if (staticSnapshotOnly) {
+      return cache.snapshot;
+    }
     void refreshSnapshot().catch((error) => {
       console.error("[indexer-api] background refresh failed", error);
     });
     return cache.snapshot;
+  }
+
+  if (staticSnapshotOnly) {
+    throw new Error("Static snapshot mode is enabled but no persisted snapshot is available");
   }
 
   return refreshSnapshot();
@@ -757,12 +852,40 @@ const server = createServer(async (req, res) => {
         ok: true,
         cacheTtlMs,
         prewarmIntervalMs,
+        staticSnapshotOnly,
         hasCache: Boolean(cache),
+        hasPersistedSnapshot: existsSync(indexerConfig.outputPath),
         refreshInFlight: Boolean(inflight),
         verifier: getVerificationWorkerSnapshot(),
         notifier: getNotificationWorkerSnapshot()
       });
       return;
+    }
+
+    const launchMatch = url.pathname.match(/^\/launches\/(0x[a-fA-F0-9]{40})(?:\/(activity|chart))?$/);
+    if (launchMatch && launchMatch[2] === "chart" && !forceRefresh) {
+      const requestedTimeframe = url.searchParams.get("timeframe");
+      const timeframe = parseChartTimeframe(requestedTimeframe);
+      if (requestedTimeframe && !timeframe) {
+        sendJson(res, 400, {
+          error: "Invalid chart timeframe",
+          supportedTimeframes: [...supportedChartTimeframes]
+        });
+        return;
+      }
+
+      if (!cache) {
+        const persistedChart = readPersistedChart(launchMatch[1], timeframe);
+        if (persistedChart) {
+          if (!staticSnapshotOnly) {
+            void refreshSnapshot().catch((error) => {
+              console.error("[indexer-api] background refresh failed", error);
+            });
+          }
+          sendJson(res, 200, persistedChart);
+          return;
+        }
+      }
     }
 
     const snapshot = await getSnapshot(forceRefresh);
@@ -809,7 +932,6 @@ const server = createServer(async (req, res) => {
       return;
     }
 
-    const launchMatch = url.pathname.match(/^\/launches\/(0x[a-fA-F0-9]{40})(?:\/(activity|chart))?$/);
     if (launchMatch) {
       const token = launchMatch[1].toLowerCase();
       const mode = launchMatch[2];
@@ -931,6 +1053,7 @@ const server = createServer(async (req, res) => {
 });
 
 export function startIndexerServer() {
+  seedCacheFromDisk();
   startVerificationWorker();
   startNotificationWorker();
 
@@ -939,6 +1062,8 @@ export function startIndexerServer() {
     console.log(`[indexer-api] verifier enabled: ${getVerificationWorkerSnapshot().enabled}`);
     console.log(`[indexer-api] notifier enabled: ${getNotificationWorkerSnapshot().enabled}`);
     console.log(`[indexer-api] cache ttl: ${cacheTtlMs}ms`);
+    console.log(`[indexer-api] static snapshot mode: ${staticSnapshotOnly}`);
+    console.log(`[indexer-api] persisted snapshot present: ${existsSync(indexerConfig.outputPath)}`);
     console.log(`[indexer-api] metadata public origins: ${indexerConfig.metadataPublicOrigins.join(", ")}`);
     if (prewarmIntervalMs > 0) {
       console.log(`[indexer-api] prewarm interval: ${prewarmIntervalMs}ms`);

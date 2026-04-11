@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from "fs/promises";
-import { dirname } from "path";
+import { dirname, join } from "path";
 import { indexerConfig } from "./config";
 import { buildIndexerSnapshot } from "./service";
 
@@ -14,6 +14,31 @@ async function main() {
 
   await mkdir(dirname(indexerConfig.outputPath), { recursive: true });
   await writeFile(indexerConfig.outputPath, JSON.stringify(snapshot, null, 2));
+  const chartCacheDir = join(dirname(indexerConfig.outputPath), "chart-cache");
+  await mkdir(chartCacheDir, { recursive: true });
+  await Promise.all(
+    snapshot.launches.map((launch) =>
+      writeFile(
+        join(chartCacheDir, `${snapshot.chainId}-${launch.token.toLowerCase()}.json`),
+        JSON.stringify(
+          {
+            token: launch.token,
+            chainId: snapshot.chainId,
+            chain: snapshot.chain,
+            nativeSymbol: snapshot.nativeSymbol,
+            wrappedNativeSymbol: snapshot.wrappedNativeSymbol,
+            dexName: snapshot.dexName,
+            factory: snapshot.factory,
+            generatedAtMs: snapshot.generatedAtMs,
+            indexedToBlock: snapshot.toBlock,
+            segmentedChart: launch.segmentedChart
+          },
+          null,
+          2
+        )
+      )
+    )
+  );
 
   console.log(
     JSON.stringify(

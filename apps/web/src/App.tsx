@@ -75,7 +75,13 @@ const TOTAL_FEE_BPS = 100n;
 const WHITELIST_MAX_DELAY_MS = 3 * 24 * 60 * 60 * 1000;
 const WHITELIST_SCHEDULE_MIN_LEAD_MS = 60 * 1000;
 const LAUNCH_AUTO_REFRESH_INTERVAL_MS = 45_000;
+const HOT_LAUNCH_REFRESH_INTERVAL_MS = 15_000;
+const WARM_LAUNCH_REFRESH_INTERVAL_MS = 60_000;
+const COLD_LAUNCH_REFRESH_INTERVAL_MS = 5 * 60_000;
+const DEXONLY_LAUNCH_REFRESH_INTERVAL_MS = 15 * 60_000;
+const DEX_PAIR_REFRESH_INTERVAL_MS = 60_000;
 const BONDING_CHART_FRESH_MS = 12_000;
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 const INTERNAL_CHART_TIMEFRAMES = {
   "1m": { intervalMs: 60_000, lookbackBlocks: 4_000n },
   "5m": { intervalMs: 5 * 60_000, lookbackBlocks: 18_000n },
@@ -655,6 +661,32 @@ function dexScreenerChainIdFor(chainId: number) {
   return "bsc";
 }
 
+function deriveLaunchRefreshIntervalMs(
+  snapshot: TokenSnapshot | null,
+  recentActivity: ActivityFeedItem[],
+  nowMs: number
+) {
+  if (!snapshot) return LAUNCH_AUTO_REFRESH_INTERVAL_MS;
+  if (snapshot.state === "DEXOnly") return DEXONLY_LAUNCH_REFRESH_INTERVAL_MS;
+
+  const createdAtMs = snapshot.createdAt > 0n ? Number(snapshot.createdAt) * 1000 : 0;
+  const lastTradeAtMs = snapshot.lastTradeAt > 0n ? Number(snapshot.lastTradeAt) * 1000 : 0;
+  const latestActivityMs = recentActivity[0]?.timestampMs ?? 0;
+  const freshestTradeMs = Math.max(createdAtMs, lastTradeAtMs, latestActivityMs);
+  const ageMs = freshestTradeMs > 0 ? nowMs - freshestTradeMs : Number.POSITIVE_INFINITY;
+
+  if (createdAtMs > 0 && nowMs - createdAtMs <= 30 * 60_000) {
+    return HOT_LAUNCH_REFRESH_INTERVAL_MS;
+  }
+  if (ageMs <= 15 * 60_000) {
+    return HOT_LAUNCH_REFRESH_INTERVAL_MS;
+  }
+  if (ageMs <= 2 * 60 * 60_000) {
+    return WARM_LAUNCH_REFRESH_INTERVAL_MS;
+  }
+  return COLD_LAUNCH_REFRESH_INTERVAL_MS;
+}
+
 function coingeckoAssetIdFor(chainId: number) {
   if (chainId === 8453 || chainId === 1) return "ethereum";
   if (chainId === 56) return "binancecoin";
@@ -1008,6 +1040,15 @@ export function App() {
           total: tokenSnapshot.whitelistSnapshot.seatCount.toString()
         })
       : null;
+  const launchRefreshIntervalMs = useMemo(
+    () => deriveLaunchRefreshIntervalMs(tokenSnapshot, recentActivity, nowMs),
+    [nowMs, recentActivity, tokenSnapshot]
+  );
+  const dexViewUrl = useMemo(() => {
+    if (dexPairEnrichment?.url) return dexPairEnrichment.url;
+    if (!tokenSnapshot?.pair || tokenSnapshot.pair === ZERO_ADDRESS) return null;
+    return `https://dexscreener.com/${dexScreenerChainIdFor(activeProtocolProfile.chainId)}/${tokenSnapshot.pair}`;
+  }, [activeProtocolProfile.chainId, dexPairEnrichment?.url, tokenSnapshot?.pair]);
   const bondingChartStats = useMemo(() => {
     if (bondingCandles.length === 0) return null;
     const ordered = [...bondingCandles].sort((a, b) => a.bucketStart - b.bucketStart);
@@ -1717,14 +1758,14 @@ export function App() {
   }, [tokenSnapshot, wallet]);
 
   useEffect(() => {
-    if (!tokenSnapshot?.pair || tokenSnapshot.pair === "0x0000000000000000000000000000000000000000" || tokenSnapshot.state !== "DEXOnly") {
+    if (route.page !== "launch" || tokenSnapshot?.state !== "DEXOnly" || !tokenSnapshot?.pair || tokenSnapshot.pair === ZERO_ADDRESS) {
       setDexPairEnrichment(null);
       return;
     }
 
     let cancelled = false;
     const dexScreenerChainId = dexScreenerChainIdFor(activeProtocolProfile.chainId);
-    void (async () => {
+    const refresh = async () => {
       try {
         const response = await fetch(`https://api.dexscreener.com/latest/dex/pairs/${dexScreenerChainId}/${tokenSnapshot.pair}`);
         if (!response.ok) throw new Error(`Dex pair lookup failed with ${response.status}`);
@@ -1758,12 +1799,28 @@ export function App() {
       } catch {
         if (!cancelled) setDexPairEnrichment(null);
       }
-    })();
+    };
+
+    void refresh();
+
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void refresh();
+      }
+    }, DEX_PAIR_REFRESH_INTERVAL_MS);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void refresh();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       cancelled = true;
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [activeProtocolProfile.chainId, tokenSnapshot?.pair, tokenSnapshot?.state]);
+  }, [activeProtocolProfile.chainId, route.page, tokenSnapshot?.pair, tokenSnapshot?.state]);
 
   async function refreshWalletNetworkStatus() {
     const chainId = await getWalletChainId();
@@ -1804,17 +1861,20 @@ export function App() {
     ]);
     let activity = indexed?.recentActivity ?? [];
     let chart = indexed?.segmentedChart ?? null;
+    const shouldAllowLiveFallback =
+      snapshot.state !== "DEXOnly" &&
+      (!indexed || deriveLaunchRefreshIntervalMs(snapshot, activity, Date.now()) <= WARM_LAUNCH_REFRESH_INTERVAL_MS);
     const needsLiveActivityFallback =
-      activity.length === 0 && (snapshot.state === "Bonding314" || snapshot.state === "DEXOnly" || snapshot.state === "Migrating");
+      shouldAllowLiveFallback &&
+      (!indexed || (activity.length === 0 && (snapshot.state === "Bonding314" || snapshot.state === "Migrating")));
     const needsLiveChartFallback =
-      !hasChartData(chart) && (snapshot.state === "Bonding314" || snapshot.state === "DEXOnly" || snapshot.state === "Migrating");
+      shouldAllowLiveFallback &&
+      (!indexed || (!hasChartData(chart) && (snapshot.state === "Bonding314" || snapshot.state === "Migrating")));
 
-    if (!indexed || needsLiveActivityFallback || needsLiveChartFallback) {
+    if (needsLiveActivityFallback || needsLiveChartFallback) {
       const [liveActivity, liveChart] = await Promise.all([
-        needsLiveActivityFallback || !indexed ? fetchUnifiedActivity(address) : Promise.resolve(activity),
-        needsLiveChartFallback || !indexed
-          ? fetchSegmentedChartSnapshot(address, lookbackBlocks, intervalMs)
-          : Promise.resolve(chart!)
+        needsLiveActivityFallback ? fetchUnifiedActivity(address) : Promise.resolve(activity),
+        needsLiveChartFallback ? fetchSegmentedChartSnapshot(address, lookbackBlocks, intervalMs) : Promise.resolve(chart!)
       ]);
       activity = liveActivity;
       chart = liveChart;
@@ -1851,30 +1911,48 @@ export function App() {
     const { intervalMs, lookbackBlocks } = INTERNAL_CHART_TIMEFRAMES[chartTimeframe];
 
     try {
-      const [snapshot, activity, indexedChart] = await Promise.all([
+      const [snapshot, indexed] = await Promise.all([
         readToken(activeAddress),
-        fetchUnifiedActivity(activeAddress),
-        readIndexedSegmentedChart(activeAddress, chartTimeframe)
+        readIndexedLaunchWorkspace(activeAddress, chartTimeframe)
       ]);
-      const candles =
-        indexedChart && indexedChart.bondingCandles.length > 0
-          ? indexedChart.bondingCandles
-          : await fetchBondingCandles(activeAddress, lookbackBlocks, intervalMs);
 
       if (activeAddress.toLowerCase() !== latestTokenAddressRef.current.toLowerCase()) return;
 
+      let activity = indexed?.recentActivity ?? (snapshot.state === "DEXOnly" ? recentActivity : []);
+      let chart = indexed?.segmentedChart ?? null;
+      const shouldAllowLiveFallback =
+        snapshot.state !== "DEXOnly" &&
+        (!indexed || deriveLaunchRefreshIntervalMs(snapshot, activity, Date.now()) <= WARM_LAUNCH_REFRESH_INTERVAL_MS);
+      const needsLiveActivityFallback =
+        shouldAllowLiveFallback &&
+        (!indexed || (activity.length === 0 && (snapshot.state === "Bonding314" || snapshot.state === "Migrating")));
+      const needsLiveChartFallback =
+        shouldAllowLiveFallback &&
+        (!indexed || (!hasChartData(chart) && (snapshot.state === "Bonding314" || snapshot.state === "Migrating")));
+
+      if (needsLiveActivityFallback || needsLiveChartFallback) {
+        const [liveActivity, liveChart] = await Promise.all([
+          needsLiveActivityFallback ? fetchUnifiedActivity(activeAddress) : Promise.resolve(activity),
+          needsLiveChartFallback
+            ? fetchSegmentedChartSnapshot(activeAddress, lookbackBlocks, intervalMs)
+            : Promise.resolve(chart!)
+        ]);
+        activity = liveActivity;
+        chart = liveChart;
+      }
+
       setTokenSnapshot(snapshot);
       setRecentActivity(activity);
-      setBondingCandles(candles);
-      bondingChartCacheRef.current = {
-        tokenAddress: activeAddress,
-        timeframe: chartTimeframe,
-        fetchedAtMs: Date.now()
-      };
-      const latestGraduation = activity.find((item) => item.kind === "graduated");
-      if (latestGraduation) {
-        setGraduationTimestampMs(latestGraduation.timestampMs);
-      }
+      setBondingCandles(chart?.bondingCandles ?? []);
+      bondingChartCacheRef.current = chart
+        ? {
+            tokenAddress: activeAddress,
+            timeframe: chartTimeframe,
+            fetchedAtMs: Date.now()
+          }
+        : null;
+      const latestGraduation = activity.find((item) => item.kind === "graduated")?.timestampMs ?? null;
+      setGraduationTimestampMs(chart?.graduationTimestampMs ?? latestGraduation ?? graduationTimestampMs);
 
       if (wallet) {
         void readWhitelistAccountState(activeAddress, wallet)
@@ -1894,7 +1972,7 @@ export function App() {
     } finally {
       launchAutoRefreshInFlightRef.current = false;
     }
-  }, [bondingChartTimeframe, tokenAddress, wallet]);
+  }, [bondingChartTimeframe, graduationTimestampMs, recentActivity, tokenAddress, wallet]);
 
   useEffect(() => {
     if (!tokenAddress) {
@@ -1917,8 +1995,11 @@ export function App() {
 
     void readIndexedSegmentedChart(tokenAddress, chartTimeframe)
       .then((indexedChart) => {
-        if (indexedChart && indexedChart.bondingCandles.length > 0) {
+        if (indexedChart) {
           return indexedChart.bondingCandles;
+        }
+        if (isDexOnly) {
+          return [];
         }
         return fetchBondingCandles(tokenAddress, lookbackBlocks, intervalMs);
       })
@@ -1940,7 +2021,7 @@ export function App() {
           setBondingChartLoading(false);
         }
       });
-  }, [bondingChartTimeframe, tokenAddress]);
+  }, [bondingChartTimeframe, isDexOnly, tokenAddress]);
 
   useEffect(() => {
     if (route.page !== "launch" || !tokenAddress) return;
@@ -1949,7 +2030,7 @@ export function App() {
       void refreshLaunchSurfaceLive();
     };
 
-    const intervalId = window.setInterval(tick, LAUNCH_AUTO_REFRESH_INTERVAL_MS);
+    const intervalId = window.setInterval(tick, launchRefreshIntervalMs);
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
         tick();
@@ -1961,7 +2042,7 @@ export function App() {
       window.clearInterval(intervalId);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [refreshLaunchSurfaceLive, route.page, tokenAddress]);
+  }, [launchRefreshIntervalMs, refreshLaunchSurfaceLive, route.page, tokenAddress]);
 
   async function handleConnectWallet() {
     try {
@@ -4495,37 +4576,50 @@ export function App() {
                   <article className="subpanel chart-hero-panel">
                     <div className="subpanel-header">
                       <div>
-                        <h3>{t("internalMarketChart")}</h3>
+                        <h3>{isDexOnly ? t("dexHandoff") : t("internalMarketChart")}</h3>
                         <span className="list-item-meta">
                           {t("marketCap")}: {displayedMarketCapUsd ? formatUsdCompact(displayedMarketCapUsd) : t("marketCapUnavailable")}
                         </span>
                       </div>
-                      <div className="segmented-filter segmented-filter-compact" role="tablist" aria-label={t("chartTimeframe")}>
-                        {(Object.keys(INTERNAL_CHART_TIMEFRAMES) as Array<keyof typeof INTERNAL_CHART_TIMEFRAMES>).map((timeframe) => (
+                      {isDexOnly ? (
+                        <div className="segmented-filter segmented-filter-compact" role="group" aria-label={t("dexHandoff")}>
+                          {dexViewUrl ? (
+                            <a className="secondary-button" href={dexViewUrl} target="_blank" rel="noreferrer">
+                              {t("viewOnDex")}
+                            </a>
+                          ) : null}
+                          {(bondingCandles.length > 0 || bondingChartLoading) ? (
+                            <span className="filter-pill active">{t("archivedInternalChart")}</span>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <div className="segmented-filter segmented-filter-compact" role="tablist" aria-label={t("chartTimeframe")}>
+                          {(Object.keys(INTERNAL_CHART_TIMEFRAMES) as Array<keyof typeof INTERNAL_CHART_TIMEFRAMES>).map((timeframe) => (
+                            <button
+                              key={timeframe}
+                              type="button"
+                              className={`filter-pill ${bondingChartTimeframe === timeframe ? "active" : ""}`}
+                              onClick={() => setBondingChartTimeframe(timeframe)}
+                            >
+                              {timeframe}
+                            </button>
+                          ))}
                           <button
-                            key={timeframe}
                             type="button"
-                            className={`filter-pill ${bondingChartTimeframe === timeframe ? "active" : ""}`}
-                            onClick={() => setBondingChartTimeframe(timeframe)}
+                            className={`filter-pill ${bondingChartExpanded ? "active" : ""}`}
+                            onClick={() => setBondingChartExpanded((value) => !value)}
                           >
-                            {timeframe}
+                            {bondingChartExpanded ? t("collapseChart") : t("expandChart")}
                           </button>
-                        ))}
-                        <button
-                          type="button"
-                          className={`filter-pill ${bondingChartExpanded ? "active" : ""}`}
-                          onClick={() => setBondingChartExpanded((value) => !value)}
-                        >
-                          {bondingChartExpanded ? t("collapseChart") : t("expandChart")}
-                        </button>
-                      </div>
+                        </div>
+                      )}
                     </div>
                     <div className="chart-panel-notes">
-                      <span>{t("internalMarketChartDesc")}</span>
-                      <span>{t("internalMarketChartSource")}</span>
-                      <span>{t("chartInspectHint")}</span>
+                      <span>{isDexOnly ? t("dexChartHandoffDesc") : t("internalMarketChartDesc")}</span>
+                      <span>{isDexOnly ? t("dexChartHandoffHint") : t("internalMarketChartSource")}</span>
+                      {isDexOnly ? null : <span>{t("chartInspectHint")}</span>}
                       <span>{t("chartAutoRefreshHint")}</span>
-                      {bondingChartStats ? (
+                      {!isDexOnly && bondingChartStats ? (
                         <span>
                           {tf("chartRangeWindow", {
                             from: formatDateTime(bondingChartStats.fromMs),
@@ -4534,7 +4628,7 @@ export function App() {
                         </span>
                       ) : null}
                     </div>
-                    {tokenSnapshot ? (
+                    {tokenSnapshot && !isDexOnly ? (
                       <div className="market-board-grid">
                         <div className="market-board-card">
                           <span className="metric-label">{t("currentPrice")}</span>
@@ -4579,7 +4673,52 @@ export function App() {
                         </div>
                       </div>
                     ) : null}
-                    {bondingChartLoading ? (
+                    {isDexOnly ? (
+                      <div className="stack">
+                        <div className="empty-state">
+                          <strong>{t("dexHandoff")}</strong>
+                          <div>{t("dexChartHandoffDesc")}</div>
+                          <div>{t("dexChartHandoffHint")}</div>
+                          {dexViewUrl ? (
+                            <a className="inline-link" href={dexViewUrl} target="_blank" rel="noreferrer">
+                              {t("viewOnDex")}
+                            </a>
+                          ) : null}
+                        </div>
+                        <div className="subpanel nested-subpanel">
+                          <div className="subpanel-header compact">
+                            <div>
+                              <h3>{t("archivedInternalChart")}</h3>
+                              <span className="list-item-meta">{t("archivedInternalChartDesc")}</span>
+                            </div>
+                            <div className="segmented-filter segmented-filter-compact" role="tablist" aria-label={t("chartTimeframe")}>
+                              {(Object.keys(INTERNAL_CHART_TIMEFRAMES) as Array<keyof typeof INTERNAL_CHART_TIMEFRAMES>).map((timeframe) => (
+                                <button
+                                  key={`archived-${timeframe}`}
+                                  type="button"
+                                  className={`filter-pill ${bondingChartTimeframe === timeframe ? "active" : ""}`}
+                                  onClick={() => setBondingChartTimeframe(timeframe)}
+                                >
+                                  {timeframe}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          {bondingChartLoading ? (
+                            <div className="empty-state">{t("chartLoading")}</div>
+                          ) : bondingCandles.length > 0 ? (
+                            <BondingCandlestickChart
+                              candles={bondingCandles}
+                              timeframeLabel={bondingChartTimeframeLabel}
+                              graduationTimestampMs={graduationTimestampMs}
+                              expanded={bondingChartExpanded}
+                            />
+                          ) : (
+                            <div className="empty-state">{bondingChartError || t("noArchivedInternalChartData")}</div>
+                          )}
+                        </div>
+                      </div>
+                    ) : bondingChartLoading ? (
                       <div className="empty-state">{t("chartLoading")}</div>
                     ) : bondingCandles.length > 0 ? (
                       <BondingCandlestickChart

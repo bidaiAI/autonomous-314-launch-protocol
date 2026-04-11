@@ -131,9 +131,13 @@ export async function buildIndexerSnapshot(): Promise<IndexerSnapshot> {
   });
 
   const latestBlock = await client.getBlockNumber();
+  const snapshotToBlock =
+    indexerConfig.toBlock && indexerConfig.toBlock < latestBlock
+      ? indexerConfig.toBlock
+      : latestBlock;
   const fromBlock =
     indexerConfig.fromBlock ??
-    (latestBlock > indexerConfig.lookbackBlocks ? latestBlock - indexerConfig.lookbackBlocks : 0n);
+    (snapshotToBlock > indexerConfig.lookbackBlocks ? snapshotToBlock - indexerConfig.lookbackBlocks : 0n);
 
   const factoryAddress = getAddress(indexerConfig.factoryAddress);
   const totalLaunches = (await client.readContract({
@@ -165,7 +169,7 @@ export async function buildIndexerSnapshot(): Promise<IndexerSnapshot> {
         address: token,
         topics: [[buyExecutedTopic, sellExecutedTopic, graduatedTopic]],
         fromBlock,
-        toBlock: latestBlock
+        toBlock: snapshotToBlock
       });
     } catch {
       tokenLogs = [];
@@ -213,7 +217,7 @@ export async function buildIndexerSnapshot(): Promise<IndexerSnapshot> {
           address: graduationPair,
           topics: [[swapTopic]],
           fromBlock: graduationBlock && graduationBlock > fromBlock ? graduationBlock : fromBlock,
-          toBlock: latestBlock
+          toBlock: snapshotToBlock
         });
       } catch {
         pairLogs = [];
@@ -254,7 +258,7 @@ export async function buildIndexerSnapshot(): Promise<IndexerSnapshot> {
     dexName: profile.dexName,
     factory: getAddress(indexerConfig.factoryAddress),
     fromBlock: fromBlock.toString(),
-    toBlock: latestBlock.toString(),
+    toBlock: snapshotToBlock.toString(),
     launchCount: workspaceSnapshots.length,
     launches: workspaceSnapshots
   };
@@ -282,25 +286,14 @@ async function getLogsChunkedWithBatch(
     toBlock: bigint;
   },
   batch: bigint
-) {
+): Promise<Log[]> {
   if (params.fromBlock > params.toBlock) {
     return [] as Log[];
   }
 
   const safeBatch = batch > 0n ? batch : 2_000n;
   if (params.toBlock - params.fromBlock + 1n <= safeBatch) {
-    const chunk = await client.request({
-      method: "eth_getLogs",
-      params: [
-        {
-          address: params.address,
-          topics: params.topics,
-          fromBlock: `0x${params.fromBlock.toString(16)}`,
-          toBlock: `0x${params.toBlock.toString(16)}`
-        }
-      ]
-    });
-    return chunk.map((entry) => rpcLogToLog(entry as any));
+    return requestLogsChunk(client, params, safeBatch);
   }
 
   const logs: Log[] = [];
@@ -351,6 +344,46 @@ async function getLogsChunkedWithBatch(
   }
 
   return logs;
+}
+
+async function requestLogsChunk(
+  client: ReturnType<typeof createPublicClient>,
+  params: {
+    address: `0x${string}`;
+    topics?: (Hex | Hex[] | null)[];
+    fromBlock: bigint;
+    toBlock: bigint;
+  },
+  batch: bigint
+): Promise<Log[]> {
+  try {
+    const chunk = await client.request({
+      method: "eth_getLogs",
+      params: [
+        {
+          address: params.address,
+          topics: params.topics,
+          fromBlock: `0x${params.fromBlock.toString(16)}`,
+          toBlock: `0x${params.toBlock.toString(16)}`
+        }
+      ]
+    });
+    return chunk.map((entry) => rpcLogToLog(entry as any));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const prunedHistory =
+      message.toLowerCase().includes("history has been pruned") ||
+      message.toLowerCase().includes("pruned for this block");
+    if (prunedHistory) {
+      return [] as Log[];
+    }
+    const range = params.toBlock - params.fromBlock + 1n;
+    if (batch <= 1n || range <= 1n) {
+      throw error;
+    }
+    const narrowedBatch = batch / 2n > 0n ? batch / 2n : 1n;
+    return getLogsChunkedWithBatch(client, params, narrowedBatch);
+  }
 }
 
 function eventTopic(signature: string): Hex {

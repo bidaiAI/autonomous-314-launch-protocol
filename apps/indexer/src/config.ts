@@ -54,6 +54,7 @@ export const indexerConfig = {
   rpcUrl: process.env.INDEXER_RPC_URL ?? profile.defaultRpcUrl,
   factoryAddress: process.env.INDEXER_FACTORY_ADDRESS as `0x${string}` | undefined,
   fromBlock: process.env.INDEXER_FROM_BLOCK ? BigInt(process.env.INDEXER_FROM_BLOCK) : undefined,
+  toBlock: process.env.INDEXER_TO_BLOCK ? BigInt(process.env.INDEXER_TO_BLOCK) : undefined,
   lookbackBlocks: process.env.INDEXER_LOOKBACK_BLOCKS ? BigInt(process.env.INDEXER_LOOKBACK_BLOCKS) : 50_000n,
   logBatchBlocks: process.env.INDEXER_LOG_BATCH_BLOCKS ? BigInt(process.env.INDEXER_LOG_BATCH_BLOCKS) : 2_000n,
   launchLimit: process.env.INDEXER_LAUNCH_LIMIT ? Number(process.env.INDEXER_LAUNCH_LIMIT) : 25,

@@ -156,7 +156,10 @@ export type ActivityFeedItem =
       liquidityBurned: bigint;
     };
 
+export type ChartTimeframe = "1m" | "5m" | "15m" | "1h" | "4h" | "1d";
+
 export type CandlePoint = {
+  timeframe?: ChartTimeframe;
   bucketStart: number;
   open: bigint;
   high: bigint;

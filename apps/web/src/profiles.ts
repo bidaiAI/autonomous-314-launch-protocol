@@ -9,6 +9,7 @@ export type ProtocolChainProfile = {
   wrappedNativeSymbol: string;
   dexName: string;
   defaultRpcUrl: string;
+  rpcUrls: readonly string[];
   officialFactoryAddress: string;
   indexerApiBaseUrl: string;
   indexerSnapshotUrl: string;
@@ -33,6 +34,12 @@ function resolveRuntimeIndexerApiBaseUrl(configuredUrl: string | undefined, devP
   return normalized;
 }
 
+function resolveRuntimeRpcUrls(configuredUrl: string | undefined, fallbackUrl: string) {
+  const configured = configuredUrl?.trim() ?? "";
+  const urls = [configured, fallbackUrl.trim()].filter(Boolean);
+  return urls.filter((url, index, array) => array.indexOf(url) === index);
+}
+
 const profiles: Record<number, ProtocolChainProfile> = {
   1: {
     chainId: 1,
@@ -42,6 +49,7 @@ const profiles: Record<number, ProtocolChainProfile> = {
     wrappedNativeSymbol: "WETH",
     dexName: "Uniswap V2",
     defaultRpcUrl: "https://ethereum-rpc.publicnode.com",
+    rpcUrls: ["https://ethereum-rpc.publicnode.com"],
     officialFactoryAddress: "",
     indexerApiBaseUrl: "",
     indexerSnapshotUrl: "/data/indexer-snapshot.json",
@@ -60,6 +68,7 @@ const profiles: Record<number, ProtocolChainProfile> = {
     wrappedNativeSymbol: "WBNB",
     dexName: "PancakeSwap V2",
     defaultRpcUrl: (import.meta.env.VITE_RPC_URL ?? "https://bsc-dataseed.binance.org").trim(),
+    rpcUrls: resolveRuntimeRpcUrls(import.meta.env.VITE_RPC_URL, "https://bsc-dataseed.binance.org"),
     officialFactoryAddress: (import.meta.env.VITE_FACTORY_ADDRESS ?? "").trim(),
     indexerApiBaseUrl: resolveRuntimeIndexerApiBaseUrl(import.meta.env.VITE_INDEXER_API_URL, "/__proxy/indexer"),
     indexerSnapshotUrl: import.meta.env.VITE_INDEXER_SNAPSHOT_URL ?? "/data/indexer-snapshot.json",
@@ -78,6 +87,7 @@ const profiles: Record<number, ProtocolChainProfile> = {
     wrappedNativeSymbol: "WETH",
     dexName: "QuickSwap V2",
     defaultRpcUrl: (import.meta.env.VITE_BASE_RPC_URL ?? "https://mainnet.base.org").trim(),
+    rpcUrls: resolveRuntimeRpcUrls(import.meta.env.VITE_BASE_RPC_URL, "https://mainnet.base.org"),
     officialFactoryAddress: (import.meta.env.VITE_BASE_FACTORY_ADDRESS ?? "").trim(),
     indexerApiBaseUrl: resolveRuntimeIndexerApiBaseUrl(
       import.meta.env.VITE_BASE_INDEXER_API_URL,
@@ -99,6 +109,7 @@ const profiles: Record<number, ProtocolChainProfile> = {
     wrappedNativeSymbol: "WETH",
     dexName: "Local V2 DEX",
     defaultRpcUrl: "http://127.0.0.1:8545",
+    rpcUrls: ["http://127.0.0.1:8545"],
     officialFactoryAddress: "",
     indexerApiBaseUrl: "",
     indexerSnapshotUrl: "/data/indexer-snapshot.json",

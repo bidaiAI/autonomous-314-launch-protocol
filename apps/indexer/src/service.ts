@@ -1,10 +1,10 @@
 import { createPublicClient, getAddress, hexToBigInt, hexToNumber, http, keccak256, stringToHex, type Hex, type Log } from "viem";
 import { launchTokenAbi, v2PairAbi } from "./abi";
+import { buildCandlesFromTrades } from "./candles";
 import { indexerConfig } from "./config";
 import { resolveIndexerProfile } from "./profiles";
 import { normalizeGraduatedActivity, normalizePairTrade, normalizeProtocolTrade } from "./normalizers";
 import type {
-  CandleBucket,
   IndexerSnapshot,
   LaunchMode,
   LaunchState,
@@ -238,8 +238,8 @@ export async function buildIndexerSnapshot(): Promise<IndexerSnapshot> {
       ...tokenSnapshot,
       recentActivity,
       segmentedChart: {
-        bondingCandles: buildFiveMinuteCandles(protocolTrades),
-        dexCandles: buildFiveMinuteCandles(dexTrades),
+        bondingCandles: buildCandlesFromTrades(protocolTrades),
+        dexCandles: buildCandlesFromTrades(dexTrades),
         graduationTimestampMs
       }
     });
@@ -619,50 +619,6 @@ async function buildBlockTimes(client: ReturnType<typeof createPublicClient>, lo
     })
   );
   return new Map<string, number>(entries);
-}
-
-function buildFiveMinuteCandles(trades: TradeRecord[]): CandleBucket[] {
-  const timeframe = "5m" as const;
-  const buckets = new Map<number, CandleBucket>();
-
-  for (const trade of [...trades].sort((a, b) => a.timestampMs - b.timestampMs)) {
-    const start = Math.floor(trade.timestampMs / 300000) * 300000;
-    const price = tradePrice(BigInt(trade.netQuote), BigInt(trade.tokenAmount)).toString();
-    const existing = buckets.get(start);
-
-    if (!existing) {
-      buckets.set(start, {
-        token: trade.token,
-        timeframe,
-        bucketStart: start,
-        open: price,
-        high: price,
-        low: price,
-        close: price,
-        volumeQuote: trade.netQuote,
-        volumeToken: trade.tokenAmount,
-        trades: 1
-      });
-      continue;
-    }
-
-    buckets.set(start, {
-      ...existing,
-      high: BigInt(existing.high) > BigInt(price) ? existing.high : price,
-      low: BigInt(existing.low) < BigInt(price) ? existing.low : price,
-      close: price,
-      volumeQuote: (BigInt(existing.volumeQuote) + BigInt(trade.netQuote)).toString(),
-      volumeToken: (BigInt(existing.volumeToken) + BigInt(trade.tokenAmount)).toString(),
-      trades: existing.trades + 1
-    });
-  }
-
-  return [...buckets.values()].sort((a, b) => a.bucketStart - b.bucketStart);
-}
-
-function tradePrice(quote: bigint, token: bigint) {
-  if (token === 0n) return 0n;
-  return (quote * 10n ** 18n) / token;
 }
 
 function compareLogsAsc(a: Pick<Log, "blockNumber" | "logIndex">, b: Pick<Log, "blockNumber" | "logIndex">) {

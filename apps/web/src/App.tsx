@@ -12,8 +12,6 @@ import {
   connectWallet,
   createLaunch,
   downloadLaunchMetadata,
-  executeBuy,
-  executeSell,
   executeWhitelistCommit,
   fetchBondingCandles,
   fetchSegmentedChartSnapshot,
@@ -26,18 +24,31 @@ import {
   previewBuy,
   previewSell,
   readFactory,
+  readIndexedSegmentedChart,
   readIndexedLaunchWorkspace,
   resolveLaunchMetadata,
   readRecentLaunchSnapshots,
   readToken,
   readWhitelistAccountState,
+  submitBuy,
+  submitSell,
   switchWalletToExpectedChain,
   sweepAbandonedCreatorFees,
   uploadReferenceImage,
   uploadReferenceMetadata,
-  verifyOfficialLaunch
+  verifyOfficialLaunch,
+  waitForTransactionReceipt
 } from "./protocol";
-import type { ActivityFeedItem, CandlePoint, FactorySnapshot, LaunchMetadata, ProtocolVerification, TokenSnapshot } from "./types";
+import type {
+  ActivityFeedItem,
+  CandlePoint,
+  ChartTimeframe,
+  FactorySnapshot,
+  LaunchMetadata,
+  ProtocolVerification,
+  SegmentedChartSnapshot,
+  TokenSnapshot
+} from "./types";
 import type { LaunchCreationFamily } from "./types";
 import { BondingCandlestickChart } from "./charts";
 import {
@@ -64,6 +75,7 @@ const TOTAL_FEE_BPS = 100n;
 const WHITELIST_MAX_DELAY_MS = 3 * 24 * 60 * 60 * 1000;
 const WHITELIST_SCHEDULE_MIN_LEAD_MS = 60 * 1000;
 const LAUNCH_AUTO_REFRESH_INTERVAL_MS = 45_000;
+const BONDING_CHART_FRESH_MS = 12_000;
 const INTERNAL_CHART_TIMEFRAMES = {
   "1m": { intervalMs: 60_000, lookbackBlocks: 4_000n },
   "5m": { intervalMs: 5 * 60_000, lookbackBlocks: 18_000n },
@@ -117,6 +129,23 @@ const MIN_ACCEPTABLE_IMAGE_SIDE_PX = 256;
 const USABLE_IMAGE_SIDE_PX = 400;
 const RECOMMENDED_MIN_IMAGE_SIDE_PX = 1000;
 const LOCAL_CROP_PREVIEW_SIZE_PX = 280;
+const TRADE_PREVIEW_MAX_AGE_MS = 5_000;
+
+type TradePreviewCacheEntry<T> = {
+  tokenAddress: string;
+  input: string;
+  preview: T;
+  fetchedAtMs: number;
+};
+type BondingChartCacheEntry = {
+  tokenAddress: string;
+  timeframe: ChartTimeframe;
+  fetchedAtMs: number;
+};
+
+function hasChartData(chart: SegmentedChartSnapshot | null | undefined) {
+  return Boolean(chart && (chart.bondingCandles.length > 0 || chart.dexCandles.length > 0));
+}
 
 function parseRoute(pathname: string): AppRoute {
   if (pathname === "/create") return { page: "create" };
@@ -836,11 +865,45 @@ export function App() {
   const latestTokenAddressRef = useRef(tokenAddress);
   const buyPreviewRequestRef = useRef(0);
   const sellPreviewRequestRef = useRef(0);
+  const buyPreviewCacheRef = useRef<TradePreviewCacheEntry<BuyPreview> | null>(null);
+  const sellPreviewCacheRef = useRef<TradePreviewCacheEntry<SellPreview> | null>(null);
+  const bondingChartCacheRef = useRef<BondingChartCacheEntry | null>(null);
   const marketBoardRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     latestTokenAddressRef.current = tokenAddress;
   }, [tokenAddress]);
+
+  const getReusableBuyPreview = useCallback(() => {
+    const trimmed = buyInput.trim();
+    const cached = buyPreviewCacheRef.current;
+    if (!tokenAddress || !trimmed || !cached) return null;
+    if (cached.tokenAddress.toLowerCase() !== tokenAddress.toLowerCase()) return null;
+    if (cached.input !== trimmed) return null;
+    if (Date.now() - cached.fetchedAtMs > TRADE_PREVIEW_MAX_AGE_MS) return null;
+    return cached.preview;
+  }, [buyInput, tokenAddress]);
+
+  const getReusableSellPreview = useCallback(() => {
+    const trimmed = sellInput.trim();
+    const cached = sellPreviewCacheRef.current;
+    if (!tokenAddress || !trimmed || !cached) return null;
+    if (cached.tokenAddress.toLowerCase() !== tokenAddress.toLowerCase()) return null;
+    if (cached.input !== trimmed) return null;
+    if (Date.now() - cached.fetchedAtMs > TRADE_PREVIEW_MAX_AGE_MS) return null;
+    return cached.preview;
+  }, [sellInput, tokenAddress]);
+
+  const hasFreshBondingChart = useCallback(
+    (address: string, timeframe: keyof typeof INTERNAL_CHART_TIMEFRAMES) => {
+      const cached = bondingChartCacheRef.current;
+      if (!cached) return false;
+      if (cached.tokenAddress.toLowerCase() !== address.toLowerCase()) return false;
+      if (cached.timeframe !== timeframe) return false;
+      return Date.now() - cached.fetchedAtMs <= BONDING_CHART_FRESH_MS;
+    },
+    []
+  );
 
   useEffect(() => {
     if (route.page !== "create") return;
@@ -1713,9 +1776,11 @@ export function App() {
   async function loadLaunchWorkspace(address: string, preferIndexed = true) {
     const requestId = ++workspaceRequestRef.current;
     const verificationFactoryAddress = activeProtocolProfile.officialFactoryAddress || factoryAddress;
+    const chartTimeframe = bondingChartTimeframe as ChartTimeframe;
+    const { intervalMs, lookbackBlocks } = INTERNAL_CHART_TIMEFRAMES[chartTimeframe];
     const [snapshot, indexed, verification] = await Promise.all([
       readToken(address),
-      preferIndexed ? readIndexedLaunchWorkspace(address) : Promise.resolve(null),
+      preferIndexed ? readIndexedLaunchWorkspace(address, chartTimeframe) : Promise.resolve(null),
       verificationFactoryAddress
         ? verifyOfficialLaunch(verificationFactoryAddress, address).catch(
             (): ProtocolVerification => ({
@@ -1742,14 +1807,14 @@ export function App() {
     const needsLiveActivityFallback =
       activity.length === 0 && (snapshot.state === "Bonding314" || snapshot.state === "DEXOnly" || snapshot.state === "Migrating");
     const needsLiveChartFallback =
-      !chart ||
-      ((chart.bondingCandles.length === 0 && chart.dexCandles.length === 0) &&
-        (snapshot.state === "Bonding314" || snapshot.state === "DEXOnly" || snapshot.state === "Migrating"));
+      !hasChartData(chart) && (snapshot.state === "Bonding314" || snapshot.state === "DEXOnly" || snapshot.state === "Migrating");
 
     if (!indexed || needsLiveActivityFallback || needsLiveChartFallback) {
       const [liveActivity, liveChart] = await Promise.all([
         needsLiveActivityFallback || !indexed ? fetchUnifiedActivity(address) : Promise.resolve(activity),
-        needsLiveChartFallback || !indexed ? fetchSegmentedChartSnapshot(address) : Promise.resolve(chart!)
+        needsLiveChartFallback || !indexed
+          ? fetchSegmentedChartSnapshot(address, lookbackBlocks, intervalMs)
+          : Promise.resolve(chart!)
       ]);
       activity = liveActivity;
       chart = liveChart;
@@ -1763,6 +1828,13 @@ export function App() {
     setTokenVerification(verification);
     setRecentActivity(activity);
     setBondingCandles(chart?.bondingCandles ?? []);
+    bondingChartCacheRef.current = chart
+      ? {
+          tokenAddress: getAddress(address),
+          timeframe: chartTimeframe,
+          fetchedAtMs: Date.now()
+        }
+      : null;
     setGraduationTimestampMs(chart?.graduationTimestampMs ?? null);
 
     return snapshot;
@@ -1775,20 +1847,30 @@ export function App() {
 
     launchAutoRefreshInFlightRef.current = true;
     const activeAddress = tokenAddress;
-    const { intervalMs, lookbackBlocks } = INTERNAL_CHART_TIMEFRAMES[bondingChartTimeframe];
+    const chartTimeframe = bondingChartTimeframe as ChartTimeframe;
+    const { intervalMs, lookbackBlocks } = INTERNAL_CHART_TIMEFRAMES[chartTimeframe];
 
     try {
-      const [snapshot, activity, candles] = await Promise.all([
+      const [snapshot, activity, indexedChart] = await Promise.all([
         readToken(activeAddress),
         fetchUnifiedActivity(activeAddress),
-        fetchBondingCandles(activeAddress, lookbackBlocks, intervalMs)
+        readIndexedSegmentedChart(activeAddress, chartTimeframe)
       ]);
+      const candles =
+        indexedChart && indexedChart.bondingCandles.length > 0
+          ? indexedChart.bondingCandles
+          : await fetchBondingCandles(activeAddress, lookbackBlocks, intervalMs);
 
       if (activeAddress.toLowerCase() !== latestTokenAddressRef.current.toLowerCase()) return;
 
       setTokenSnapshot(snapshot);
       setRecentActivity(activity);
       setBondingCandles(candles);
+      bondingChartCacheRef.current = {
+        tokenAddress: activeAddress,
+        timeframe: chartTimeframe,
+        fetchedAtMs: Date.now()
+      };
       const latestGraduation = activity.find((item) => item.kind === "graduated");
       if (latestGraduation) {
         setGraduationTimestampMs(latestGraduation.timestampMs);
@@ -1818,18 +1900,36 @@ export function App() {
     if (!tokenAddress) {
       setBondingChartLoading(false);
       setBondingChartError("");
+      bondingChartCacheRef.current = null;
       return;
     }
 
     const requestId = ++bondingChartRequestRef.current;
-    const { intervalMs, lookbackBlocks } = INTERNAL_CHART_TIMEFRAMES[bondingChartTimeframe];
+    const chartTimeframe = bondingChartTimeframe as ChartTimeframe;
+    const { intervalMs, lookbackBlocks } = INTERNAL_CHART_TIMEFRAMES[chartTimeframe];
+    if (hasFreshBondingChart(tokenAddress, bondingChartTimeframe)) {
+      setBondingChartLoading(false);
+      setBondingChartError("");
+      return;
+    }
     setBondingChartLoading(true);
     setBondingChartError("");
 
-    void fetchBondingCandles(tokenAddress, lookbackBlocks, intervalMs)
+    void readIndexedSegmentedChart(tokenAddress, chartTimeframe)
+      .then((indexedChart) => {
+        if (indexedChart && indexedChart.bondingCandles.length > 0) {
+          return indexedChart.bondingCandles;
+        }
+        return fetchBondingCandles(tokenAddress, lookbackBlocks, intervalMs);
+      })
       .then((candles) => {
         if (bondingChartRequestRef.current !== requestId) return;
         setBondingCandles(candles);
+        bondingChartCacheRef.current = {
+          tokenAddress,
+          timeframe: chartTimeframe,
+          fetchedAtMs: Date.now()
+        };
       })
       .catch((error) => {
         if (bondingChartRequestRef.current !== requestId) return;
@@ -2005,20 +2105,33 @@ export function App() {
   useEffect(() => {
     if (!tokenAddress || !isBonding) {
       setBuyPreviewState(null);
+      buyPreviewCacheRef.current = null;
       return;
     }
     const trimmed = buyInput.trim();
     if (!trimmed || Number(trimmed) <= 0) {
       setBuyPreviewState(null);
+      buyPreviewCacheRef.current = null;
       return;
     }
     const requestId = ++buyPreviewRequestRef.current;
     const timer = window.setTimeout(async () => {
       try {
         const preview = await previewBuy(tokenAddress, trimmed);
-        if (buyPreviewRequestRef.current === requestId) setBuyPreviewState(preview);
+        if (buyPreviewRequestRef.current === requestId) {
+          setBuyPreviewState(preview);
+          buyPreviewCacheRef.current = {
+            tokenAddress,
+            input: trimmed,
+            preview,
+            fetchedAtMs: Date.now()
+          };
+        }
       } catch {
-        if (buyPreviewRequestRef.current === requestId) setBuyPreviewState(null);
+        if (buyPreviewRequestRef.current === requestId) {
+          setBuyPreviewState(null);
+          buyPreviewCacheRef.current = null;
+        }
       }
     }, 220);
     return () => window.clearTimeout(timer);
@@ -2027,20 +2140,33 @@ export function App() {
   useEffect(() => {
     if (!tokenAddress || !isBonding) {
       setSellPreviewState(null);
+      sellPreviewCacheRef.current = null;
       return;
     }
     const trimmed = sellInput.trim();
     if (!trimmed || Number(trimmed) <= 0) {
       setSellPreviewState(null);
+      sellPreviewCacheRef.current = null;
       return;
     }
     const requestId = ++sellPreviewRequestRef.current;
     const timer = window.setTimeout(async () => {
       try {
         const preview = await previewSell(tokenAddress, trimmed);
-        if (sellPreviewRequestRef.current === requestId) setSellPreviewState(preview);
+        if (sellPreviewRequestRef.current === requestId) {
+          setSellPreviewState(preview);
+          sellPreviewCacheRef.current = {
+            tokenAddress,
+            input: trimmed,
+            preview,
+            fetchedAtMs: Date.now()
+          };
+        }
       } catch {
-        if (sellPreviewRequestRef.current === requestId) setSellPreviewState(null);
+        if (sellPreviewRequestRef.current === requestId) {
+          setSellPreviewState(null);
+          sellPreviewCacheRef.current = null;
+        }
       }
     }, 220);
     return () => window.clearTimeout(timer);
@@ -2627,15 +2753,25 @@ export function App() {
   async function handleExecuteBuy() {
     try {
       setLoading(true);
-      const preview = await previewBuy(tokenAddress, buyInput);
+      const preview = getReusableBuyPreview() ?? await previewBuy(tokenAddress, buyInput);
       setBuyPreviewState(preview);
+      buyPreviewCacheRef.current = {
+        tokenAddress,
+        input: buyInput.trim(),
+        preview,
+        fetchedAtMs: Date.now()
+      };
 
       const minTokenOut = applySlippageBps(preview.tokenOut, slippageToleranceBps);
-      const receipt = await executeBuy(tokenAddress, buyInput, minTokenOut);
+      const hash = await submitBuy(tokenAddress, buyInput, minTokenOut);
+      setStatus(tf("statusBuySubmitted", { tx: hash }));
+      const receipt = await waitForTransactionReceipt(hash);
 
       setStatus(tf("statusBuyConfirmed", { tx: receipt.transactionHash }));
-      await loadLaunchWorkspace(tokenAddress, false);
       setTokenSnapshot(await readToken(tokenAddress));
+      void loadLaunchWorkspace(tokenAddress, false).catch(() => {
+        // keep confirmed trade UI responsive even if the heavier refresh path fails
+      });
     } catch (error) {
       setStatus(error instanceof Error ? error.message : t("statusBuyFailed"));
     } finally {
@@ -2646,15 +2782,25 @@ export function App() {
   async function handleExecuteSell() {
     try {
       setLoading(true);
-      const preview = await previewSell(tokenAddress, sellInput);
+      const preview = getReusableSellPreview() ?? await previewSell(tokenAddress, sellInput);
       setSellPreviewState(preview);
+      sellPreviewCacheRef.current = {
+        tokenAddress,
+        input: sellInput.trim(),
+        preview,
+        fetchedAtMs: Date.now()
+      };
 
       const minQuoteOut = applySlippageBps(preview.netQuoteOut, slippageToleranceBps);
-      const receipt = await executeSell(tokenAddress, sellInput, minQuoteOut);
+      const hash = await submitSell(tokenAddress, sellInput, minQuoteOut);
+      setStatus(tf("statusSellSubmitted", { tx: hash }));
+      const receipt = await waitForTransactionReceipt(hash);
 
       setStatus(tf("statusSellConfirmed", { tx: receipt.transactionHash }));
-      await loadLaunchWorkspace(tokenAddress, false);
       setTokenSnapshot(await readToken(tokenAddress));
+      void loadLaunchWorkspace(tokenAddress, false).catch(() => {
+        // keep confirmed trade UI responsive even if the heavier refresh path fails
+      });
     } catch (error) {
       setStatus(error instanceof Error ? error.message : t("statusSellFailed"));
     } finally {

@@ -12,6 +12,7 @@ import { indexerConfig } from "./config";
 import { createXAuthorizationUrl, exchangeXOAuthCode, isXAuthConfigured } from "./x-auth";
 import { createXPost, isXPublishingConfigured, XPublishError } from "./x-publish";
 import { updateXProfile } from "./x-profile";
+import type { CandleBucket, SegmentedChartSnapshot } from "./schema";
 
 const __metadir = dirname(fileURLToPath(import.meta.url));
 const METADATA_DIR = join(__metadir, "..", "metadata");
@@ -37,12 +38,33 @@ const xPublishConfig = {
 
 let cache: { expiresAt: number; snapshot: IndexerSnapshot } | null = null;
 let inflight: Promise<IndexerSnapshot> | null = null;
+const supportedChartTimeframes = new Set<CandleBucket["timeframe"]>(["1m", "5m", "15m", "1h", "4h", "1d"]);
 
 export class RequestBodyTooLargeError extends Error {
   constructor(public readonly maxBytes: number) {
     super(`Request body exceeds limit of ${maxBytes} bytes`);
     this.name = "RequestBodyTooLargeError";
   }
+}
+
+export function parseChartTimeframe(value: string | null): CandleBucket["timeframe"] | null {
+  if (!value) return null;
+  return supportedChartTimeframes.has(value as CandleBucket["timeframe"]) ? (value as CandleBucket["timeframe"]) : null;
+}
+
+export function filterSegmentedChartByTimeframe(
+  segmentedChart: SegmentedChartSnapshot,
+  timeframe: CandleBucket["timeframe"] | null
+): SegmentedChartSnapshot {
+  if (!timeframe) {
+    return segmentedChart;
+  }
+
+  return {
+    bondingCandles: segmentedChart.bondingCandles.filter((candle) => candle.timeframe === timeframe),
+    dexCandles: segmentedChart.dexCandles.filter((candle) => candle.timeframe === timeframe),
+    graduationTimestampMs: segmentedChart.graduationTimestampMs
+  };
 }
 
 function refreshSnapshot() {
@@ -817,6 +839,16 @@ const server = createServer(async (req, res) => {
       }
 
       if (mode === "chart") {
+        const requestedTimeframe = url.searchParams.get("timeframe");
+        const timeframe = parseChartTimeframe(requestedTimeframe);
+        if (requestedTimeframe && !timeframe) {
+          sendJson(res, 400, {
+            error: "Invalid chart timeframe",
+            supportedTimeframes: [...supportedChartTimeframes]
+          });
+          return;
+        }
+
         sendJson(res, 200, {
           token: launch.token,
           chainId: snapshot.chainId,
@@ -827,7 +859,8 @@ const server = createServer(async (req, res) => {
           factory: snapshot.factory,
           generatedAtMs: snapshot.generatedAtMs,
           indexedToBlock: snapshot.toBlock,
-          segmentedChart: launch.segmentedChart
+          timeframe,
+          segmentedChart: filterSegmentedChartByTimeframe(launch.segmentedChart, timeframe)
         });
         return;
       }

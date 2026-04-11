@@ -9,7 +9,7 @@ export const timeframeMs = {
   "1d": 24 * 60 * 60_000
 } as const;
 
-const supportedTimeframes = Object.keys(timeframeMs) as Array<keyof typeof timeframeMs>;
+export const supportedTimeframes = Object.keys(timeframeMs) as Array<keyof typeof timeframeMs>;
 
 function bucketStart(timestampMs: number, timeframe: keyof typeof timeframeMs) {
   const interval = timeframeMs[timeframe];
@@ -72,4 +72,53 @@ export function foldTradeIntoCandles(
   }
 
   return next;
+}
+
+export function buildCandlesFromTrades(trades: TradeRecord[]): CandleBucket[] {
+  const sortedTrades = [...trades].sort((a, b) => a.timestampMs - b.timestampMs);
+  const buckets = new Map<string, CandleBucket>();
+
+  for (const trade of sortedTrades) {
+    const price = tradePrice(trade).toString();
+    const quote = trade.netQuote;
+    const token = trade.tokenAmount;
+
+    for (const timeframe of supportedTimeframes) {
+      const start = bucketStart(trade.timestampMs, timeframe);
+      const key = `${timeframe}:${start}`;
+      const existing = buckets.get(key);
+
+      if (!existing) {
+        buckets.set(key, {
+          token: trade.token,
+          timeframe,
+          bucketStart: start,
+          open: price,
+          high: price,
+          low: price,
+          close: price,
+          volumeQuote: quote,
+          volumeToken: token,
+          trades: 1
+        });
+        continue;
+      }
+
+      buckets.set(key, {
+        ...existing,
+        high: BigInt(existing.high) > BigInt(price) ? existing.high : price,
+        low: BigInt(existing.low) < BigInt(price) ? existing.low : price,
+        close: price,
+        volumeQuote: (BigInt(existing.volumeQuote) + BigInt(quote)).toString(),
+        volumeToken: (BigInt(existing.volumeToken) + BigInt(token)).toString(),
+        trades: existing.trades + 1
+      });
+    }
+  }
+
+  return [...buckets.values()].sort((a, b) => {
+    const timeframeDiff = timeframeMs[a.timeframe] - timeframeMs[b.timeframe];
+    if (timeframeDiff !== 0) return timeframeDiff;
+    return a.bucketStart - b.bucketStart;
+  });
 }

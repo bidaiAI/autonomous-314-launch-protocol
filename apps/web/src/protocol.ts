@@ -6,6 +6,7 @@ import {
   decodeEventLog,
   encodeDeployData,
   encodeEventTopics,
+  fallback,
   formatEther,
   formatUnits,
   getAddress,
@@ -32,6 +33,7 @@ import { getActiveProtocolProfile } from "./profiles";
 import type {
   ActivityFeedItem,
   CandlePoint,
+  ChartTimeframe,
   FactorySnapshot,
   LaunchCreationFamily,
   LaunchMode,
@@ -74,6 +76,10 @@ function getRuntimeChain() {
 
 function getRuntimeRpcUrl() {
   return getRuntimeProtocolProfile().defaultRpcUrl;
+}
+
+function getRuntimeRpcUrls() {
+  return getRuntimeProtocolProfile().rpcUrls;
 }
 
 function getRuntimeIndexerApiBaseUrl() {
@@ -353,6 +359,7 @@ type SnapshotActivityJson =
     };
 
 type SnapshotCandleJson = {
+  timeframe?: ChartTimeframe;
   bucketStart: number;
   open: string;
   high: string;
@@ -454,6 +461,7 @@ type ApiLaunchChartJson = {
   token: `0x${string}`;
   factory: `0x${string}`;
   generatedAtMs: number;
+  timeframe?: ChartTimeframe | null;
   segmentedChart: {
     bondingCandles: SnapshotCandleJson[];
     dexCandles: SnapshotCandleJson[];
@@ -496,11 +504,29 @@ function deployerForFamily(snapshot: FactorySnapshot, family: LaunchCreationFami
   return snapshot.standardDeployer;
 }
 
+const publicClientCache = new Map<string, ReturnType<typeof createPublicClient>>();
+
 export function getPublicClient() {
-  return createPublicClient({
-    chain: getRuntimeChain(),
-    transport: http(getRuntimeRpcUrl())
+  const chain = getRuntimeChain();
+  const rpcUrls = getRuntimeRpcUrls();
+  const cacheKey = `${chain.id}:${rpcUrls.join("|")}`;
+  const cached = publicClientCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const client = createPublicClient({
+    chain,
+    transport:
+      rpcUrls.length > 1
+        ? fallback(rpcUrls.map((url) => http(url, { timeout: 5_000 })), {
+            rank: false
+          })
+        : http(rpcUrls[0] ?? getRuntimeRpcUrl(), { timeout: 5_000 })
   });
+
+  publicClientCache.set(cacheKey, client);
+  return client;
 }
 
 async function readPairStatusFromChain(
@@ -718,12 +744,50 @@ async function readApiLaunchWorkspace(tokenAddress: `0x${string}`): Promise<{
   recentActivity: ActivityFeedItem[];
   segmentedChart: SegmentedChartSnapshot;
 } | null> {
+  return readApiLaunchWorkspaceForTimeframe(tokenAddress, null);
+}
+
+async function readApiLaunchSegmentedChart(
+  tokenAddress: `0x${string}`,
+  timeframe: ChartTimeframe
+): Promise<SegmentedChartSnapshot | null> {
   const indexerApiBase = getRuntimeIndexerApiBaseUrl();
   if (!indexerApiBase) return null;
 
+  const chartResponse = await readJson<ApiLaunchChartJson>(
+    `${indexerApiBase}/launches/${tokenAddress}/chart?timeframe=${encodeURIComponent(timeframe)}`
+  );
+  if (!chartResponse) {
+    return null;
+  }
+
+  if (chartResponse.token.toLowerCase() !== tokenAddress.toLowerCase()) {
+    return null;
+  }
+
+  return {
+    bondingCandles: chartResponse.segmentedChart.bondingCandles.map(convertSnapshotCandle),
+    dexCandles: chartResponse.segmentedChart.dexCandles.map(convertSnapshotCandle),
+    graduationTimestampMs: chartResponse.segmentedChart.graduationTimestampMs
+  };
+}
+
+async function readApiLaunchWorkspaceForTimeframe(
+  tokenAddress: `0x${string}`,
+  timeframe: ChartTimeframe | null
+): Promise<{
+  recentActivity: ActivityFeedItem[];
+  segmentedChart: SegmentedChartSnapshot;
+} | null> {
+  const indexerApiBase = getRuntimeIndexerApiBaseUrl();
+  if (!indexerApiBase) return null;
+
+  const chartUrl = timeframe
+    ? `${indexerApiBase}/launches/${tokenAddress}/chart?timeframe=${encodeURIComponent(timeframe)}`
+    : `${indexerApiBase}/launches/${tokenAddress}/chart`;
   const [activityResponse, chartResponse] = await Promise.all([
     readJson<ApiLaunchActivityJson>(`${indexerApiBase}/launches/${tokenAddress}/activity?limit=40`),
-    readJson<ApiLaunchChartJson>(`${indexerApiBase}/launches/${tokenAddress}/chart`)
+    readJson<ApiLaunchChartJson>(chartUrl)
   ]);
 
   if (!activityResponse || !chartResponse) {
@@ -1887,12 +1951,16 @@ export async function createLaunch(
 }
 
 export async function executeBuy(address: string, grossQuoteIn: string, minTokenOut: bigint) {
+  const hash = await submitBuy(address, grossQuoteIn, minTokenOut);
+  return waitForTransactionReceipt(hash);
+}
+
+export async function submitBuy(address: string, grossQuoteIn: string, minTokenOut: bigint) {
   const walletClient = getWalletClientOrThrow();
   const account = await getActiveAccount();
   await ensureWalletOnExpectedChain();
-  const publicClient = getPublicClient();
 
-  const hash = await walletClient.writeContract({
+  return walletClient.writeContract({
     account,
     chain: getRuntimeChain(),
     address: getAddress(address),
@@ -1901,8 +1969,6 @@ export async function executeBuy(address: string, grossQuoteIn: string, minToken
     args: [minTokenOut],
     value: parseBnbInput(grossQuoteIn)
   });
-
-  return publicClient.waitForTransactionReceipt({ hash });
 }
 
 export async function executeWhitelistCommit(address: string, slotSize: bigint) {
@@ -1958,12 +2024,16 @@ export async function claimWhitelistRefund(address: string) {
 }
 
 export async function executeSell(address: string, tokenAmount: string, minQuoteOut: bigint) {
+  const hash = await submitSell(address, tokenAmount, minQuoteOut);
+  return waitForTransactionReceipt(hash);
+}
+
+export async function submitSell(address: string, tokenAmount: string, minQuoteOut: bigint) {
   const walletClient = getWalletClientOrThrow();
   const account = await getActiveAccount();
   await ensureWalletOnExpectedChain();
-  const publicClient = getPublicClient();
 
-  const hash = await walletClient.writeContract({
+  return walletClient.writeContract({
     account,
     chain: getRuntimeChain(),
     address: getAddress(address),
@@ -1971,8 +2041,10 @@ export async function executeSell(address: string, tokenAmount: string, minQuote
     functionName: "sell",
     args: [parseTokenInput(tokenAmount), minQuoteOut]
   });
+}
 
-  return publicClient.waitForTransactionReceipt({ hash });
+export function waitForTransactionReceipt(hash: `0x${string}`) {
+  return getPublicClient().waitForTransactionReceipt({ hash });
 }
 
 export async function claimFactoryProtocolFees(factoryAddress: string) {
@@ -2088,6 +2160,20 @@ function tradePrice(netQuote: bigint, tokenAmount: bigint) {
 function bucketStart(timestampMs: number, timeframeMs: number) {
   return Math.floor(timestampMs / timeframeMs) * timeframeMs;
 }
+
+function timeframeLabelFromInterval(timeframeMs: number): ChartTimeframe | undefined {
+  if (timeframeMs === 60_000) return "1m";
+  if (timeframeMs === 5 * 60_000) return "5m";
+  if (timeframeMs === 15 * 60_000) return "15m";
+  if (timeframeMs === 60 * 60_000) return "1h";
+  if (timeframeMs === 4 * 60 * 60_000) return "4h";
+  if (timeframeMs === 24 * 60 * 60_000) return "1d";
+  return undefined;
+}
+
+const BONDING_CANDLES_CACHE_TTL_MS = 12_000;
+const bondingCandlesCache = new Map<string, { fetchedAtMs: number; candles: CandlePoint[] }>();
+const bondingCandlesInFlight = new Map<string, Promise<CandlePoint[]>>();
 
 function sortLogsAscending(a: Pick<Log, "blockNumber" | "logIndex">, b: Pick<Log, "blockNumber" | "logIndex">) {
   const blockA = a.blockNumber ?? 0n;
@@ -2300,6 +2386,7 @@ function convertSnapshotActivity(activity: SnapshotActivityJson): ActivityFeedIt
 
 function convertSnapshotCandle(candle: SnapshotCandleJson): CandlePoint {
   return {
+    timeframe: candle.timeframe ?? "5m",
     bucketStart: candle.bucketStart,
     open: BigInt(candle.open),
     high: BigInt(candle.high),
@@ -2311,12 +2398,48 @@ function convertSnapshotCandle(candle: SnapshotCandleJson): CandlePoint {
   };
 }
 
-export async function readIndexedLaunchWorkspace(tokenAddress: string): Promise<{
+function filterSegmentedChartByTimeframe(
+  segmentedChart: SegmentedChartSnapshot,
+  timeframe: ChartTimeframe
+): SegmentedChartSnapshot {
+  return {
+    bondingCandles: segmentedChart.bondingCandles.filter((candle) => candle.timeframe === timeframe),
+    dexCandles: segmentedChart.dexCandles.filter((candle) => candle.timeframe === timeframe),
+    graduationTimestampMs: segmentedChart.graduationTimestampMs
+  };
+}
+
+export async function readIndexedSegmentedChart(
+  tokenAddress: string,
+  timeframe: ChartTimeframe
+): Promise<SegmentedChartSnapshot | null> {
+  const address = getAddress(tokenAddress);
+  const apiChart = await readApiLaunchSegmentedChart(address, timeframe);
+  if (apiChart) {
+    return apiChart;
+  }
+
+  const indexed = await readIndexerSnapshot();
+  if (!indexed) return null;
+
+  const match = indexed.launches.find((launch) => launch.token.toLowerCase() === address.toLowerCase());
+  if (!match) return null;
+  return filterSegmentedChartByTimeframe(
+    {
+      bondingCandles: match.segmentedChart.bondingCandles.map(convertSnapshotCandle),
+      dexCandles: match.segmentedChart.dexCandles.map(convertSnapshotCandle),
+      graduationTimestampMs: match.segmentedChart.graduationTimestampMs
+    },
+    timeframe
+  );
+}
+
+export async function readIndexedLaunchWorkspace(tokenAddress: string, timeframe?: ChartTimeframe): Promise<{
   recentActivity: ActivityFeedItem[];
   segmentedChart: SegmentedChartSnapshot;
 } | null> {
   const address = getAddress(tokenAddress);
-  const apiWorkspace = await readApiLaunchWorkspace(address);
+  const apiWorkspace = await readApiLaunchWorkspaceForTimeframe(address, timeframe ?? null);
   if (apiWorkspace) {
     return apiWorkspace;
   }
@@ -2329,11 +2452,20 @@ export async function readIndexedLaunchWorkspace(tokenAddress: string): Promise<
 
   return {
     recentActivity: match.recentActivity.map(convertSnapshotActivity),
-    segmentedChart: {
-      bondingCandles: match.segmentedChart.bondingCandles.map(convertSnapshotCandle),
-      dexCandles: match.segmentedChart.dexCandles.map(convertSnapshotCandle),
-      graduationTimestampMs: match.segmentedChart.graduationTimestampMs
-    }
+    segmentedChart: timeframe
+      ? filterSegmentedChartByTimeframe(
+          {
+            bondingCandles: match.segmentedChart.bondingCandles.map(convertSnapshotCandle),
+            dexCandles: match.segmentedChart.dexCandles.map(convertSnapshotCandle),
+            graduationTimestampMs: match.segmentedChart.graduationTimestampMs
+          },
+          timeframe
+        )
+      : {
+          bondingCandles: match.segmentedChart.bondingCandles.map(convertSnapshotCandle),
+          dexCandles: match.segmentedChart.dexCandles.map(convertSnapshotCandle),
+          graduationTimestampMs: match.segmentedChart.graduationTimestampMs
+        }
   };
 }
 
@@ -2361,49 +2493,78 @@ export async function fetchRecentBondingTrades(tokenAddress: string, lookbackBlo
 
 export async function fetchBondingCandles(tokenAddress: string, lookbackBlocks = 20_000n, timeframe = 5 * 60_000) {
   const address = getAddress(tokenAddress);
-  const client = getPublicClient();
-  const latestBlock = await client.getBlockNumber();
-  const fromBlock = latestBlock > lookbackBlocks ? latestBlock - lookbackBlocks : 0n;
-
-  const logs = await client.getLogs({
-    address,
-    fromBlock,
-    toBlock: latestBlock
-  });
-
-  const trades = await normalizeTradeLogs(client, logs);
-  const buckets = new Map<number, CandlePoint>();
-
-  for (const trade of trades.sort((a, b) => Number(a.timestampMs - b.timestampMs))) {
-    const start = bucketStart(trade.timestampMs, timeframe);
-    const existing = buckets.get(start);
-    if (!existing) {
-      buckets.set(start, {
-        bucketStart: start,
-        open: trade.priceQuotePerToken,
-        high: trade.priceQuotePerToken,
-        low: trade.priceQuotePerToken,
-        close: trade.priceQuotePerToken,
-        volumeQuote: trade.netQuote,
-        volumeToken: trade.tokenAmount,
-        trades: 1
-      });
-      continue;
-    }
-
-    buckets.set(start, {
-      bucketStart: start,
-      open: existing.open,
-      high: existing.high > trade.priceQuotePerToken ? existing.high : trade.priceQuotePerToken,
-      low: existing.low < trade.priceQuotePerToken ? existing.low : trade.priceQuotePerToken,
-      close: trade.priceQuotePerToken,
-      volumeQuote: existing.volumeQuote + trade.netQuote,
-      volumeToken: existing.volumeToken + trade.tokenAmount,
-      trades: existing.trades + 1
-    });
+  const cacheKey = `${address}:${lookbackBlocks.toString()}:${timeframe}`;
+  const timeframeLabel = timeframeLabelFromInterval(timeframe);
+  const cached = bondingCandlesCache.get(cacheKey);
+  if (cached && Date.now() - cached.fetchedAtMs <= BONDING_CANDLES_CACHE_TTL_MS) {
+    return cached.candles;
   }
 
-  return [...buckets.values()].sort((a, b) => a.bucketStart - b.bucketStart);
+  const inFlight = bondingCandlesInFlight.get(cacheKey);
+  if (inFlight) {
+    return inFlight;
+  }
+
+  const task = (async () => {
+    const client = getPublicClient();
+    const latestBlock = await client.getBlockNumber();
+    const fromBlock = latestBlock > lookbackBlocks ? latestBlock - lookbackBlocks : 0n;
+
+    const logs = await client.getLogs({
+      address,
+      fromBlock,
+      toBlock: latestBlock
+    });
+
+    const trades = await normalizeTradeLogs(client, logs);
+    const buckets = new Map<number, CandlePoint>();
+
+    for (const trade of trades.sort((a, b) => Number(a.timestampMs - b.timestampMs))) {
+      const start = bucketStart(trade.timestampMs, timeframe);
+      const existing = buckets.get(start);
+      if (!existing) {
+        buckets.set(start, {
+          timeframe: timeframeLabel,
+          bucketStart: start,
+          open: trade.priceQuotePerToken,
+          high: trade.priceQuotePerToken,
+          low: trade.priceQuotePerToken,
+          close: trade.priceQuotePerToken,
+          volumeQuote: trade.netQuote,
+          volumeToken: trade.tokenAmount,
+          trades: 1
+        });
+        continue;
+      }
+
+      buckets.set(start, {
+        timeframe: timeframeLabel,
+        bucketStart: start,
+        open: existing.open,
+        high: existing.high > trade.priceQuotePerToken ? existing.high : trade.priceQuotePerToken,
+        low: existing.low < trade.priceQuotePerToken ? existing.low : trade.priceQuotePerToken,
+        close: trade.priceQuotePerToken,
+        volumeQuote: existing.volumeQuote + trade.netQuote,
+        volumeToken: existing.volumeToken + trade.tokenAmount,
+        trades: existing.trades + 1
+      });
+    }
+
+    const candles = [...buckets.values()].sort((a, b) => a.bucketStart - b.bucketStart);
+    bondingCandlesCache.set(cacheKey, {
+      fetchedAtMs: Date.now(),
+      candles
+    });
+    return candles;
+  })();
+
+  bondingCandlesInFlight.set(cacheKey, task);
+
+  try {
+    return await task;
+  } finally {
+    bondingCandlesInFlight.delete(cacheKey);
+  }
 }
 
 export async function fetchSegmentedChartSnapshot(
@@ -2412,6 +2573,7 @@ export async function fetchSegmentedChartSnapshot(
   timeframe = 5 * 60_000
 ): Promise<SegmentedChartSnapshot> {
   const address = getAddress(tokenAddress);
+  const timeframeLabel = timeframeLabelFromInterval(timeframe);
   const [bondingCandles, tokenSnapshot, graduationContext] = await Promise.all([
     fetchBondingCandles(address, lookbackBlocks, timeframe),
     readToken(address),
@@ -2485,6 +2647,7 @@ const zeroAddress = "0x0000000000000000000000000000000000000000" as const satisf
 
         if (!existing) {
           buckets.set(start, {
+            timeframe: timeframeLabel,
             bucketStart: start,
             open: price,
             high: price,
@@ -2498,6 +2661,7 @@ const zeroAddress = "0x0000000000000000000000000000000000000000" as const satisf
         }
 
         buckets.set(start, {
+          timeframe: timeframeLabel,
           bucketStart: start,
           open: existing.open,
           high: existing.high > price ? existing.high : price,
